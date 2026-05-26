@@ -1,0 +1,8 @@
+streamlit
+python-dotenv
+openai
+requests
+beautifulsoup4
+pytest
+flake8
+pandas
