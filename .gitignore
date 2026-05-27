@@ -50,3 +50,6 @@ htmlcov/
 # 临时文件
 tode.md
 todo.md
+
+# 确保产品数据 JSON 不被忽略
+!data/products.json

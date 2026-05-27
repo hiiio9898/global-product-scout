@@ -1,19 +1,12 @@
 [
   {
-    "title": "blink plus plan with monthly auto-renewal",
-    "price": 12.0,
-    "rating": 4.4,
-    "num_reviews": 275784,
-    "rank": 1,
-    "category": ""
-  },
-  {
     "title": "Apple AirTag (2nd Generation): Tracker for Keychain, Wallet, and More; Locator with Sound; Simple One-Tap Setup with iPhone or iPad; Key Finder with up to 1.5X Precision Finding Range",
     "price": 26.09,
     "rating": 4.6,
     "num_reviews": 4158,
     "rank": 2,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Apple EarPods Headphones with USB-C Plug, Wired Ear Buds with Built-in Remote to Control Music, Phone Calls, and Volume",
@@ -21,7 +14,8 @@
     "rating": 4.6,
     "num_reviews": 13720,
     "rank": 3,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Apple AirPods 4 Wireless Earbuds, Bluetooth Headphones, Personalized Spatial Audio, Sweat and Water Resistant, USB-C Charging Case, H2 Chip, Up to 30 Hours of Battery Life, Effortless Setup for iPhone",
@@ -29,7 +23,8 @@
     "rating": 4.6,
     "num_reviews": 29668,
     "rank": 4,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Apple AirPods Pro 3 Wireless Earbuds, Active Noise Cancellation, Live Translation, Heart Rate Sensing, Hearing Aid Feature, Bluetooth Headphones, Spatial Audio, High-Fidelity Sound, USB-C Charging",
@@ -37,7 +32,8 @@
     "rating": 4.5,
     "num_reviews": 9751,
     "rank": 5,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Amazon Fire TV Stick 4K Plus (newest model) with AI-powered Fire TV Search, Wi-Fi 6, stream hundreds of thousands of movies and shows, free & live TV, find shows faster with Alexa+",
@@ -45,7 +41,8 @@
     "rating": 4.6,
     "num_reviews": 109316,
     "rank": 6,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Hanes mens Underwear Boxer Briefs Pack, Cool & Breathable Cotton Moisture-wicking Underwear for Men, No Ride Up",
@@ -53,7 +50,8 @@
     "rating": 4.5,
     "num_reviews": 132588,
     "rank": 7,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "LetsJoli Bras for Women Supportive Wireless Push Up Bra Full Coverage No Underwire Seamless Plus Size for Older Women",
@@ -61,7 +59,8 @@
     "rating": 4.1,
     "num_reviews": 13866,
     "rank": 8,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Nippies Nipple Covers for Women - Reusable Sticky Silicone Pasties with Travel Case - Original Circle or Lift Style Available",
@@ -69,7 +68,8 @@
     "rating": 4.4,
     "num_reviews": 43140,
     "rank": 9,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Hanes Men's Zip-up Hoodie, Ecosmart Fleece Full-zip Hoodie for Men, Hooded Sweatshirt",
@@ -77,7 +77,8 @@
     "rating": 4.6,
     "num_reviews": 87494,
     "rank": 10,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Gildan Men's Crew T-Shirts, Multipack, Style G1100",
@@ -85,7 +86,8 @@
     "rating": 4.6,
     "num_reviews": 329772,
     "rank": 11,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "COOFANDY Men's Linen Shirts Short Sleeve Casual Shirts Button Down Shirt for Men Beach Summer Wedding Shirt",
@@ -93,7 +95,8 @@
     "rating": 4.4,
     "num_reviews": 13630,
     "rank": 12,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Neutrogena Ultra Sheer Dry-Touch Sunscreen Lotion SPF 70, Broad Spectrum, Water Resistant 80 Min, Oil-Free, Oxybenzone-Free, Non-Comedogenic, Matte Finish, Body Sunscreen, Travel Size 3 Fl Oz",
@@ -101,7 +104,8 @@
     "rating": 4.6,
     "num_reviews": 37933,
     "rank": 13,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "medicube Toner Pads Zero Pore Pad 2.0 | Dual-Textured Facial Pad for Exfoliation and Pore Care with 4.5% AHA Lactic Acid, 0.45% BHA Salicylic Acid | Ideal for All, Korean Skin Care, 70 Pads (1 Pack)",
@@ -109,7 +113,8 @@
     "rating": 4.6,
     "num_reviews": 24584,
     "rank": 14,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "eos Shea Better Body Lotion Vanilla Cashmere, 24-Hour Moisture Skin Care, Lightweight & Non-Greasy, Natural Shea, Vegan, Vanilla Body Lotion, 16 fl oz",
@@ -117,7 +122,8 @@
     "rating": 4.7,
     "num_reviews": 73703,
     "rank": 15,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Mighty Patch Original Patch from Hero Cosmetics - #1 Hydrocolloid Acne Pimple Patches for Face, Shrinking Zits & Whiteheads in 1 Use, Nighttime Spot Pimple Stickers for Face, 36 Count",
@@ -125,7 +131,8 @@
     "rating": 4.6,
     "num_reviews": 183390,
     "rank": 16,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Amazon Basics Double-Tipped Cotton Swabs for Personal Hygiene and Baby Care, Cotton, Versatile, Baby Safe, 500 Count",
@@ -133,7 +140,8 @@
     "rating": 4.7,
     "num_reviews": 75059,
     "rank": 17,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "BIODANCE Bio-Collagen Real Deep Mask, Hydrating Overnight Hydrogel Face Mask, Pore Minimizing, Elasticity, Plumping, Travel Essentials & Self Care Gifts for Women, Korean Skin Care | 1.19oz(34g) x 4ea",
@@ -141,7 +149,8 @@
     "rating": 4.5,
     "num_reviews": 44301,
     "rank": 18,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Owala FreeSip Insulated Stainless Steel Water Bottle with Straw, BPA-Free Sports Water Bottle, Great for Travel, 24 Oz, Denim",
@@ -149,7 +158,8 @@
     "rating": 4.7,
     "num_reviews": 121952,
     "rank": 19,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "STANLEY Quencher H2.0 Tumbler with Handle and Straw 30 oz | Flowstate 3-Position Lid | Cup Holder Compatible for Travel | Insulated Stainless Steel Cup | BPA-Free | Rose Quartz 2.0",
@@ -157,7 +167,8 @@
     "rating": 4.7,
     "num_reviews": 93459,
     "rank": 20,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Etekcity Food Kitchen Scale, Digital Grams and Ounces for Weight Loss, Baking, Cooking, Keto and Meal Prep, LCD Display, Medium, 304 Stainless Steel",
@@ -165,7 +176,8 @@
     "rating": 4.6,
     "num_reviews": 147487,
     "rank": 21,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "STANLEY Quencher ProTour Flip Straw Tumbler with Leakproof Lid 40 oz | Built-In Straw and Handle | Cup Holder Compatible for Travel | Insulated Stainless Steel Cup | BPA-Free | Dried Pine VRT",
@@ -173,7 +185,8 @@
     "rating": 4.7,
     "num_reviews": 17080,
     "rank": 22,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "HydroJug Traveler - 32 oz Water Bottle with Handle & Flip Straw - Fits in Cup Holder, Leak Resistant Tumbler-Reusable Insulated Stainless Steel & Rubber Base - Gifts for Women & Men, Pink Sand",
@@ -181,7 +194,8 @@
     "rating": 4.6,
     "num_reviews": 19315,
     "rank": 23,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Alpha Grillers Meat Thermometer Digital – Instant Read Food Thermometer for Cooking & Grilling – Professional Kitchen Fathers Day Gift for Dad Men Him Husband",
@@ -189,7 +203,8 @@
     "rating": 4.8,
     "num_reviews": 88832,
     "rank": 24,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Bounty Quick Size Paper Towels, White, 8 Family Rolls",
@@ -197,7 +212,8 @@
     "rating": 4.8,
     "num_reviews": 232108,
     "rank": 25,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Scott ComfortPlus Toilet Paper, 12 Triple Rolls, 231 Sheets per Roll, Septic-Safe, 1-Ply Toilet Tissue",
@@ -205,7 +221,8 @@
     "rating": 4.6,
     "num_reviews": 139217,
     "rank": 26,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Amazon Basics 20-Pack AA Alkaline Batteries, 1.5 Volt, 10-Year Leak-Free Shelf Life, for Everyday and Household Devices",
@@ -213,7 +230,8 @@
     "rating": 4.7,
     "num_reviews": 937878,
     "rank": 27,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Angel Soft Toilet Paper, 18 Mega Rolls = 72 Regular Rolls, Soft and Strong Toilet Tissue",
@@ -221,7 +239,8 @@
     "rating": 4.8,
     "num_reviews": 101682,
     "rank": 28,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Sparkle Pick-A-Size Paper Towels, 6 Double Rolls (660 Sheets Total) - Strong 2-Ply Towels for Kitchen Cleanup and Everyday Messes",
@@ -229,7 +248,8 @@
     "rating": 4.7,
     "num_reviews": 86267,
     "rank": 29,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "LMNT Zero Sugar Electrolytes - Raspberry Salt | Drink Mix | 30-Count",
@@ -237,7 +257,8 @@
     "rating": 4.6,
     "num_reviews": 6188,
     "rank": 30,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "250th Anniversary U.S. Army Commemorative Coin Double-Sided High Relief Design 1775-2025 Military Collector Coin Veteran Gift Patriotic Metal Challenge Coin (Army)",
@@ -245,7 +266,8 @@
     "rating": 4.6,
     "num_reviews": 513,
     "rank": 31,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "2026 - American Silver Eagle 1 oz Bullion Coin with Certificate of Authenticity $1 Seller Uncirculated",
@@ -253,7 +275,8 @@
     "rating": 4.7,
     "num_reviews": 137,
     "rank": 32,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "250 Anniversary Coin 250th Year American USA Anniversary Commemorative Coin Merch Merchandise with Case Collectible Gifts",
@@ -261,7 +284,8 @@
     "rating": 4.4,
     "num_reviews": 41,
     "rank": 33,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "USA 250th Anniversary Commemorative Coin 1776-2026, America 250 Merchandise Patriotic Collectible Coin with Liberty Bell & Bald Eagle Design, 250 Year American Anniversary Coin for Collectors (M)",
@@ -269,7 +293,8 @@
     "rating": 4.4,
     "num_reviews": 35,
     "rank": 34,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "Over 50 DIFFERENT World Coins (1/2) Half Pound Grab Bag",
@@ -277,7 +302,8 @@
     "rating": 4.2,
     "num_reviews": 2369,
     "rank": 35,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   },
   {
     "title": "USA 250th Anniversary Coin 1776-2026 3D America 250 Merchandise for Patriotic Celebration 4th of July Independence Day Gifts for Veterans & History Lover",
@@ -285,6 +311,7 @@
     "rating": 4.1,
     "num_reviews": 102,
     "rank": 36,
-    "category": ""
+    "category": "",
+    "scrape_time": "2026-05-27 08:26:10"
   }
 ]
