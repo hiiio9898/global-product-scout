@@ -18,6 +18,7 @@
 
 print("=== daily_scrape.py started ===")
 
+import json
 import sys
 import os
 from datetime import datetime, timezone

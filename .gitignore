@@ -33,6 +33,7 @@ logs/
 # 数据缓存（抓取结果不提交，每次运行时自动生成）
 data/cache/
 data/cache.json
+data/debug_amazon.html
 
 # 数据库文件（本地历史记录，不提交）
 data/products.db
