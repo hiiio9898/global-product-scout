@@ -2,7 +2,7 @@
 Streamlit 主程序入口 — 外贸 AI 选品助手（Global Product Scout）。
 
 提供"数据获取 → AI 分析 → 结果展示"一站式选品体验。
-数据源支持：真实抓取（Amazon Best Sellers）→ 本地缓存 → 模拟降级，三级保障。
+数据源采用两级策略：优先读取 data/products.json → 降级到实时抓取（仅接受 live 数据）。
 内置 SQLite 历史记录：每次分析自动保存，支持多条件筛选和 CSV 导出。
 
 用法：
@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import streamlit as st
 import pandas as pd
+import json
 
 from src.config import get_config
 from src.scraper import fetch_amazon_best_sellers
@@ -70,12 +71,12 @@ def render_sidebar(source_info: dict | None = None):
         if source_info:
             src = source_info.get("source", "unknown")
             ts = source_info.get("timestamp", "")
-            if src == "live":
+            if src == "json":
+                source_label = "📄 JSON 数据（本地采集）"
+            elif src == "live":
                 source_label = "📡 实时数据"
-            elif src == "cache":
-                source_label = "💾 缓存数据"
             else:
-                source_label = "📋 模拟数据"
+                source_label = "❌ 无数据"
             st.sidebar.caption(f"数据状态：{source_label}")
             if ts:
                 st.sidebar.caption(f"⏰ {ts}")
@@ -117,21 +118,19 @@ def _render_live_page(api_ok: bool):
     # ---- 开始分析按钮 ----
     if st.button("🚀 开始分析", type="primary", use_container_width=True):
         try:
-            # 第一步：获取数据
+            # 第一步：获取数据（优先 JSON，降级到实时）
             with st.spinner("📡 正在获取 Amazon Best Sellers 热销数据..."):
-                products, source_info = fetch_amazon_best_sellers()
+                products, source_info = _load_products()
                 st.session_state.products = products
                 st.session_state.source_info = source_info
                 st.session_state.step = "loaded"
 
             src = source_info.get("source", "")
             ts = source_info.get("timestamp", "")
-            if src == "live":
+            if src == "json":
+                st.success(f"📄 已加载 JSON 文件数据！共 {len(products)} 个热销产品\n\n⏰ 抓取时间：{ts}")
+            elif src == "live":
                 st.success(f"✅ 实时抓取成功！已获取 {len(products)} 个热销产品\n\n⏰ 数据更新时间：{ts}")
-            elif src == "cache":
-                st.warning(f"⚠️ 实时抓取失败，已加载本地缓存数据（{len(products)} 个产品）\n\n💾 缓存时间：{ts}")
-            else:
-                st.info(f"📋 当前使用模拟数据（{len(products)} 个产品）。请检查网络连接后重试实时抓取。")
 
             # 第二步：AI 分析
             with st.spinner("🤖 AI 正在深度分析产品竞争力与利润潜力..."):
@@ -157,6 +156,13 @@ def _render_live_page(api_ok: bool):
 
             st.rerun()
 
+        except RuntimeError as e:
+            st.error(f"❌ {str(e)}")
+            st.info(
+                "💡 请在本机执行 `python daily_scrape.py`，"
+                "然后将 `data/products.json` 提交并推送到 GitHub，"
+                "Streamlit Cloud 便会展示真实数据。"
+            )
         except Exception as e:
             st.error(f"❌ 出错了：{str(e)}")
             st.info("🔧 请检查网络连接和 `.env` 配置文件后重试。")
@@ -168,12 +174,10 @@ def _render_live_page(api_ok: bool):
         src = st.session_state.source_info or {}
         source_type = src.get("source", "unknown")
         ts = src.get("timestamp", "")
-        if source_type == "live":
+        if source_type == "json":
+            caption = f"数据来源：JSON 文件 | 抓取时间：{ts}"
+        elif source_type == "live":
             caption = f"数据来源：Amazon Best Sellers（实时抓取）| 更新时间：{ts}"
-        elif source_type == "cache":
-            caption = f"数据来源：Amazon Best Sellers（本地缓存）| 缓存时间：{ts}"
-        else:
-            caption = f"数据来源：Amazon Best Sellers（模拟数据）| 生成时间：{ts}"
         st.caption(caption)
 
         df = pd.DataFrame(st.session_state.products)
@@ -260,11 +264,11 @@ def _render_live_page(api_ok: bool):
         st.info(
             "👈 点击上方醒目的 **「🚀 开始分析」** 按钮，\n\n"
             "系统将为你：\n"
-            "1. 📡 **实时抓取** Amazon Best Sellers 首页榜单数据\n"
+            "1. � **优先读取** `data/products.json` 中的产品数据\n"
             "2. 🤖 从市场容量、竞争程度、利润潜力、新手友好度、季节性风险五个维度量化评分\n"
             "3. 📊 给出 🟢推荐 / 🟡谨慎 / 🔴不推荐 的明确 verdict\n"
             "4. 💾 自动保存分析结果到历史数据库，方便后续回顾\n\n"
-            "💡 若实时抓取失败，会自动降级为本地缓存或模拟数据，确保体验不中断。"
+            "💡 若 JSON 文件不存在，会尝试实时抓取 Amazon；若均不可用，请运行 `python daily_scrape.py` 生成数据。"
         )
 
     # ---- 底部提示 ----
@@ -273,15 +277,12 @@ def _render_live_page(api_ok: bool):
         src = st.session_state.source_info or {}
         source_type = src.get("source", "unknown")
         with st.container(border=True):
-            if source_type == "live":
+            if source_type == "json":
+                st.markdown("### 📄 当前使用 JSON 文件数据")
+                st.markdown("数据来自 `data/products.json`，由每周抓取脚本生成。")
+            elif source_type == "live":
                 st.markdown("### 🎉 当前使用 Amazon 实时数据")
                 st.markdown("分析结果已自动保存，可在「📚 历史记录」页面查看和导出。")
-            elif source_type == "cache":
-                st.markdown("### ⚠️ 当前使用本地缓存数据")
-                st.markdown("实时抓取暂时失败，已加载上次缓存。稍后重试即可。")
-            else:
-                st.markdown("### 📋 当前使用内置模拟数据")
-                st.markdown("网络不可用，已降级为模拟数据。连接网络后重试。")
 
     # ---- 页脚 ----
     st.divider()
@@ -469,6 +470,43 @@ def _verdict_emoji(verdict: str) -> str:
         "recommended": "🟢 推荐", "cautious": "🟡 谨慎",
         "not_recommended": "🔴 不推荐",
     }.get(verdict, verdict)
+
+
+def _load_products():
+    """
+    两级数据策略：
+    1. 优先读取 data/products.json（适用于 Streamlit Cloud 离线部署）
+    2. 失败则实时抓取 Amazon，仅接受 source='live' 的结果
+    3. 实时抓取返回 cache/mock 时丢弃数据并抛出异常
+
+    Returns:
+        (products, source_info) 元组
+
+    Raises:
+        RuntimeError: JSON 和实时抓取均不可用时
+    """
+    json_path = os.path.join(os.path.dirname(__file__), "data", "products.json")
+
+    # ---- 第一级：JSON 文件 ----
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                products = json.load(f)
+            if products and len(products) > 0:
+                scrape_time = products[0].get("scrape_time", "")
+                return products, {"source": "json", "timestamp": scrape_time}
+        except Exception:
+            pass  # 读取失败，降级到实时抓取
+
+    # ---- 第二级：实时抓取（仅接受 live） ----
+    products, source_info = fetch_amazon_best_sellers()
+    if source_info.get("source") == "live":
+        return products, source_info
+
+    # 实时抓取也失败 → 丢弃 cache/mock，提示用户
+    raise RuntimeError(
+        "实时抓取失败，请先运行 daily_scrape.py 并推送 products.json"
+    )
 
 
 # ============================================================

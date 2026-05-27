@@ -78,6 +78,20 @@ def main():
     print(f"  本次保存：{saved} 条")
     print(f"  累计记录：{total} 条")
 
+    # ---------- 第四步：导出 JSON（供 Streamlit Cloud 使用）----------
+    print(f"\n📄 第 4 步：导出 products.json...")
+    from src.database import get_latest_products
+
+    latest_products = get_latest_products()
+    if latest_products:
+        json_path = os.path.join(os.path.dirname(__file__), "data", "products.json")
+        os.makedirs(os.path.dirname(json_path), exist_ok=True)
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(latest_products, f, ensure_ascii=False, indent=2)
+        print(f"  📄 已导出 products.json，包含 {len(latest_products)} 个产品")
+    else:
+        print(f"  ⚠️  数据库中无产品记录，跳过导出")
+
     # ---------- 完成 ----------
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
     print("\n" + "=" * 60)

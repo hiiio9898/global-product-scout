@@ -30,12 +30,55 @@
 
 ## 二、Streamlit Cloud 部署
 
-### 2.1 部署方式
+### 2.1 数据更新工作流（JSON 方案）
+
+#### 完整流程
+```bash
+# 1. 本地每周运行一次抓取脚本
+python daily_scrape.py
+
+# 输出：
+# - 抓取 Amazon Best Sellers 首页榜单（约 36 个产品）
+# - 保存到 SQLite 数据库（data/products.db，不提交）
+# - 导出 products.json（data/products.json，**可提交到 Git**）
+
+# 2. 提交 JSON 数据到 GitHub
+git add data/products.json
+git commit -m "Update products"
+git push
+
+# 3. 云端自动更新
+# - Streamlit Cloud 监测到新推送 → 自动重新部署
+# - 用户打开应用 → 看到最新抓取的真实产品 + AI 分析
+# - 数据来源显示：`数据来源：JSON 文件 | 抓取时间：YYYY-MM-DD HH:MM:SS`
+```
+
+#### 两级数据策略
+应用采用简洁的两级数据加载策略：
+
+```
+data/products.json 存在？ ──是──→ 📄 JSON 数据（本地采集）
+        │
+        否
+        ↓
+   实时抓取 Amazon ──成功──→ 📡 实时数据
+        │
+        失败
+        ↓
+   ❌ 抛出异常 → 提示用户运行 daily_scrape.py
+```
+
+- **第一级**（推荐）：读取 `data/products.json`（Streamlit Cloud 无需数据库）
+- **第二级**：实时抓取 Amazon，仅接受 `source='live'` 的结果
+- 抓取返回 cache/mock 时**丢弃数据**，直接报错引导用户
+- 错误提示："请在本机执行 `python daily_scrape.py`，然后将 `data/products.json` 提交并推送到 GitHub"
+
+### 2.2 部署方式
 1. 打开 https://streamlit.io/cloud
 2. 用 GitHub 账号登录
 3. 点击 **New app** → 选择本仓库和 `app.py` → **Deploy**
 
-### 2.2 Secrets 配置
+### 2.3 Secrets 配置
 
 **⚠️ 注意：Streamlit Cloud 用 `secrets.toml` 而不是 `.env`！**
 
@@ -52,7 +95,7 @@ DATABASE_PATH = "data/products.db"
 > 📝 本地的 `.streamlit/secrets.toml` 文件已加入 `.gitignore`，**不会上传到 GitHub**。
 > 它仅供你本地参考格式，在 Streamlit Cloud 上需要**手动粘贴**到 Secrets 面板。
 
-### 2.3 `#streamlit` 文件目前自动安装的依赖
+### 2.4 Streamlit Cloud 自动安装的依赖
 
 | 文件 | 内容 |
 |------|------|

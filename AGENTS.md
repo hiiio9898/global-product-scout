@@ -55,6 +55,31 @@
 - 运行每日抓取：`python daily_scrape.py`
 - 代码风格检查：`flake8 src/`
 
+## 5. 数据更新工作流（本地 + 云端）
+### 5.1 本地数据更新
+```bash
+# 每周运行一次抓取脚本
+python daily_scrape.py
+
+# 输出：
+# 1. 抓取 Amazon Best Sellers 首页榜单（约 36 个产品）
+# 2. 保存到 SQLite 数据库（data/products.db）
+# 3. 导出 products.json（data/products.json，可提交到 Git）
+# 4. 导出 cache.json（data/cache.json，本地缓存）
+```
+
+### 5.2 提交到 GitHub
+```bash
+git add data/products.json
+git commit -m "Update product data"
+git push
+```
+
+### 5.3 云端自动更新
+- Streamlit Cloud 监测到新推送 → 自动重新部署
+- 用户打开应用 → 看到最新抓取的真实产品 + AI 分析
+- 数据来源显示：`数据来源：JSON 文件 | 抓取时间：YYYY-MM-DD HH:MM:SS`
+
 ## 5. 开发工作流
 1. 接到需求后，先阅读 AGENTS.md 和 SKILL.md，了解当前项目结构。
 2. 识别改动范围（数据抓取 / 分析 / 前端界面 / 配置）。
@@ -93,11 +118,19 @@
 | 技能 | `.claude/skills/*.md` | AI 协作技能定义 |
 | CI/CD | `.github/workflows/*.yml` | GitHub Actions 工作流 |
 | 文档 | `docs/*.md` | CHANGELOG、部署说明等 |
+| 数据 | `data/products.json` | **最新抓取数据，供 Streamlit Cloud 使用** |
 
 ### ❌ 严禁推送的文件
 | 类别 | 文件示例 | 原因 |
 |------|----------|------|
 | 密钥 | `.env` | 含 API Key，已 `.gitignore` |
+| 密钥 | `.streamlit/secrets.toml` | 含 API Key，已 `.gitignore` |
+| 虚拟环境 | `.venv/`, `venv/` | 体积大、平台相关 |
+| 缓存 | `__pycache__/`, `*.pyc` | 编译产物 |
+| 数据 | `data/cache/*`, `data/products.db` | 本地抓取缓存和历史数据库 |
+| 数据 | `data/cache.json` | 本地抓取缓存（`.gitignore` 已配置） |
+| IDE | `.vscode/`, `.idea/` | 个人编辑器配置 |
+| 系统 | `.DS_Store`, `Thumbs.db` | 操作系统自动生成 |
 | 密钥 | `.streamlit/secrets.toml` | 含 API Key，已 `.gitignore` |
 | 虚拟环境 | `.venv/`, `venv/` | 体积大、平台相关 |
 | 缓存 | `__pycache__/`, `*.pyc` | 编译产物 |

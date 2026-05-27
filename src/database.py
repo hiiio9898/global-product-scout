@@ -349,3 +349,55 @@ def get_product_count(db_path: Optional[str] = None) -> int:
         return row[0] if row else 0
     finally:
         conn.close()
+
+
+def get_latest_products(db_path: Optional[str] = None) -> list[dict]:
+    """
+    获取最近一次抓取的产品列表（按 scrape_time 分组，取最新批次）。
+
+    返回的产品包含以下字段：
+        title, price, rating, num_reviews, rank, category, scrape_time
+    不包含 analysis_json（分析结果）。
+
+    Returns:
+        产品字典列表，按 rank 排序。
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        # 获取最新的 scrape_time
+        latest_time_row = conn.execute(
+            "SELECT scrape_time FROM products ORDER BY scrape_time DESC LIMIT 1"
+        ).fetchone()
+        if not latest_time_row:
+            return []
+        latest_time = latest_time_row["scrape_time"]
+
+        # 获取该批次的所有产品
+        rows = conn.execute(
+            "SELECT title, price, rating, num_reviews, rank, category, scrape_time "
+            "FROM products WHERE scrape_time = ? "
+            "ORDER BY rank",
+            (latest_time,),
+        ).fetchall()
+
+        # 转为字典列表
+        return [
+            {
+                "title": row["title"],
+                "price": _safe_float(row["price"]),
+                "rating": _safe_float(row["rating"]),
+                "num_reviews": int(row["num_reviews"] or "0"),
+                "rank": int(row["rank"] or 0),
+                "category": row["category"] or "",
+                "scrape_time": row["scrape_time"],
+            }
+            for row in rows
+        ]
+    finally:
+        conn.close()
