@@ -1,0 +1,7 @@
+# 系统级依赖（apt packages）
+# 用于 Streamlit Cloud / Hugging Face Spaces 等部署平台
+# 本项目的 Python 依赖见 requirements.txt
+#
+# 如需安装系统包，取消注释以下行：
+# libgl1-mesa-glx
+# libglib2.0-0

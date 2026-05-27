@@ -20,28 +20,39 @@
 ## 3. 目录结构
 ```
 /
-├── AGENTS.md
-├── SKILL.md
-├── .env.example
-├── .gitignore
-├── requirements.txt
+├── AGENTS.md               # AI 协作规则（本文件）
+├── SKILL.md                # 技能系统说明
+├── .env.example            # 环境变量模板（推 GitHub）
+├── .gitignore              # Git 忽略规则
+├── requirements.txt        # Python 依赖
+├── packages.txt            # 系统级依赖（Streamlit Cloud 用）
 ├── app.py                  # Streamlit 主程序入口
+├── daily_scrape.py         # 每日定时抓取脚本（独立于 Streamlit）
+├── .claude/skills/         # AI 协作技能
+├── .github/workflows/      # GitHub Actions 工作流
+├── .streamlit/             # Streamlit Cloud 配置（secrets.toml 不提交）
 ├── src/
 │   ├── __init__.py
-│   ├── config.py           # 读取 .env 配置
-│   ├── scraper.py          # 数据抓取模块（示例：亚马逊 Best Sellers）
+│   ├── config.py           # 配置加载（st.secrets + .env 双源）
+│   ├── scraper.py          # 数据抓取模块
 │   ├── analyzer.py         # DeepSeek 分析模块
+│   ├── database.py         # SQLite 数据库模块
 │   └── utils.py            # 工具函数
 ├── tests/
 │   └── test_basic.py
-└── docs/
-    └── CHANGELOG.md
+├── docs/
+│   ├── CHANGELOG.md
+│   └── DEPLOY.md           # 部署备忘录
+└── data/                   # 本地数据（不提交）
+    ├── cache/
+    └── products.db
 ```
 
 ## 4. 常用命令
 - 安装依赖：`pip install -r requirements.txt`
 - 运行应用：`streamlit run app.py`
 - 运行测试：`pytest tests/`
+- 运行每日抓取：`python daily_scrape.py`
 - 代码风格检查：`flake8 src/`
 
 ## 5. 开发工作流
@@ -68,3 +79,34 @@
 - 默认模型：deepseek-v4-flash/deepseek-v4-pro（后续要具备兼容更多模型能力）
 - 分析 Prompt 模板存放在 `src/prompts.py` 中（后续添加），现在可内嵌在 analyzer.py 内。
 - 分析任务需异步或长时间执行时，Streamlit 中应显示进度条。
+
+## 9. Git 推送规范
+
+### ✅ 必须推送的文件
+| 类别 | 文件示例 | 说明 |
+|------|----------|------|
+| 源码 | `app.py`, `src/*.py`, `daily_scrape.py` | 所有 Python 源代码 |
+| 测试 | `tests/*.py` | 单元测试 |
+| 配置模板 | `.env.example` | **不含真实 Key**，仅模板 |
+| 依赖声明 | `requirements.txt`, `packages.txt` | 不含版本锁死 |
+| 规则文件 | `AGENTS.md`, `SKILL.md`, `.gitignore` | 项目协作规范 |
+| 技能 | `.claude/skills/*.md` | AI 协作技能定义 |
+| CI/CD | `.github/workflows/*.yml` | GitHub Actions 工作流 |
+| 文档 | `docs/*.md` | CHANGELOG、部署说明等 |
+
+### ❌ 严禁推送的文件
+| 类别 | 文件示例 | 原因 |
+|------|----------|------|
+| 密钥 | `.env` | 含 API Key，已 `.gitignore` |
+| 密钥 | `.streamlit/secrets.toml` | 含 API Key，已 `.gitignore` |
+| 虚拟环境 | `.venv/`, `venv/` | 体积大、平台相关 |
+| 缓存 | `__pycache__/`, `*.pyc` | 编译产物 |
+| 数据 | `data/cache/*`, `data/products.db` | 本地抓取缓存和历史数据库 |
+| IDE | `.vscode/`, `.idea/` | 个人编辑器配置 |
+| 系统 | `.DS_Store`, `Thumbs.db` | 操作系统自动生成 |
+
+### 🔐 密钥管理原则
+1. 所有密钥 **只存在于**：本地 `.env`、Streamlit Cloud Secrets、GitHub Actions Secrets
+2. `.env.example` 是模板文件，**可以推送**（值写 `your_api_key_here`）
+3. 新增密钥时：更新 `.env.example`（模板）→ 更新 `src/config.py`（代码）→ 更新本文档
+4. 部署到 Streamlit Cloud / GitHub Actions 前，参考 `docs/DEPLOY.md`
