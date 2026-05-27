@@ -43,3 +43,6 @@ htmlcov/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# 临时文件
+tode.md
