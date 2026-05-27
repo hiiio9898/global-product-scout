@@ -257,72 +257,172 @@ def _validate_result(data: dict) -> bool:
 # 批量分析入口
 # ============================================================
 
-def analyze_products(products: list[dict]) -> list[dict]:
+# 批量分析的系统 Prompt — 一次分析多个产品，返回 JSON 数组
+BATCH_SYSTEM_PROMPT = """你是一位拥有 10 年经验的资深跨境电商选品顾问，专精于 Amazon 平台。
+
+我会给你一批产品，请逐个进行量化评估。每个产品从以下五个维度给出 1-10 分并附 1-2 句解释：
+
+1. 市场容量（market_capacity）：该产品的市场需求规模（搜索量、类目总销量）
+2. 竞争程度（competition）：注意：分数越高表示竞争越激烈（对卖家越不利）
+3. 利润潜力（profit_potential）：扣除采购、物流、平台佣金后的净利润空间
+4. 新手友好度（beginner_friendly）：启动资金要求、认证门槛、运营复杂度
+5. 季节性风险（seasonality_risk）：注意：分数越高表示季节性波动越大（对卖家越不利）
+
+最后给出：
+- final_verdict：取值为 "recommended"（推荐）、"cautious"（谨慎）或 "not_recommended"（不推荐）
+- verdict_reason：一句话总结判断依据（50 字以内）
+
+以严格 JSON **数组** 格式返回，数组中每个元素对应一个产品。示例格式：
+[
+  {
+    "title": "产品标题（必须与输入完全一致）",
+    "market_capacity": {"score": 8, "reason": "月搜索量约50万，类目年增长率15%"},
+    "competition": {"score": 7, "reason": "头部5个品牌占据60%份额，新卖家破局需差异化"},
+    "profit_potential": {"score": 6, "reason": "采购成本$8，FBA费用$5，净利率约25%"},
+    "beginner_friendly": {"score": 9, "reason": "轻小件物流简单，无需特殊认证，启动资金<$2000"},
+    "seasonality_risk": {"score": 2, "reason": "全年稳定需求，无明显淡旺季波动"},
+    "final_verdict": "recommended",
+    "verdict_reason": "高需求低门槛低风险，适合新手入门选品"
+  }
+]
+只返回 JSON 数组。"""
+
+
+def _build_batch_prompt(products: list[dict]) -> str:
+    """构建批量分析的用户消息。"""
+    lines = []
+    for i, p in enumerate(products, 1):
+        lines.append(
+            f"产品 {i}：\n"
+            f"  名称：{p['title']}\n"
+            f"  售价：${p.get('price', 'N/A')}\n"
+            f"  评分：{p.get('rating', 'N/A')}\n"
+            f"  评论数：{p.get('num_reviews', 'N/A')}\n"
+            f"  类目：{p.get('category', '未知')}\n"
+            f"  排名：#{p.get('rank', 'N/A')}\n"
+        )
+    return "\n".join(lines)
+
+
+def _parse_batch_response(content: str, batch_products: list[dict]) -> list[dict]:
+    """
+    解析 DeepSeek 返回的批量 JSON 数组。
+
+    容错策略：与 _parse_ai_response 类似，但处理 JSON 数组。
+    如果某个产品的解析结果无效，会回退为 mock 数据。
+    """
+    cleaned = content.strip()
+    if cleaned.startswith("```"):
+        parts = cleaned.split("```")
+        if len(parts) >= 2:
+            cleaned = parts[1]
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:]
+            cleaned = cleaned.strip()
+
+    parsed_items = []
+    try:
+        data = json.loads(cleaned)
+        if isinstance(data, list):
+            parsed_items = data
+    except json.JSONDecodeError:
+        pass
+
+    # 如果是单个对象（非数组），包装为列表
+    if not parsed_items:
+        try:
+            data = json.loads(cleaned)
+            if isinstance(data, dict):
+                parsed_items = [data]
+        except json.JSONDecodeError:
+            pass
+
+    # 按 title 匹配回产品
+    title_map = {}
+    for item in parsed_items:
+        if isinstance(item, dict) and "title" in item:
+            title_map[item["title"]] = item
+
+    results = []
+    for product in batch_products:
+        title = product["title"]
+        matched = title_map.get(title)
+        if matched and _validate_result(matched):
+            matched["title"] = title
+            results.append(matched)
+        else:
+            # 回退为 mock 数据
+            results.append(_mock_analyze(product))
+
+    return results
+
+
+def _analyze_batch(batch: list[dict], client, cfg: dict) -> list[dict]:
+    """调用 DeepSeek API 分析一批产品。"""
+    prompt = _build_batch_prompt(batch)
+    for attempt in range(2):
+        try:
+            resp = client.chat.completions.create(
+                model=cfg["deepseek_model"],
+                messages=[
+                    {"role": "system", "content": BATCH_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+                max_tokens=2000,
+            )
+            content = resp.choices[0].message.content.strip()
+            batch_results = _parse_batch_response(content, batch)
+            if batch_results:
+                return batch_results
+        except Exception:
+            if attempt < 1:
+                time.sleep(2)
+
+    # 全部失败 → 逐个 mock
+    return [_mock_analyze(p) for p in batch]
+
+
+def analyze_products(
+    products: list[dict],
+    progress_callback: callable = None,
+) -> list[dict]:
     """
     批量分析产品 — 五维度量化评估。
 
-    每个产品返回字典结构：
-        {
-            "title": "...",
-            "market_capacity":    {"score": 1-10, "reason": "..."},
-            "competition":        {"score": 1-10, "reason": "..."},
-            "profit_potential":   {"score": 1-10, "reason": "..."},
-            "beginner_friendly":  {"score": 1-10, "reason": "..."},
-            "seasonality_risk":   {"score": 1-10, "reason": "..."},
-            "final_verdict":      "recommended" | "cautious" | "not_recommended",
-            "verdict_reason":     "一句话总结"
-        }
+    将产品分组（每批 6 个），每组一次 DeepSeek API 调用，
+    大幅减少串行等待时间。支持进度回调以驱动前端进度条。
 
-    优先使用 DeepSeek API（需配置 DEEPSEEK_API_KEY），
-    否则降级为本地模拟分析。
-    单产品 API 调用失败重试 1 次，仍失败则使用模拟结果。
-    JSON 解析失败时回退为纯文本展示（raw_text 字段）。
+    Args:
+        products: 产品字典列表
+        progress_callback: 可选进度回调函数，接收 (已完成数, 总数)
+
+    Returns:
+        list[dict]: 每个产品的分析结果
     """
     cfg = get_config()
     api_key = cfg["deepseek_api_key"]
+    total = len(products)
 
-    # 无 API Key → 全部模拟
+    # 无 API Key → 全部模拟（仍支持进度回调）
     if not api_key:
-        return [_mock_analyze(p) for p in products]
+        results = []
+        for i, p in enumerate(products):
+            results.append(_mock_analyze(p))
+            if progress_callback:
+                progress_callback(i + 1, total)
+        return results
 
-    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com", timeout=45)
+    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com", timeout=120)
+    BATCH_SIZE = 6
     results = []
 
-    for product in products:
-        # 构建用户 prompt
-        prompt = (
-            f"产品名称：{product['title']}\n"
-            f"售价：${product.get('price', 'N/A')}\n"
-            f"评分：{product.get('rating', 'N/A')}\n"
-            f"评论数：{product.get('num_reviews', 'N/A')}\n"
-            f"类目：{product.get('category', '未知')}\n"
-            f"BSR排名：#{product.get('rank', 'N/A')}\n"
-        )
+    for batch_start in range(0, total, BATCH_SIZE):
+        batch = products[batch_start:batch_start + BATCH_SIZE]
+        batch_results = _analyze_batch(batch, client, cfg)
+        results.extend(batch_results)
 
-        result = None
-        for attempt in range(2):
-            try:
-                resp = client.chat.completions.create(
-                    model=cfg["deepseek_model"],
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.7,
-                    max_tokens=800,
-                )
-                content = resp.choices[0].message.content.strip()
-                result = _parse_ai_response(content, product["title"])
-                break
-            except Exception:
-                if attempt < 1:
-                    time.sleep(2)
-                else:
-                    result = _mock_analyze(product)
-
-        if result is None:
-            result = _mock_analyze(product)
-
-        results.append(result)
+        if progress_callback:
+            progress_callback(min(len(results), total), total)
 
     return results

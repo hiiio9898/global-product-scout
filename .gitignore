@@ -34,6 +34,7 @@ logs/
 data/cache/
 data/cache.json
 data/debug_amazon.html
+data/debug_live.html
 
 # 数据库文件（本地历史记录，不提交）
 data/products.db
@@ -48,3 +49,4 @@ htmlcov/
 
 # 临时文件
 tode.md
+todo.md

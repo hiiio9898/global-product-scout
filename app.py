@@ -116,7 +116,9 @@ def _render_live_page(api_ok: bool):
     st.divider()
 
     # ---- 开始分析按钮 ----
-    if st.button("🚀 开始分析", type="primary", use_container_width=True):
+    btn_disabled = st.session_state.get("analyzing", False)
+    if st.button("🚀 开始分析", type="primary", use_container_width=True, disabled=btn_disabled):
+        st.session_state.analyzing = True
         try:
             # 第一步：获取数据（优先 JSON，降级到实时）
             with st.spinner("📡 正在获取 Amazon Best Sellers 热销数据..."):
@@ -125,25 +127,65 @@ def _render_live_page(api_ok: bool):
                 st.session_state.source_info = source_info
                 st.session_state.step = "loaded"
 
-            src = source_info.get("source", "")
-            ts = source_info.get("timestamp", "")
-            if src == "json":
-                st.success(f"📄 已加载 JSON 文件数据！共 {len(products)} 个热销产品\n\n⏰ 抓取时间：{ts}")
-            elif src == "live":
-                st.success(f"✅ 实时抓取成功！已获取 {len(products)} 个热销产品\n\n⏰ 数据更新时间：{ts}")
+            # 加载数据后立即 rerun，让侧边栏及时显示数据源状态
+            st.rerun()
 
-            # 第二步：AI 分析
-            with st.spinner("🤖 AI 正在深度分析产品竞争力与利润潜力..."):
-                results = analyze_products(products)
+        except RuntimeError as e:
+            st.session_state.analyzing = False
+            st.error(f"❌ {str(e)}")
+            st.info(
+                "💡 请在本机执行 `python daily_scrape.py`，"
+                "然后将 `data/products.json` 提交并推送到 GitHub，"
+                "Streamlit Cloud 便会展示真实数据。"
+            )
+        except Exception as e:
+            st.error(f"❌ 出错了：{str(e)}")
+            st.info("🔧 请检查网络连接和 `.env` 配置文件后重试。")
+
+    # ---- 数据显示（加载完成后显示，此时侧边栏已更新） ----
+    if st.session_state.step in ("loaded", "analyzed") and st.session_state.products:
+        src_info = st.session_state.source_info or {}
+        src_type = src_info.get("source", "")
+        ts = src_info.get("timestamp", "")
+        if src_type == "json":
+            st.success(f"📄 已加载 JSON 文件数据！共 {len(st.session_state.products)} 个热销产品\n\n⏰ 抓取时间：{ts}")
+        elif src_type == "live":
+            st.success(f"✅ 实时抓取成功！已获取 {len(st.session_state.products)} 个热销产品\n\n⏰ 数据更新时间：{ts}")
+
+        # 第二步：AI 分析（如果还未开始）
+        if st.session_state.step == "loaded":
+            with st.status("🤖 AI 正在深度分析产品竞争力与利润潜力...", expanded=False) as status:
+                progress_bar = st.progress(0, text="准备分析...")
+                total = len(st.session_state.products)
+
+                def _on_progress(done, total_count):
+                    pct = min(done / total_count, 1.0)
+                    progress_bar.progress(pct, text=f"分析进度：{done}/{total_count}")
+
+                results = analyze_products(
+                    st.session_state.products,
+                    progress_callback=_on_progress,
+                )
                 st.session_state.results = results
                 st.session_state.step = "analyzed"
+                progress_bar.empty()
+                status.update(label="✅ AI 分析完成！", state="complete")
 
             # 第三步：保存到数据库
+            db_ok = True
             try:
-                saved_count = save_products(products, results)
+                saved_count = save_products(st.session_state.products, results)
                 st.caption(f"💾 已保存 {saved_count} 条分析记录到历史数据库")
             except Exception:
+                db_ok = False
                 st.caption("⚠️ 数据库保存失败，但分析结果仍可在当前页面查看")
+
+            # 同步保存到 session state（Cloud 端 SQLite 不持久化的后备方案）
+            for p, r in zip(st.session_state.products, results):
+                record = dict(p)
+                record["analysis"] = r
+                record["scrape_time"] = r.get("scrape_time", p.get("scrape_time", ""))
+                st.session_state.history_data.append(record)
 
             if not api_ok:
                 st.info(
@@ -154,18 +196,8 @@ def _render_live_page(api_ok: bool):
             else:
                 st.success("✅ 分析完成！DeepSeek AI 已为你深度评估每个产品的选品潜力。")
 
+            st.session_state.analyzing = False
             st.rerun()
-
-        except RuntimeError as e:
-            st.error(f"❌ {str(e)}")
-            st.info(
-                "💡 请在本机执行 `python daily_scrape.py`，"
-                "然后将 `data/products.json` 提交并推送到 GitHub，"
-                "Streamlit Cloud 便会展示真实数据。"
-            )
-        except Exception as e:
-            st.error(f"❌ 出错了：{str(e)}")
-            st.info("🔧 请检查网络连接和 `.env` 配置文件后重试。")
 
     # ---- 产品榜单表格 ----
     if st.session_state.step in ("loaded", "analyzed") and st.session_state.products:
@@ -288,7 +320,7 @@ def _render_live_page(api_ok: bool):
     st.divider()
     st.caption(
         "⚠️ **免责声明：** 分析结果仅供参考，不构成投资建议。"
-        " | Global Product Scout v0.1.0"
+        " | Global Product Scout v0.2.0"
     )
 
 
@@ -303,13 +335,24 @@ def _render_history_page():
     st.markdown("浏览和筛选过往的产品分析记录，支持多条件筛选和 CSV 导出。")
 
     total_count = get_product_count()
-    if total_count == 0:
+    session_count = len(st.session_state.history_data)
+
+    # 如果 DB 和 session 都为空 → 提示
+    if total_count == 0 and session_count == 0:
         st.info(
             "📭 **暂无历史记录**\n\n"
             "请先切换到「🔍 实时选品」页面，点击「开始分析」按钮运行一次分析。\n"
-            "分析结果会自动保存到数据库，之后就可以在这里查看了。"
+            "分析结果会在当前会话中保存，方便随时回顾。"
         )
         return
+
+    # Cloud 端提示：SQLite 不持久化
+    if total_count == 0 and session_count > 0:
+        st.info(
+            "💡 **当前为会话内历史记录** — Streamlit Cloud 上数据不会长期保持。\n\n"
+            "如需永久保存，请在本地运行 `python daily_scrape.py` "
+            "并将 `data/products.json` 提交到 GitHub。"
+        )
 
     st.divider()
 
@@ -369,7 +412,29 @@ def _render_history_page():
     filters["sort_by"] = sort_by
     filters["sort_order"] = sort_order
 
-    products = get_all_products(filters=filters)
+    # 从 DB 或 session state 读取数据
+    if total_count > 0:
+        products = get_all_products(filters=filters)
+    else:
+        # Cloud 端：使用 session state 数据，手动筛选
+        products = st.session_state.history_data
+        if verdict_options:
+            products = [p for p in products
+                        if p.get("analysis", {}).get("final_verdict") in verdict_options]
+        if min_capacity > 1:
+            products = [p for p in products
+                        if (p.get("analysis", {}).get("market_capacity", {}) or {}).get("score", 0) >= min_capacity]
+        if min_price > 0:
+            products = [p for p in products if (p.get("price") or 0) >= min_price]
+        if max_price < 1000:
+            products = [p for p in products if (p.get("price") or 0) <= max_price]
+        reverse = sort_order == "DESC"
+        if sort_by == "price":
+            products.sort(key=lambda p: p.get("price") or 0, reverse=reverse)
+        elif sort_by == "rank":
+            products.sort(key=lambda p: p.get("rank") or 0, reverse=reverse)
+        else:
+            products.sort(key=lambda p: p.get("scrape_time") or "", reverse=reverse)
 
     st.divider()
 
@@ -449,7 +514,7 @@ def _render_history_page():
 
     # 页脚
     st.divider()
-    st.caption(" | Global Product Scout v0.1.0 | 数据来源：历史分析记录 |")
+    st.caption(" | Global Product Scout v0.2.0 | 数据来源：历史分析记录 |")
 
 
 # ============================================================
@@ -521,6 +586,10 @@ if "source_info" not in st.session_state:
     st.session_state.source_info = None
 if "step" not in st.session_state:
     st.session_state.step = "idle"  # idle → loaded → analyzed
+if "analyzing" not in st.session_state:
+    st.session_state.analyzing = False  # 分析中锁定按钮
+if "history_data" not in st.session_state:
+    st.session_state.history_data = []  # 当前会话的历史记录（Cloud 端替代 SQLite）
 
 # 初始化数据库（幂等）
 init_db()

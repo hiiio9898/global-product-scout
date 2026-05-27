@@ -39,6 +39,29 @@ _CACHE_DIR = os.path.join(
 _CACHE_FILE = os.path.join(_CACHE_DIR, "amazon_best_sellers.json")
 
 # ============================================================
+# 非实体商品关键词黑名单（过滤数字订阅/服务类产品）
+# ============================================================
+
+_SKIP_KEYWORDS = [
+    "subscription", "monthly auto-renewal", "auto-renewal",
+    "plan", "service plan", "warranty",
+    "extended warranty", "protection plan",
+    "gift card", "gift certificate", "e-gift",
+    "digital code", "download code", "digital delivery",
+    "membership", "renewal",
+]
+
+
+def _is_physical_product(title: str) -> bool:
+    """检查标题是否看起来像实体商品（而非数字订阅/服务）。"""
+    title_lower = title.lower()
+    for kw in _SKIP_KEYWORDS:
+        if kw in title_lower:
+            return False
+    return True
+
+
+# ============================================================
 # 真实浏览器 User-Agent 池（模拟 Chrome / Firefox / Edge）
 # ============================================================
 
@@ -169,12 +192,48 @@ def _get_cache_timestamp() -> Optional[str]:
 # ============================================================
 
 def _parse_price(text: str) -> Optional[float]:
-    """从价格文本中提取浮点数，如 '$29.99' → 29.99。"""
+    """
+    从价格文本中提取 USD 金额。
+
+    支持常见货币符号自动换算为 USD（基于 2026 年 5 月汇率）：
+    - USD ($) → 原值
+    - HKD / HK$ → ÷7.83
+    - SGD / S$ → ÷1.34
+    - CNY / ¥   → ÷7.24
+    - EUR / €   → ÷1.08
+    - GBP / £   → ×1.27
+    - AUD / A$  → ×0.65
+    """
     if not text:
         return None
+
+    text = text.strip()
+
+    # 货币→USD 换算率
+    CURRENCY_TO_USD = {
+        "USD": 1.0, "$": 1.0,
+        "HKD": 1 / 7.83, "HK$": 1 / 7.83,
+        "SGD": 1 / 1.34, "S$": 1 / 1.34,
+        "CNY": 1 / 7.24, "¥": 1 / 7.24, "RMB": 1 / 7.24,
+        "EUR": 1.08, "€": 1.08,
+        "GBP": 1.27, "£": 1.27,
+        "AUD": 0.65, "A$": 0.65,
+    }
+
+    # 检测货币代码（如 "HKD 93.95" 或 "S$ 38.32"）
+    matched_currency = None
+    for code in sorted(CURRENCY_TO_USD, key=len, reverse=True):
+        if text.startswith(code) or f" {code}" in text:
+            matched_currency = code
+            break
+
+    rate = CURRENCY_TO_USD.get(matched_currency, 1.0)
+
+    # 提取数字
     match = re.search(r'[\d,]+\.?\d*', text)
     if match:
-        return float(match.group().replace(',', ''))
+        value = float(match.group().replace(',', ''))
+        return round(value * rate, 2)
     return None
 
 
@@ -231,7 +290,7 @@ def _extract_title(card) -> str:
 
 
 def _extract_price(card) -> Optional[float]:
-    """从产品卡片中提取价格，优先用选择器，再用全文正则兜底。"""
+    """从产品卡片中提取价格，仅使用 CSS 选择器，不依赖不可靠的正则兜底。"""
     # 选择器匹配
     selectors = [
         '.a-price .a-offscreen',                    # 标准价格隐藏文本
@@ -247,15 +306,7 @@ def _extract_price(card) -> Optional[float]:
             price = _parse_price(text)
             if price and price > 0:
                 return price
-    # 全文正则兜底：查找卡片内所有包含 $ 的文本
-    card_text = card.get_text()
-    price_match = re.search(r'\$([\d,]+\.?\d*)', card_text)
-    if price_match:
-        try:
-            return float(price_match.group(1).replace(',', ''))
-        except ValueError:
-            pass
-    return None
+    return None  # 不信任全文正则兜底，宁可返回 None 也不要错误的价格
 
 
 def _extract_rating(card) -> Optional[float]:
@@ -322,15 +373,6 @@ def _extract_review_count(card) -> int:
 
 def _parse_product_card(card, rank: int) -> Optional[dict]:
     """解析单个产品卡片，提取所有字段。找不到的字段设为 N/A/0。返回 None 仅表示无标题。"""
-    # 从排名徽章提取排名
-    rank_num = rank  # 默认用序号
-    badge = card.select_one('div.zg-bdg-ctr span.zg-bdg-text')
-    if badge:
-        rank_text = badge.get_text(strip=True)
-        rank_match = re.search(r'#?(\d+)', rank_text)
-        if rank_match:
-            rank_num = int(rank_match.group(1))
-
     title = _extract_title(card)
     if not title:
         return None
@@ -344,7 +386,7 @@ def _parse_product_card(card, rank: int) -> Optional[dict]:
         "price": price if price is not None else 0.0,
         "rating": rating if rating is not None else 0.0,
         "num_reviews": num_reviews,
-        "rank": rank_num,
+        "rank": rank,  # 使用全局序号而非类目内排名徽章
         "category": "",  # Best Sellers 首页跨类目，无统一类目
     }
 
@@ -414,9 +456,12 @@ def _scrape_amazon_best_sellers() -> list[dict]:
     for i, card in enumerate(cards[:50], 1):  # 最多取前 50 个
         product = _parse_product_card(card, i)
         if product and product.get("title"):
-            products.append(product)
+            if _is_physical_product(product["title"]):
+                products.append(product)
+            else:
+                print(f"  ⏭️ 跳过非实体商品: {product['title'][:50]}")
 
-    print(f"\n📊 解析完成：{len(products)} / {len(cards)} 个卡片成功提取产品")
+    print(f"\n📊 解析完成：{len(products)} / {len(cards)} 个卡片成功提取产品（跳过 {len(cards[:50])-len(products)} 个非实体商品）")
     return products
 
 
