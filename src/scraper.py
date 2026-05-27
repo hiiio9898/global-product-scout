@@ -205,29 +205,40 @@ def _parse_review_count(text: str) -> int:
 
 def _extract_title(card) -> str:
     """从产品卡片中提取标题，多层选择器兜底。"""
-    selectors = [
+    # 2026 Amazon Best Sellers：标题在 div[data-asin] > .zg-carousel-general-faceout > a.a-link-normal
+    selectors_text = [
+        'div.zg-carousel-general-faceout a.a-link-normal span',  # 新版 Best Sellers 链接内 span
+        'div.zg-carousel-general-faceout a.a-link-normal',       # 新版链接本身
+        'a.a-link-normal span.a-size-base-plus',                 # 通用中等标题
         'h2 a span',                          # 标准搜索卡片
         '.p13n-sc-truncate-desktop-type2',     # Best Sellers 截断标题
         '.p13n-sc-truncated',                  # 旧版 Best Sellers
         'a.a-link-normal span.a-size-medium',  # 通用
-        'img',                                 # 最后兜底：取 img alt
     ]
-    for sel in selectors:
+    for sel in selectors_text:
         elem = card.select_one(sel)
         if elem:
-            text = elem.get('alt', '') if sel == 'img' else elem.get_text(strip=True)
-            if text:
+            text = elem.get_text(strip=True)
+            if text and len(text) > 3:
                 return text
+    # 最后兜底：取 img alt
+    img = card.select_one('img')
+    if img:
+        alt = img.get('alt', '').strip()
+        if alt:
+            return alt
     return ""
 
 
 def _extract_price(card) -> Optional[float]:
-    """从产品卡片中提取价格。"""
+    """从产品卡片中提取价格，优先用选择器，再用全文正则兜底。"""
+    # 选择器匹配
     selectors = [
-        '.a-price .a-offscreen',
-        '.a-price span[aria-hidden="true"]',
-        '.p13n-sc-price',
-        'span.a-color-price',
+        '.a-price .a-offscreen',                    # 标准价格隐藏文本
+        '.a-price span[aria-hidden="true"]',        # 价格显示文本
+        '.p13n-sc-price',                           # Best Sellers 价格
+        'span.a-color-price',                       # 通用价格颜色
+        'span._cDEzb_p13n-sc-price_3mJ9Z',          # 动态类名变体
     ]
     for sel in selectors:
         elem = card.select_one(sel)
@@ -236,16 +247,24 @@ def _extract_price(card) -> Optional[float]:
             price = _parse_price(text)
             if price and price > 0:
                 return price
+    # 全文正则兜底：查找卡片内所有包含 $ 的文本
+    card_text = card.get_text()
+    price_match = re.search(r'\$([\d,]+\.?\d*)', card_text)
+    if price_match:
+        try:
+            return float(price_match.group(1).replace(',', ''))
+        except ValueError:
+            pass
     return None
 
 
 def _extract_rating(card) -> Optional[float]:
-    """从产品卡片中提取用户评分。"""
+    """从产品卡片中提取用户评分，优先选择器，再全文正则兜底。"""
     selectors = [
-        '.a-icon-star .a-icon-alt',
-        '.a-icon-alt',
-        'i[class*="star"] span',
-        'span.a-icon-alt',
+        '.a-icon-star .a-icon-alt',      # 标准星级图标内文本
+        'i[class*="a-star"] span',        # 星级图标 span
+        '.a-icon-alt',                    # 通用 alt 图标
+        'span.a-icon-alt',                # span 形式
     ]
     for sel in selectors:
         elem = card.select_one(sel)
@@ -253,11 +272,21 @@ def _extract_rating(card) -> Optional[float]:
             rating = _parse_rating(elem.get_text(strip=True))
             if rating and 1.0 <= rating <= 5.0:
                 return rating
+    # 全文正则兜底：匹配 "X.X out of 5" 或 "X.X stars"
+    card_text = card.get_text()
+    rating_match = re.search(r'(\d+\.?\d*)\s*(?:out\s+of\s+5|stars?)', card_text, re.IGNORECASE)
+    if rating_match:
+        try:
+            val = float(rating_match.group(1))
+            if 1.0 <= val <= 5.0:
+                return val
+        except ValueError:
+            pass
     return None
 
 
 def _extract_review_count(card) -> int:
-    """从产品卡片中提取评论总数。"""
+    """从产品卡片中提取评论总数，优先选择器，再全文正则兜底。"""
     selectors = [
         'span.a-size-small',                  # 常见位置
         'span.a-size-base',                   # 备选
@@ -266,12 +295,23 @@ def _extract_review_count(card) -> int:
     for sel in selectors:
         for elem in card.select(sel):
             text = elem.get_text(strip=True)
-            if any(kw in text.lower() for kw in ('rating', 'ratings', 'review', 'stars')):
+            if any(kw in text.lower() for kw in ('rating', 'stars')):
                 continue  # 跳过评分文本，只要评论数
             count = _parse_review_count(text)
             if count > 0:
                 return count
-    # 如果有 a-link-normal 且文本包含数字，可能是评论链接
+    # 全文正则兜底：匹配 "12,345 ratings" 或 "12345 reviews"
+    card_text = card.get_text()
+    review_match = re.search(
+        r'([\d,]+)\s*(?:ratings?|reviews?)',
+        card_text, re.IGNORECASE,
+    )
+    if review_match:
+        try:
+            return int(review_match.group(1).replace(',', ''))
+        except ValueError:
+            pass
+    # 最后兜底：从链接文本中提取数字
     for link in card.select('a.a-link-normal'):
         text = link.get_text(strip=True)
         count = _parse_review_count(text)
@@ -281,7 +321,16 @@ def _extract_review_count(card) -> int:
 
 
 def _parse_product_card(card, rank: int) -> Optional[dict]:
-    """解析单个产品卡片，提取所有字段。返回 None 表示解析失败。"""
+    """解析单个产品卡片，提取所有字段。找不到的字段设为 N/A/0。返回 None 仅表示无标题。"""
+    # 从排名徽章提取排名
+    rank_num = rank  # 默认用序号
+    badge = card.select_one('div.zg-bdg-ctr span.zg-bdg-text')
+    if badge:
+        rank_text = badge.get_text(strip=True)
+        rank_match = re.search(r'#?(\d+)', rank_text)
+        if rank_match:
+            rank_num = int(rank_match.group(1))
+
     title = _extract_title(card)
     if not title:
         return None
@@ -292,10 +341,10 @@ def _parse_product_card(card, rank: int) -> Optional[dict]:
 
     return {
         "title": title,
-        "price": price or 0.0,
-        "rating": rating or 0.0,
+        "price": price if price is not None else 0.0,
+        "rating": rating if rating is not None else 0.0,
         "num_reviews": num_reviews,
-        "rank": rank,
+        "rank": rank_num,
         "category": "",  # Best Sellers 首页跨类目，无统一类目
     }
 
@@ -344,6 +393,7 @@ def _scrape_amazon_best_sellers() -> list[dict]:
     time.sleep(delay)
 
     resp = session.get(url, timeout=30)
+    print(f"HTTP 状态码: {resp.status_code}")
     resp.raise_for_status()
 
     # 检测是否被拦截（验证码/登录页）
@@ -352,29 +402,21 @@ def _scrape_amazon_best_sellers() -> list[dict]:
 
     soup = BeautifulSoup(resp.text, "html.parser")
 
-    # 定位产品卡片 — 多套选择器按优先级尝试
-    cards = []
-    card_selectors = [
-        'div[id^="gridItemRoot"]',                        # Best Sellers 网格
-        'div[data-component-type="s-product-card"]',       # 搜索卡片格式
-        'div.zg-grid-general-faceout',                     # 旧版 Best Sellers
-        'div.p13n-grid-content div[id]',                   # 新版网格
+    # 定位产品卡片 — 以 div[data-asin] 为主选择器（2026 年 Amazon Best Sellers 页面结构）
+    # 跳过 ASIN 为空的（广告/占位区块）
+    cards = [
+        div for div in soup.select('div[data-asin]')
+        if div.get('data-asin', '').strip()
     ]
-    for sel in card_selectors:
-        cards = soup.select(sel)
-        if cards:
-            break
-
-    if not cards:
-        # 最后的兜底：查找所有疑似产品卡片的容器
-        cards = soup.select('div[role="listitem"]')
+    print(f"\n📦 找到 {len(cards)} 个有效 div[data-asin] 卡片")
 
     products = []
     for i, card in enumerate(cards[:50], 1):  # 最多取前 50 个
         product = _parse_product_card(card, i)
-        if product and product.get("title") and product.get("price", 0) > 0:
+        if product and product.get("title"):
             products.append(product)
 
+    print(f"\n📊 解析完成：{len(products)} / {len(cards)} 个卡片成功提取产品")
     return products
 
 
@@ -394,43 +436,43 @@ def _is_blocked(html: str) -> bool:
 
 
 # ============================================================
-# 公开接口 — 三层降级策略
+# 公开接口 — 仅真实抓取（调试模式）
 # ============================================================
 
 def fetch_amazon_best_sellers() -> tuple[list[dict], dict]:
     """
-    获取 Amazon Best Sellers 产品列表（三层降级）。
+    获取 Amazon Best Sellers 产品列表（三层降级策略）。
 
     策略：
-        1. 实时抓取 → 成功则缓存到本地 JSON
-        2. 抓取失败 → 读取上次成功抓取的本地缓存
-        3. 缓存也不可用 → 降级为内置模拟数据
+        1. 实时抓取 → 至少 3 个产品才算成功
+        2. 抓取失败或产品不足 → 本地缓存 JSON
+        3. 缓存也不可用 → 内置模拟数据
 
     Returns:
         (products, source_info) 元组：
         - products:    产品字典列表
-        - source_info: {"source": "live"|"cache"|"mock", "timestamp": "..."}
+        - source_info: {"source": "live"|"cache"|"mock", "timestamp": "...", ...}
     """
-    # ---- 第 1 层：尝试真实抓取 ----
+    # ---------- 第一层：实时抓取 ----------
     try:
         products = _scrape_amazon_best_sellers()
-        if products and len(products) >= 3:
-            # 抓取成功，写入缓存
+        if len(products) >= 3:
             _save_cache(products)
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             return products, {"source": "live", "timestamp": timestamp}
-    except Exception:
-        # 抓取失败，静默进入下一层
-        pass
+        else:
+            print(f"⚠️ 实时抓取仅获得 {len(products)} 个产品（不足 3 个），降级到缓存")
+    except Exception as e:
+        print(f"⚠️ 实时抓取失败：{e}")
 
-    # ---- 第 2 层：读取本地缓存 ----
+    # ---------- 第二层：本地缓存 ----------
     cached = _load_cache()
-    if cached:
-        ts = _get_cache_timestamp() or "未知"
-        return cached, {"source": "cache", "timestamp": ts}
+    if cached and len(cached) >= 3:
+        cache_ts = _get_cache_timestamp()
+        print(f"📦 使用本地缓存（{len(cached)} 个产品，缓存时间：{cache_ts}）")
+        return cached, {"source": "cache", "timestamp": cache_ts or "unknown"}
 
-    # ---- 第 3 层：降级为模拟数据 ----
-    return _get_mock_products(), {
-        "source": "mock",
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-    }
+    # ---------- 第三层：模拟数据 ----------
+    mock = _get_mock_products()
+    print(f"📋 使用内置模拟数据（{len(mock)} 个产品）")
+    return mock, {"source": "mock", "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}

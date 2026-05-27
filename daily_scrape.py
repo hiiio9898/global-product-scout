@@ -16,6 +16,8 @@
     云端运行（如 GitHub Actions）通过 secrets 注入环境变量。
 """
 
+print("=== daily_scrape.py started ===")
+
 import sys
 import os
 from datetime import datetime, timezone
@@ -85,4 +87,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"\n❌ 脚本执行失败：{e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
