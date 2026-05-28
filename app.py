@@ -21,7 +21,8 @@ import json
 
 from src.config import get_config, get_llm_config, get_profit_defaults, LLM_PROVIDERS, _get_secret
 from src.scraper import fetch_amazon_best_sellers
-from src.analyzer import analyze_products
+from src.scraper_search import search_amazon
+from src.analyzer import analyze_products, analyze_category_report
 from src.calculator import calculate_profit
 from src.scraper_1688 import search_1688, search_1688_hybrid
 from src.trends import get_trend_direction, get_trend_icon
@@ -58,8 +59,8 @@ def render_sidebar(source_info: dict | None = None):
     # ---- 页面导航 ----
     page = st.sidebar.radio(
         "📌 页面导航",
-        options=["� Dashboard", "🔍 实时选品", "📚 历史记录"],
-        help="Dashboard：数据概览\n实时选品：抓取并分析当前 Amazon 热销产品\n历史记录：查看过去保存的分析结果",
+        options=["� Dashboard", "🔍 实时选品", "🎯 指定选品", "📚 历史记录"],
+        help="Dashboard：数据概览\n实时选品：抓取并分析当前 Amazon 热销产品\n指定选品：输入关键词深度分析特定品类\n历史记录：查看过去保存的分析结果",
     )
 
     st.sidebar.divider()
@@ -670,6 +671,357 @@ def _render_live_page(api_ok: bool):
 
 
 # ============================================================
+# ==================== 指定选品页面 ============================
+# ============================================================
+
+def _render_targeted_page(api_ok: bool):
+    """
+    渲染指定选品页面 — 关键词搜索 → AI 分析 → 品类报告。
+
+    流程：
+        1. 用户输入关键词 + 可选筛选
+        2. 点击「🔍 搜索分析」按钮
+        3. 展示品类综合报告
+        4. 展示搜索结果列表 + 每个产品的五维度分析
+        5. Top 3 产品提供 1688 比价 + 利润试算
+    """
+    st.title("🎯 指定选品 — 关键词深度分析")
+    st.markdown(
+        "输入你想调研的产品关键词，AI 将搜索 Amazon 并生成品类综合报告 + Top 3 推荐。"
+    )
+    st.divider()
+
+    # ---- 输入区域 ----
+    with st.container(border=True):
+        col_kw, col_btn = st.columns([3, 1])
+        with col_kw:
+            keyword = st.text_input(
+                "🔍 搜索关键词",
+                value=st.session_state.get("targeted_keyword", ""),
+                placeholder="例：portable blender, cat toys, yoga mat",
+                help="输入英文关键词效果最佳，支持多个单词组合",
+            )
+        with col_btn:
+            st.write("")  # 占位对齐
+            st.write("")  # 占位对齐
+            search_clicked = st.button(
+                "🚀 搜索分析",
+                type="primary",
+                use_container_width=True,
+                disabled=not keyword.strip(),
+            )
+
+        # 可选筛选
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            filter_min_price = st.number_input(
+                "💰 最低价格 (USD)", min_value=0.0, value=0.0, step=5.0,
+                help="过滤低于此价格的产品（0 = 不限）",
+            )
+        with col_f2:
+            filter_max_price = st.number_input(
+                "💰 最高价格 (USD)", min_value=0.0, value=0.0, step=5.0,
+                help="过滤高于此价格的产品（0 = 不限）",
+            )
+
+    # ---- 搜索触发 ----
+    if search_clicked and keyword.strip():
+        st.session_state.targeted_keyword = keyword.strip()
+        st.session_state.targeted_step = "searching"
+        st.session_state.targeted_results = None
+        st.session_state.targeted_category = None
+        st.session_state.targeted_analysis = None
+        st.rerun()
+
+    # ---- 搜索执行 ----
+    if st.session_state.get("targeted_step") == "searching":
+        kw = st.session_state.targeted_keyword
+
+        with st.status("📡 正在搜索 Amazon...", expanded=False) as status:
+            search_result = search_amazon(kw, max_results=20)
+
+            if search_result["success"]:
+                products = search_result["results"]
+                source = search_result["source"]
+
+                st.session_state.targeted_results = products
+                st.session_state.targeted_source = source
+                st.session_state.targeted_scrape_time = search_result.get("scrape_time", "")
+
+                status.update(
+                    label=f"✅ 搜索完成 — 找到 {len(products)} 个产品",
+                    state="complete",
+                )
+            else:
+                st.session_state.targeted_results = []
+                st.session_state.targeted_step = "idle"
+                status.update(label="❌ 搜索失败", state="error")
+                st.error(f"❌ 搜索失败：{search_result.get('error', '未知错误')}")
+                st.info("💡 **建议：**\n- 检查网络连接\n- 更换关键词重试\n- 确保关键词为英文")
+                return
+
+        # 搜索成功 → 开始 AI 分析
+        if st.session_state.targeted_results:
+            st.session_state.targeted_step = "analyzing"
+            st.rerun()
+
+    # ---- AI 分析执行 ----
+    if st.session_state.get("targeted_step") == "analyzing":
+        products = st.session_state.targeted_results
+        kw = st.session_state.targeted_keyword
+
+        # 并行：五维度分析 + 品类报告
+        with st.status("🤖 AI 正在深度分析...", expanded=False) as status:
+            progress_bar = st.progress(0, text="准备分析...")
+
+            def _on_progress(done, total_count):
+                pct = min(done / total_count, 1.0)
+                progress_bar.progress(pct, text=f"产品分析进度：{done}/{total_count}")
+
+            # 五维度分析（复用现有批量分析）
+            analysis_results = analyze_products(
+                products,
+                progress_callback=_on_progress,
+            )
+            st.session_state.targeted_analysis = analysis_results
+
+            progress_bar.empty()
+
+            # 品类综合报告
+            status.update(label="📊 正在生成品类报告...", state="running")
+            category_report = analyze_category_report(kw, products)
+            st.session_state.targeted_category = category_report
+
+            status.update(label="✅ 分析完成！", state="complete")
+
+        # 保存到数据库
+        try:
+            save_products(products, analysis_results, source="amazon_search")
+        except Exception:
+            pass  # 非阻塞
+
+        # 保存到 session history
+        for p, r in zip(products, analysis_results):
+            record = dict(p)
+            record["analysis"] = r
+            record["source"] = "amazon_search"
+            record["scrape_time"] = st.session_state.get("targeted_scrape_time", "")
+            st.session_state.history_data.append(record)
+
+        st.session_state.targeted_step = "done"
+        st.rerun()
+
+    # ---- 结果展示 ----
+    if st.session_state.get("targeted_step") == "done":
+        products = st.session_state.targeted_results
+        analysis = st.session_state.targeted_analysis
+        category = st.session_state.targeted_category
+        kw = st.session_state.targeted_keyword
+        source = st.session_state.get("targeted_source", "unknown")
+
+        if not products:
+            st.warning("未找到相关产品，请尝试其他关键词。")
+            return
+
+        # ---- 数据来源提示 ----
+        st.success(f"✅ 搜索「{kw}」找到 {len(products)} 个产品")
+
+        # ---- 品类综合报告 ----
+        st.divider()
+        st.subheader("📊 品类综合报告")
+
+        if category and not category.get("error"):
+            # 市场概况
+            st.markdown(f"**📝 市场概况：** {category.get('category_overview', '')}")
+
+            col_r1, col_r2, col_r3 = st.columns(3)
+            with col_r1:
+                st.metric("📈 市场规模", category.get("market_size", "N/A"))
+            with col_r2:
+                comp = category.get("competition_level", "unknown")
+                comp_label = {"low": "🟢 低竞争", "medium": "🟡 中等竞争", "high": "🔴 高竞争"}.get(comp, "⚪ 未知")
+                st.metric("⚔️ 竞争程度", comp_label)
+            with col_r3:
+                st.metric("💰 价格分布", category.get("price_distribution", "N/A"))
+
+            # 入场建议
+            if category.get("entry_suggestion"):
+                st.info(f"💡 **入场建议：** {category['entry_suggestion']}")
+            if category.get("differentiation"):
+                st.info(f"🎯 **差异化方向：** {category['differentiation']}")
+
+            # 风险因素
+            risks = category.get("risk_factors", [])
+            if risks:
+                with st.expander("⚠️ 风险因素", expanded=False):
+                    for risk in risks:
+                        st.caption(f"• {risk}")
+        elif category and category.get("error"):
+            st.warning(f"⚠️ 品类报告生成失败：{category['error']}")
+        else:
+            st.info("💡 配置 AI API Key 后可生成品类综合报告")
+
+        # ---- Top 3 推荐 ----
+        st.divider()
+        st.subheader("🏆 Top 3 推荐产品")
+
+        top3 = category.get("top3", []) if category and not category.get("error") else []
+        if top3:
+            cols = st.columns(3)
+            for i, rec in enumerate(top3):
+                with cols[i]:
+                    with st.container(border=True):
+                        rank = rec.get("rank", i + 1)
+                        score = rec.get("score", 0)
+                        title = rec.get("title", f"产品 #{rank}")
+                        reason = rec.get("reason", "")
+
+                        st.markdown(f"### 🥇 #{rank}")
+                        st.markdown(f"**{title[:60]}{'…' if len(title) > 60 else ''}**")
+                        st.metric("综合评分", f"{score}/10")
+                        st.caption(reason)
+
+                        # 在产品列表中找到对应产品
+                        matched_product = None
+                        matched_analysis = None
+                        for j, p in enumerate(products):
+                            if p["title"] == title:
+                                matched_product = p
+                                if analysis and j < len(analysis):
+                                    matched_analysis = analysis[j]
+                                break
+
+                        if matched_product:
+                            price = matched_product.get("price", 0)
+                            st.caption(f"💰 ${price:.2f} | ⭐ {matched_product.get('rating', 0)} | 💬 {matched_product.get('num_reviews', 0):,}")
+
+                            # 1688 比价按钮
+                            if st.button("🔍 1688 比价", key=f"targeted_1688_{i}", use_container_width=True):
+                                price_usd = float(price) if price else 0.0
+                                with st.spinner("正在获取参考价..."):
+                                    result_1688 = search_1688_hybrid(title, price_usd)
+                                if result_1688["success"]:
+                                    pr = result_1688["price_range"]
+                                    src_1688 = result_1688.get("source", "unknown")
+                                    label_1688 = {
+                                        "1688_real": "📦 1688 真实价格",
+                                        "ai_estimate": "🤖 AI 估算参考价",
+                                        "local_estimate": "📊 本地规则估算",
+                                    }.get(src_1688, "📦 参考价")
+                                    st.success(f"{label_1688}：¥{pr['min']:.2f} ~ ¥{pr['max']:.2f}")
+                                else:
+                                    st.warning(result_1688.get("error", "比价失败"))
+
+                            # 利润试算按钮
+                            if st.button("💰 利润试算", key=f"targeted_profit_{i}", use_container_width=True):
+                                st.session_state[f"show_profit_targeted_{i}"] = True
+
+                        # 利润试算展开
+                        if st.session_state.get(f"show_profit_targeted_{i}") and matched_product:
+                            defaults = st.session_state.get("profit_defaults", get_profit_defaults())
+                            procurement = st.number_input(
+                                "预估采购成本 (¥/件)",
+                                min_value=0.0, max_value=1000.0, value=0.0, step=1.0,
+                                key=f"targeted_procurement_{i}",
+                            )
+                            if procurement > 0:
+                                profit_result = calculate_profit(
+                                    price_usd=float(matched_product.get("price", 0) or 0),
+                                    defaults=defaults,
+                                    procurement_cny=procurement,
+                                )
+                                if profit_result["has_procurement"]:
+                                    margin = profit_result["margin_pct"]
+                                    margin_status = "🟢 利润可观" if margin >= 30 else ("🟡 利润一般" if margin >= 15 else "🔴 利润微薄")
+                                    st.metric("净利", f"¥{profit_result['net_profit_cny']:.2f}")
+                                    st.metric("毛利率", f"{margin}% — {margin_status}")
+
+        # ---- 搜索结果完整列表 ----
+        st.divider()
+        st.subheader("📋 搜索结果列表")
+
+        df = pd.DataFrame(products)
+        df_display = df.rename(columns={
+            "rank": "排名", "title": "产品名称", "price": "价格 (USD)",
+            "rating": "评分 ⭐", "num_reviews": "评论数", "category": "类目",
+        })
+        display_columns = ["排名", "产品名称", "价格 (USD)", "评分 ⭐", "评论数"]
+        available_cols = [c for c in display_columns if c in df_display.columns]
+        st.dataframe(
+            df_display[available_cols], use_container_width=True, hide_index=True,
+            column_config={
+                "排名": st.column_config.NumberColumn(format="%d"),
+                "价格 (USD)": st.column_config.NumberColumn(format="$%.2f"),
+                "评分 ⭐": st.column_config.NumberColumn(format="%.1f"),
+            },
+        )
+
+        # ---- 每个产品的五维度分析 ----
+        if analysis:
+            st.divider()
+            st.subheader("🤖 AI 五维度详细分析")
+
+            for i, r in enumerate(analysis):
+                verdict = r.get("final_verdict", "cautious")
+                verdict_label_map = {
+                    "recommended": "🟢 推荐入手", "cautious": "🟡 谨慎评估",
+                    "not_recommended": "🔴 不推荐",
+                }
+                verdict_label = verdict_label_map.get(verdict, "⚪ 未知")
+                title_text = r.get("title", f"产品 #{i+1}")
+
+                with st.expander(f"{verdict_label} #{i+1} {title_text[:55]}…", expanded=False):
+                    verdict_reason = r.get("verdict_reason", "")
+                    if verdict == "recommended":
+                        st.success(f"✅ **推荐入手** — {verdict_reason}")
+                    elif verdict == "cautious":
+                        st.warning(f"⚠️ **谨慎评估** — {verdict_reason}")
+                    else:
+                        st.error(f"❌ **不推荐** — {verdict_reason}")
+
+                    dims = [
+                        ("📊 市场容量", "market_capacity"),
+                        ("⚔️ 竞争程度", "competition"),
+                        ("💰 利润潜力", "profit_potential"),
+                        ("🎓 新手友好", "beginner_friendly"),
+                        ("🌡️ 季节风险", "seasonality_risk"),
+                    ]
+                    cols = st.columns(5)
+                    for col, (label, key) in zip(cols, dims):
+                        dim_data = r.get(key, {})
+                        score_val = dim_data.get("score", 0) if isinstance(dim_data, dict) else 0
+                        reason_val = dim_data.get("reason", "") if isinstance(dim_data, dict) else str(dim_data)
+                        with col:
+                            dc = "inverse" if key in ("competition", "seasonality_risk") else "normal"
+                            st.metric(
+                                label=label, value=f"{score_val}/10",
+                                delta=reason_val[:40] + ("…" if len(reason_val) > 40 else ""),
+                                delta_color=dc,
+                            )
+
+        # ---- 重新搜索按钮 ----
+        st.divider()
+        if st.button("🔄 重新搜索", use_container_width=True):
+            st.session_state.targeted_step = "idle"
+            st.session_state.targeted_results = None
+            st.session_state.targeted_category = None
+            st.session_state.targeted_analysis = None
+            st.rerun()
+
+    # ---- 空闲状态 ----
+    elif st.session_state.get("targeted_step", "idle") == "idle":
+        st.info(
+            "👈 输入关键词开始搜索分析：\n\n"
+            "1. 🔍 输入英文产品关键词（如 `portable blender`）\n"
+            "2. 🚀 点击「搜索分析」按钮\n"
+            "3. 📊 查看品类综合报告 + Top 3 推荐\n"
+            "4. 💰 对推荐产品查看 1688 比价和利润试算\n\n"
+            "**热门品类参考：** bluetooth speaker, yoga mat, cat toys, "
+            "kitchen organizer, phone case, LED strip lights"
+        )
+
+
+# ============================================================
 # ==================== 历史记录页面 ============================
 # ============================================================
 
@@ -1042,5 +1394,7 @@ if "Dashboard" in page:
     _render_dashboard_page()
 elif "实时选品" in page:
     _render_live_page(api_ok)
+elif "指定选品" in page:
+    _render_targeted_page(api_ok)
 elif "历史记录" in page:
     _render_history_page()

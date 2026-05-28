@@ -1,6 +1,9 @@
 # 变更日志
 
 ## [Unreleased]
+- 新功能：**指定选品**（关键词搜索分析）— 用户输入关键词搜索 Amazon，生成品类综合报告 + Top 3 推荐 + 1688 比价 + 利润试算
+- 新功能：`src/scraper_search.py` Amazon 关键词搜索抓取模块（三层降级：实时抓取 → Mock 模拟 → 空结果）
+- 新功能：`src/analyzer.py` 新增 `analyze_category_report()` 品类综合分析（AI 报告 + 本地 Mock 降级）
 - 新功能：项目初始化，搭建外贸选品工具原型，包含模拟数据抓取与 DeepSeek 分析。
 - 新功能：实现 Amazon Best Sellers 真实抓取（requests+BeautifulSoup），三层降级策略。
 - 新功能：五维度量化分析体系（市场容量/竞争程度/利润潜力/新手友好度/季节性风险）。

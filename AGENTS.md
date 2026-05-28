@@ -34,8 +34,12 @@
 ├── src/
 │   ├── __init__.py
 │   ├── config.py           # 配置加载（st.secrets + .env 双源）
-│   ├── scraper.py          # 数据抓取模块
-│   ├── analyzer.py         # AI 分析模块（多模型支持）
+│   ├── scraper.py          # Amazon Best Sellers 数据抓取模块
+│   ├── scraper_search.py   # Amazon 关键词搜索抓取模块（指定选品）
+│   ├── scraper_1688.py     # 1688 比价模块（混合策略）
+│   ├── analyzer.py         # AI 分析模块（五维度评估 + 品类报告）
+│   ├── calculator.py       # 利润计算器
+│   ├── trends.py           # Google Trends 趋势查询
 │   ├── database.py         # SQLite 数据库模块
 │   └── utils.py            # 工具函数
 ├── tests/

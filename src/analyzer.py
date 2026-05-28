@@ -433,3 +433,200 @@ def analyze_products(
             progress_callback(min(len(results), total), total)
 
     return results
+
+
+# ============================================================
+# 品类综合报告分析（指定选品功能）
+# ============================================================
+
+CATEGORY_REPORT_PROMPT = """你是一位拥有 10 年经验的资深跨境电商选品顾问，专精于 Amazon 平台。
+
+根据以下关键词在 Amazon 搜索到的产品数据，生成品类综合分析报告。
+
+关键词：{keyword}
+产品数据（共 {n} 个）：
+{products_json}
+
+请分析并以严格 JSON 格式返回以下内容：
+{{
+  "category_overview": "该品类的整体描述（100字以内）",
+  "market_size": "市场规模描述，如'月搜索量约XX万，年增长率XX%'",
+  "competition_level": "low/medium/high",
+  "competition_detail": "竞争格局描述（50字以内）",
+  "price_distribution": "价格区间分布描述，如'$10-$30 为主流价格带，$30-$50 为中高端'",
+  "top3": [
+    {{"rank": 1, "title": "产品标题（必须与输入完全一致）", "reason": "推荐理由（50字以内）", "score": 8}},
+    {{"rank": 2, "title": "产品标题", "reason": "推荐理由", "score": 7}},
+    {{"rank": 3, "title": "产品标题", "reason": "推荐理由", "score": 7}}
+  ],
+  "entry_suggestion": "入场建议，包括启动资金估算、时机判断、注意事项（100字以内）",
+  "differentiation": "差异化方向建议，如何避开头部竞争（50字以内）",
+  "risk_factors": ["风险因素1", "风险因素2", "风险因素3"]
+}}
+只返回 JSON。"""
+
+
+def analyze_category_report(keyword: str, products: list[dict]) -> dict:
+    """
+    基于搜索结果生成品类综合分析报告。
+
+    Args:
+        keyword:  搜索关键词
+        products: 搜索到的产品列表（最多 20 个）
+
+    Returns:
+        dict: 品类报告，包含 category_overview, top3, entry_suggestion 等
+    """
+    llm_cfg = get_llm_config()
+    api_key = llm_cfg["api_key"]
+
+    # 无 API Key → 返回错误
+    if not api_key:
+        return {
+            "success": False,
+            "category_overview": "",
+            "market_size": "",
+            "competition_level": "unknown",
+            "competition_detail": "",
+            "price_distribution": "",
+            "top3": [],
+            "entry_suggestion": "",
+            "differentiation": "",
+            "risk_factors": [],
+            "parse_error": False,
+            "raw_text": None,
+            "error": "AI API 未配置，无法生成品类报告。请在侧边栏配置 API Key。",
+        }
+
+    # 构建产品摘要（只传关键字段，减少 Token 消耗）
+    summary = []
+    for p in products[:20]:
+        summary.append({
+            "title": p.get("title", ""),
+            "price": p.get("price", 0),
+            "rating": p.get("rating", 0),
+            "num_reviews": p.get("num_reviews", 0),
+        })
+
+    prompt = CATEGORY_REPORT_PROMPT.format(
+        keyword=keyword,
+        n=len(summary),
+        products_json=json.dumps(summary, ensure_ascii=False, indent=1),
+    )
+
+    client = OpenAI(
+        api_key=api_key,
+        base_url=llm_cfg["base_url"],
+        timeout=60,
+    )
+
+    for attempt in range(2):
+        try:
+            resp = client.chat.completions.create(
+                model=llm_cfg["model"],
+                messages=[
+                    {"role": "system", "content": "你是资深跨境电商选品顾问。只返回 JSON。"},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+                max_tokens=1500,
+            )
+            content = resp.choices[0].message.content.strip()
+            return _parse_category_report_response(content, keyword, products)
+        except Exception as e:
+            if attempt < 1:
+                time.sleep(2)
+
+    # API 调用失败 → 返回错误
+    return {
+        "success": False,
+        "category_overview": "",
+        "market_size": "",
+        "competition_level": "unknown",
+        "competition_detail": "",
+        "price_distribution": "",
+        "top3": [],
+        "entry_suggestion": "",
+        "differentiation": "",
+        "risk_factors": [],
+        "parse_error": False,
+        "raw_text": None,
+        "error": "AI API 调用失败，请检查 API Key 和网络连接后重试。",
+    }
+
+
+def _parse_category_report_response(
+    content: str, keyword: str, products: list[dict]
+) -> dict:
+    """
+    解析品类报告的 AI 返回 JSON。
+
+    容错策略与 _parse_ai_response 类似。
+    """
+    cleaned = content.strip()
+    if cleaned.startswith("```"):
+        parts = cleaned.split("```")
+        if len(parts) >= 2:
+            cleaned = parts[1]
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:]
+            cleaned = cleaned.strip()
+
+    # 尝试解析
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        try:
+            start = cleaned.find("{")
+            end = cleaned.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                data = json.loads(cleaned[start:end + 1])
+            else:
+                raise json.JSONDecodeError("No JSON object found", cleaned, 0)
+        except json.JSONDecodeError:
+            return {
+                "success": False,
+                "category_overview": "",
+                "market_size": "",
+                "competition_level": "unknown",
+                "competition_detail": "",
+                "price_distribution": "",
+                "top3": [],
+                "entry_suggestion": "",
+                "differentiation": "",
+                "risk_factors": [],
+                "parse_error": True,
+                "raw_text": content,
+                "error": "AI 返回格式异常，无法解析品类报告",
+            }
+
+    # 验证必要字段
+    required = [
+        "category_overview", "competition_level", "top3",
+        "entry_suggestion", "risk_factors",
+    ]
+    for key in required:
+        if key not in data:
+            return {
+                "success": False,
+                "category_overview": "",
+                "market_size": "",
+                "competition_level": "unknown",
+                "competition_detail": "",
+                "price_distribution": "",
+                "top3": [],
+                "entry_suggestion": "",
+                "differentiation": "",
+                "risk_factors": [],
+                "parse_error": True,
+                "raw_text": content,
+                "error": f"AI 返回缺少必要字段「{key}」，报告不完整",
+            }
+
+    if not isinstance(data.get("top3"), list):
+        data["top3"] = []
+
+    data["parse_error"] = False
+    data["raw_text"] = None
+    data["success"] = True
+    return data
