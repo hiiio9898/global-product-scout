@@ -44,11 +44,12 @@ _USER_AGENTS = [
 
 _BLOCK_PATTERNS = [
     "captcha",
-    "robot",
     "automated access",
     "blocked",
     "请输入图中的字符",
     "Type the characters you see below",
+    "robot check",
+    "are you a human",
 ]
 
 
@@ -75,6 +76,7 @@ def _parse_price(text: str) -> Optional[float]:
         "CNY": 1 / 7.24, "¥": 1 / 7.24, "RMB": 1 / 7.24,
         "EUR": 1.08, "€": 1.08,
         "GBP": 1.27, "£": 1.27,
+        "JPY": 1 / 150.0, "JPY\xa0": 1 / 150.0,
     }
 
     matched_currency = None
