@@ -6,3 +6,4 @@ beautifulsoup4
 pytest
 flake8
 pandas
+pytrends>=4.9.2

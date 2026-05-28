@@ -24,6 +24,7 @@ from src.scraper import fetch_amazon_best_sellers
 from src.analyzer import analyze_products
 from src.calculator import calculate_profit
 from src.scraper_1688 import search_1688
+from src.trends import get_trend_direction, get_trend_icon
 from src.database import (
     init_db,
     save_products,
@@ -459,7 +460,18 @@ def _render_live_page(api_ok: bool):
                         st.caption(f"**{label}** ({score_val}/10)")
                         st.text(reason_val)
 
-                # ---- 💰 利润试算 ----
+                # ---- � Google Trends 趋势 ----
+                if st.button("📈 查询 Google Trends 趋势", key=f"trend_{i}", use_container_width=True):
+                    trend_keyword = product_title.split(" - ")[0].split(",")[0][:30].strip()
+                    with st.spinner(f"正在查询趋势：{trend_keyword}..."):
+                        trend = get_trend_direction(trend_keyword)
+                    if trend["available"]:
+                        icon = get_trend_icon(trend["direction"])
+                        st.success(f"📈 趋势：{icon} | 当前热度 {trend['interest']} | 平均 {trend['avg_interest']}")
+                    else:
+                        st.warning(f"⚠️ {trend['error']}")
+
+                # ---- �💰 利润试算 ----
                 st.divider()
                 st.markdown("**💰 利润试算**")
 
