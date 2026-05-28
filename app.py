@@ -134,20 +134,9 @@ def render_sidebar(source_info: dict | None = None):
         st.sidebar.caption(f"✅ {provider_name} {selected_model}")
     else:
         st.sidebar.caption(f"⚠️ {provider_name} 未配置（使用模拟分析）")
-        # 诊断：显示 st.secrets 中可用的 API Key 名称（不显示值）
-        available_keys = []
-        try:
-            import streamlit as _st
-            if hasattr(_st, "secrets") and _st.secrets:
-                all_keys = list(_st.secrets.keys()) if hasattr(_st.secrets, "keys") else []
-                api_related = [k for k in all_keys if "API_KEY" in k.upper() or "BASE_URL" in k.upper()]
-                available_keys = api_related if api_related else ["（未找到 API_KEY 相关配置）"]
-        except Exception:
-            available_keys = ["（无法读取 st.secrets）"]
         st.sidebar.info(
             f"💡 在 **Streamlit Secrets**（云端）或 `.env` 文件（本地）中\n"
-            f"配置 `{provider_info['api_key_key']}` 即可启用 {provider_name} AI 分析。\n\n"
-            f"🔍 已检测到的 Secrets Key：`{', '.join(available_keys)}`"
+            f"配置 `{provider_info['api_key_key']}` 即可启用 {provider_name} AI 分析。"
         )
 
     # ---- 💰 利润参数（可配置） ----
