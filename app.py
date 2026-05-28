@@ -282,30 +282,74 @@ def _render_live_page(api_ok: bool):
 
     # ---- 开始分析按钮 ----
     btn_disabled = st.session_state.get("analyzing", False)
-    if st.button("🚀 开始分析", type="primary", use_container_width=True, disabled=btn_disabled):
+
+    col_json, col_live = st.columns(2)
+    with col_json:
+        btn_json = st.button(
+            "📄 分析 JSON 数据",
+            type="primary",
+            use_container_width=True,
+            disabled=btn_disabled,
+            help="读取 data/products.json 中已抓取的产品数据进行 AI 分析",
+        )
+    with col_live:
+        btn_live = st.button(
+            "📡 实时抓取",
+            type="secondary",
+            use_container_width=True,
+            disabled=btn_disabled,
+            help="尝试从 Amazon Best Sellers 实时抓取最新数据（可能被反爬拦截）",
+        )
+
+    if btn_json:
         st.session_state.analyzing = True
         try:
-            # 第一步：获取数据（优先 JSON，降级到实时）
-            with st.spinner("📡 正在获取 Amazon Best Sellers 热销数据..."):
-                products, source_info = _load_products()
-                st.session_state.products = products
-                st.session_state.source_info = source_info
-                st.session_state.step = "loaded"
-
-            # 加载数据后立即 rerun，让侧边栏及时显示数据源状态
-            st.rerun()
-
-        except RuntimeError as e:
-            st.session_state.analyzing = False
-            st.error(f"❌ {str(e)}")
-            st.info(
-                "💡 请在本机执行 `python daily_scrape.py`，"
-                "然后将 `data/products.json` 提交并推送到 GitHub，"
-                "Streamlit Cloud 便会展示真实数据。"
-            )
+            json_path = os.path.join(os.path.dirname(__file__), "data", "products.json")
+            if not os.path.exists(json_path):
+                st.session_state.analyzing = False
+                st.error("❌ data/products.json 不存在")
+                st.info(
+                    "💡 请在本机执行 `python daily_scrape.py` 生成 JSON 文件，"
+                    "然后将 `data/products.json` 提交并推送到 GitHub。"
+                )
+            else:
+                with st.spinner("📄 正在读取 JSON 数据..."):
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        products = json.load(f)
+                    if not products:
+                        st.session_state.analyzing = False
+                        st.error("❌ JSON 文件中无产品数据")
+                    else:
+                        scrape_time = products[0].get("scrape_time", "")
+                        st.session_state.products = products
+                        st.session_state.source_info = {"source": "json", "timestamp": scrape_time}
+                        st.session_state.step = "loaded"
+                        st.rerun()
         except Exception as e:
-            st.error(f"❌ 出错了：{str(e)}")
-            st.info("🔧 请检查网络连接和 `.env` 配置文件后重试。")
+            st.session_state.analyzing = False
+            st.error(f"❌ 读取 JSON 失败：{str(e)}")
+
+    if btn_live:
+        st.session_state.analyzing = True
+        try:
+            with st.spinner("📡 正在实时抓取 Amazon Best Sellers..."):
+                products, source_info = fetch_amazon_best_sellers()
+                if source_info.get("source") != "live":
+                    st.session_state.analyzing = False
+                    st.error("❌ 实时抓取失败")
+                    st.info(
+                        "💡 请在本机执行 `python daily_scrape.py`，"
+                        "然后将 `data/products.json` 提交并推送到 GitHub。"
+                    )
+                else:
+                    st.session_state.products = products
+                    st.session_state.source_info = source_info
+                    st.session_state.step = "loaded"
+                    st.rerun()
+        except Exception as e:
+            st.session_state.analyzing = False
+            st.error(f"❌ 实时抓取失败：{str(e)}")
+            st.info("🔧 请检查网络连接后重试。")
 
     # ---- 数据显示（加载完成后显示，此时侧边栏已更新） ----
     if st.session_state.step in ("loaded", "analyzed") and st.session_state.products:
@@ -560,14 +604,16 @@ def _render_live_page(api_ok: bool):
 
     # ---- 空闲状态 ----
     elif st.session_state.step == "idle":
+        json_exists = os.path.exists(os.path.join(os.path.dirname(__file__), "data", "products.json"))
         st.info(
-            "👈 点击上方醒目的 **「🚀 开始分析」** 按钮，\n\n"
+            "👈 选择上方按钮开始分析：\n\n"
+            f"1. 📄 **分析 JSON 数据** {'（可用 ✅）' if json_exists else '（❌ 文件不存在）'}\n"
+            "2. 📡 **实时抓取** — 尝试从 Amazon 抓取最新数据\n\n"
             "系统将为你：\n"
-            "1. � **优先读取** `data/products.json` 中的产品数据\n"
+            "1. 📄 或 📡 获取产品数据\n"
             "2. 🤖 从市场容量、竞争程度、利润潜力、新手友好度、季节性风险五个维度量化评分\n"
             "3. 📊 给出 🟢推荐 / 🟡谨慎 / 🔴不推荐 的明确 verdict\n"
-            "4. 💾 自动保存分析结果到历史数据库，方便后续回顾\n\n"
-            "💡 若 JSON 文件不存在，会尝试实时抓取 Amazon；若均不可用，请运行 `python daily_scrape.py` 生成数据。"
+            "4. 💾 自动保存分析结果到历史数据库，方便后续回顾"
         )
 
     # ---- 底部提示 ----
