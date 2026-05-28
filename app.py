@@ -23,6 +23,7 @@ from src.config import get_config, get_llm_config, get_profit_defaults, LLM_PROV
 from src.scraper import fetch_amazon_best_sellers
 from src.analyzer import analyze_products
 from src.calculator import calculate_profit
+from src.scraper_1688 import search_1688
 from src.database import (
     init_db,
     save_products,
@@ -439,6 +440,21 @@ def _render_live_page(api_ok: bool):
                         )
                     else:
                         st.caption("👆 请输入采购成本以计算利润")
+
+                # ---- 🔍 1688 比价 ----
+                if st.button("🔍 查看1688参考价", key=f"1688_{i}", use_container_width=True):
+                    search_keyword = product_title[:30]
+                    with st.spinner(f"正在搜索 1688：{search_keyword}..."):
+                        result_1688 = search_1688(search_keyword)
+                    if result_1688["success"]:
+                        pr = result_1688["price_range"]
+                        st.success(
+                            f"📦 1688 参考价区间：¥{pr['min']:.2f} ~ ¥{pr['max']:.2f}"
+                        )
+                        for item in result_1688["results"]:
+                            st.caption(f"  • {item['title'][:50]} — ¥{item['price']:.2f}")
+                    else:
+                        st.warning(f"⚠️ {result_1688['error']}")
 
     # ---- 空闲状态 ----
     elif st.session_state.step == "idle":
