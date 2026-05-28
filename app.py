@@ -57,8 +57,8 @@ def render_sidebar(source_info: dict | None = None):
     # ---- 页面导航 ----
     page = st.sidebar.radio(
         "📌 页面导航",
-        options=["🔍 实时选品", "📚 历史记录"],
-        help="实时选品：抓取并分析当前 Amazon 热销产品\n历史记录：查看过去保存的分析结果",
+        options=["� Dashboard", "🔍 实时选品", "📚 历史记录"],
+        help="Dashboard：数据概览\n实时选品：抓取并分析当前 Amazon 热销产品\n历史记录：查看过去保存的分析结果",
     )
 
     st.sidebar.divider()
@@ -173,6 +173,96 @@ def render_sidebar(source_info: dict | None = None):
     st.sidebar.caption(f"📦 历史记录：{count} 条产品数据")
 
     return llm_cfg["configured"], page
+
+
+# ============================================================
+# ==================== Dashboard 首页 ============================
+# ============================================================
+
+def _render_dashboard_page():
+    """渲染 Dashboard 首页 — 数据概览 + TOP5 推荐。"""
+
+    st.title("📊 全球产品侦察兵 — 数据概览")
+    st.markdown("一目了然掌握选品全局，快速定位高潜力产品。")
+    st.divider()
+
+    # 获取数据
+    all_products = get_all_products()
+    if not all_products:
+        st.info(
+            "📭 **暂无数据**\n\n"
+            "请先切换到「🔍 实时选品」页面，点击「开始分析」运行一次分析，\n"
+            "数据会自动保存到数据库并在此展示概览。"
+        )
+        return
+
+    # ---- 指标计算 ----
+    total = len(all_products)
+    recommended = [p for p in all_products if p.get("analysis", {}).get("final_verdict") == "recommended"]
+    rec_count = len(recommended)
+
+    def _avg_score(key):
+        scores = []
+        for p in all_products:
+            dim = p.get("analysis", {}).get(key, {})
+            if isinstance(dim, dict) and "score" in dim:
+                scores.append(dim["score"])
+        return sum(scores) / len(scores) if scores else 0.0
+
+    avg_capacity = _avg_score("market_capacity")
+    avg_profit = _avg_score("profit_potential")
+
+    # ---- 指标卡片 ----
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("📦 总产品数", total)
+    c2.metric("🟢 推荐数", rec_count)
+    c3.metric("📊 平均容量分", f"{avg_capacity:.1f}/10")
+    c4.metric("💰 平均利润分", f"{avg_profit:.1f}/10")
+
+    # 最近抓取时间
+    latest_time = all_products[0].get("scrape_time", "")
+    if latest_time:
+        st.caption(f"最近抓取：{latest_time}")
+
+    st.divider()
+
+    # ---- TOP5 推荐产品 ----
+    st.subheader("🏆 TOP 5 推荐产品")
+
+    top5 = recommended[:5]
+    if not top5:
+        st.warning("暂无推荐产品。")
+        return
+
+    for i, p in enumerate(top5, 1):
+        analysis = p.get("analysis", {})
+        title = p.get("title", f"产品 #{i}")
+        price = p.get("price", 0)
+        rating = p.get("rating", 0)
+        capacity = analysis.get("market_capacity", {})
+        cap_score = capacity.get("score", 0) if isinstance(capacity, dict) else 0
+        cap_reason = capacity.get("reason", "") if isinstance(capacity, dict) else ""
+
+        with st.container(border=True):
+            col_title, col_score = st.columns([3, 1])
+            with col_title:
+                st.markdown(f"**🟢 推荐 #{i}** {title[:55]}{'…' if len(title) > 55 else ''}")
+                st.caption(f"💰 ${price:.2f} | ⭐ {rating} | 📊 容量 {cap_score}/10")
+            with col_score:
+                verdict_reason = analysis.get("verdict_reason", "")
+                if verdict_reason:
+                    st.caption(verdict_reason[:60])
+
+    # ---- 数据源分布 ----
+    st.divider()
+    st.subheader("📋 数据源分布")
+    source_counts = {}
+    for p in all_products:
+        src = p.get("source", "unknown")
+        source_counts[src] = source_counts.get(src, 0) + 1
+    cols = st.columns(len(source_counts) or 1)
+    for col, (src, count) in zip(cols, source_counts.items()):
+        col.metric(f"{src}", count)
 
 
 # ============================================================
@@ -851,7 +941,9 @@ init_db()
 api_ok, page = render_sidebar(st.session_state.source_info)
 
 # 页面路由
-if "实时选品" in page:
+if "Dashboard" in page:
+    _render_dashboard_page()
+elif "实时选品" in page:
     _render_live_page(api_ok)
 elif "历史记录" in page:
     _render_history_page()

@@ -104,7 +104,7 @@ git push
 - 通过 `.env` 中的 `ACTIVATE_PROVIDER` + `ACTIVATE_MODEL` 切换供应商和模型
 - 侧边栏提供 UI 切换器，用户可在界面上实时切换模型
 - 每个供应商独立配置 `API_KEY` + `BASE_URL`（见 `.env.example`）
-- 默认供应商：DeepSeek（deepseek-v4-flash / deepseek-v4-pro）
+- 默认供应商：DeepSeek（deepseek-v4-flash / mino-v2.5）
 - 分析 Prompt 模板内嵌在 `src/analyzer.py` 的 `SYSTEM_PROMPT` 和 `BATCH_SYSTEM_PROMPT`
 - 批量分析策略：每批 6 个产品，拼接为一次 API 调用
 - 分析任务需长时间执行时，Streamlit 中应显示进度条
