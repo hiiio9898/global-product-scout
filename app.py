@@ -343,9 +343,10 @@ def _render_live_page(api_ok: bool):
                 products, source_info = fetch_amazon_best_sellers()
                 if source_info.get("source") != "live":
                     st.session_state.analyzing = False
-                    st.error("❌ 实时抓取失败")
+                    st.error("❌ 实时抓取失败（Amazon 可能拦截了请求）")
                     st.info(
-                        "💡 请在本机执行 `python daily_scrape.py`，"
+                        "💡 建议使用「📄 分析 JSON 数据」按钮。\n\n"
+                        "如需最新数据，请在本机执行 `python daily_scrape.py`，"
                         "然后将 `data/products.json` 提交并推送到 GitHub。"
                     )
                 else:
