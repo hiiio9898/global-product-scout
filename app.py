@@ -603,13 +603,8 @@ def _render_live_page(api_ok: bool):
                 # ---- 🔍 1688 比价（混合策略：AI 估算 + 真实抓取） ----
                 if st.button("🔍 查看1688参考价", key=f"1688_{i}", use_container_width=True):
                     search_keyword = product_title[:30]
-                    # 获取美元售价
-                    price_usd = 0.0
-                    try:
-                        price_str = product.get("price", "0")
-                        price_usd = float(re.sub(r'[^\d.]', '', str(price_str))) if price_str else 0.0
-                    except (ValueError, TypeError):
-                        price_usd = 0.0
+                    # 获取美元售价（product_price 已在上方提取）
+                    price_usd = float(product_price) if product_price else 0.0
                     with st.spinner(f"正在获取参考价：{search_keyword}..."):
                         result_1688 = search_1688_hybrid(product_title, price_usd)
                     if result_1688["success"]:
