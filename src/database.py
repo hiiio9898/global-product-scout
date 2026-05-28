@@ -66,13 +66,15 @@ def init_db(db_path: Optional[str] = None) -> None:
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(_CREATE_TABLE_SQL)
-        # 兼容：为已有表新增 procurement_cost 字段（如不存在）
-        try:
-            conn.execute(
-                "ALTER TABLE products ADD COLUMN procurement_cost REAL DEFAULT 0.0"
-            )
-        except sqlite3.OperationalError:
-            pass  # 字段已存在，忽略
+        # 兼容：为已有表新增字段（如不存在）
+        for col, default in [
+            ("procurement_cost", "REAL DEFAULT 0.0"),
+            ("asin", "TEXT DEFAULT ''"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE products ADD COLUMN {col} {default}")
+            except sqlite3.OperationalError:
+                pass  # 字段已存在，忽略
         conn.commit()
     finally:
         conn.close()
@@ -117,8 +119,8 @@ def save_products(
                 """
                 INSERT INTO products
                     (title, price, rating, num_reviews, rank, category,
-                     analysis_json, source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     analysis_json, source, asin)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     product.get("title", ""),
@@ -129,6 +131,7 @@ def save_products(
                     product.get("category", ""),
                     analysis_json,
                     source,
+                    product.get("asin", ""),
                 ),
             )
         conn.commit()
@@ -343,6 +346,51 @@ def get_procurement_cost(
     finally:
         conn.close()
     return 0.0
+
+
+def get_trend_data(
+    asin: str = None,
+    title: str = None,
+    db_path: Optional[str] = None,
+) -> list[dict]:
+    """
+    获取单个产品的趋势数据（按时间排序）。
+
+    Args:
+        asin:   产品 ASIN（优先匹配）
+        title:  产品标题（ASIN 为空时回退到标题匹配）
+        db_path: 数据库路径
+
+    Returns:
+        按 scrape_time 升序排列的数据列表。
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+
+    init_db(db_path)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        if asin:
+            rows = conn.execute(
+                "SELECT scrape_time, price, rank, num_reviews, rating "
+                "FROM products WHERE asin = ? ORDER BY scrape_time ASC",
+                (asin,),
+            ).fetchall()
+        elif title:
+            rows = conn.execute(
+                "SELECT scrape_time, price, rank, num_reviews, rating "
+                "FROM products WHERE title = ? ORDER BY scrape_time ASC",
+                (title,),
+            ).fetchall()
+        else:
+            return []
+
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
 
 
 def export_csv(

@@ -31,6 +31,7 @@ from src.database import (
     export_csv,
     save_procurement_cost,
     get_procurement_cost,
+    get_trend_data,
 )
 
 # ============================================================
@@ -477,10 +478,9 @@ def _render_live_page(api_ok: bool):
 # ============================================================
 
 def _render_history_page():
-    """渲染历史记录页面 — 查询、筛选、导出过往分析结果。"""
+    """渲染历史记录页面 — 查询、筛选、导出过往分析结果 + 产品趋势。"""
 
     st.title("📚 历史分析记录")
-    st.markdown("浏览和筛选过往的产品分析记录，支持多条件筛选和 CSV 导出。")
 
     total_count = get_product_count()
     session_count = len(st.session_state.history_data)
@@ -502,8 +502,97 @@ def _render_history_page():
             "并将 `data/products.json` 提交到 GitHub。"
         )
 
-    st.divider()
+    # ---- Tabs ----
+    tab_list, tab_trend = st.tabs(["📚 历史记录", "📈 产品趋势"])
 
+    with tab_list:
+        _render_history_list(total_count)
+
+    with tab_trend:
+        _render_trend_page()
+
+
+def _render_trend_page():
+    """渲染产品趋势页面。"""
+    st.markdown("### 📈 产品趋势分析")
+    st.caption("对比同一产品在不同抓取时间的排名、价格、评论数变化")
+
+    total_count = get_product_count()
+    if total_count == 0:
+        st.info("暂无数据，请先运行分析。")
+        return
+
+    # 获取唯一产品列表
+    products = get_all_products()
+    unique_titles = sorted({p.get("title", "") for p in products if p.get("title")})
+
+    if not unique_titles:
+        st.info("暂无可追踪的产品。")
+        return
+
+    selected_title = st.selectbox(
+        "选择产品",
+        options=unique_titles,
+        format_func=lambda t: t[:60] + "…" if len(t) > 60 else t,
+    )
+
+    if not selected_title:
+        return
+
+    # 获取趋势数据
+    trend_data = get_trend_data(title=selected_title)
+
+    if len(trend_data) < 2:
+        st.warning("该产品仅有一次抓取记录，至少需要两次抓取才能显示趋势。")
+        if trend_data:
+            st.json(dict(trend_data[0]))
+        return
+
+    # 转为 DataFrame
+    df = pd.DataFrame(trend_data)
+    df["scrape_time"] = pd.to_datetime(df["scrape_time"])
+    df["rank"] = pd.to_numeric(df["rank"], errors="coerce")
+    df["price"] = pd.to_numeric(df["price"], errors="coerce")
+    df["num_reviews"] = pd.to_numeric(df["num_reviews"], errors="coerce")
+
+    # 排名变化曲线
+    st.markdown("#### 📊 排名变化")
+    st.line_chart(df.set_index("scrape_time")["rank"])
+
+    # 价格变化曲线
+    st.markdown("#### 💰 价格变化")
+    st.line_chart(df.set_index("scrape_time")["price"])
+
+    # 评论数变化曲线
+    st.markdown("#### 💬 评论数变化")
+    st.line_chart(df.set_index("scrape_time")["num_reviews"])
+
+    # 趋势总结
+    first = trend_data[0]
+    last = trend_data[-1]
+    rank_change = (first.get("rank") or 0) - (last.get("rank") or 0)
+    price_change = (last.get("price") or 0) - (first.get("price") or 0)
+    review_change = (last.get("num_reviews") or 0) - (first.get("num_reviews") or 0)
+
+    st.markdown("#### 📋 趋势总结")
+    c1, c2, c3 = st.columns(3)
+    c1.metric(
+        "排名变化", f"#{last.get('rank', '?')}",
+        delta=f"{'↑' if rank_change > 0 else '↓'} {abs(rank_change)} 位" if rank_change != 0 else "无变化",
+        delta_color="normal" if rank_change > 0 else "inverse",
+    )
+    c2.metric(
+        "价格变化", f"${(last.get('price') or 0):.2f}",
+        delta=f"{'↑' if price_change > 0 else '↓'} ${abs(price_change):.2f}",
+    )
+    c3.metric(
+        "评论数变化", f"{(last.get('num_reviews') or 0):,}",
+        delta=f"{'↑' if review_change > 0 else '↓'} {abs(review_change):,}",
+    )
+
+
+def _render_history_list(total_count: int):
+    """渲染历史记录列表（筛选、排序、导出）。"""
     # ---- 筛选控件 ----
     with st.container(border=True):
         st.markdown("### 🔍 筛选条件")

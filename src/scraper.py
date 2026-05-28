@@ -377,12 +377,16 @@ def _parse_product_card(card, rank: int) -> Optional[dict]:
     if not title:
         return None
 
+    # 解析 ASIN（从 data-asin 属性）
+    asin = card.get("data-asin", "").strip()
+
     price = _extract_price(card)
     rating = _extract_rating(card)
     num_reviews = _extract_review_count(card)
 
     return {
         "title": title,
+        "asin": asin,
         "price": price if price is not None else 0.0,
         "rating": rating if rating is not None else 0.0,
         "num_reviews": num_reviews,
