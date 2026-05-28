@@ -166,3 +166,32 @@ def get_config() -> dict:
             os.path.join(_PROJECT_ROOT, "data", "products.db"),
         ),
     }
+
+
+# ============================================================
+# 利润计算默认参数
+# ============================================================
+
+def get_profit_defaults() -> dict:
+    """
+    返回利润计算的默认参数。
+
+    用户可在侧边栏修改这些值，修改后存入 st.session_state。
+    计算器模块 calculator.py 使用这些参数进行利润计算。
+
+    Returns:
+        {
+            "exchange_rate": float,      # 汇率 CNY/USD
+            "commission_pct": float,     # 亚马逊佣金比例（0-1）
+            "ad_pct": float,             # 广告预算占比（0-1）
+            "shipping_cny": float,       # 头程运费（人民币/件）
+            "procurement_cny": float,    # 采购成本（人民币/件），默认 0（需用户填写）
+        }
+    """
+    return {
+        "exchange_rate": float(_get_secret("PROFIT_EXCHANGE_RATE", "7.24")),
+        "commission_pct": float(_get_secret("PROFIT_COMMISSION_PCT", "0.15")),
+        "ad_pct": float(_get_secret("PROFIT_AD_PCT", "0.10")),
+        "shipping_cny": float(_get_secret("PROFIT_SHIPPING_CNY", "15.0")),
+        "procurement_cny": 0.0,
+    }

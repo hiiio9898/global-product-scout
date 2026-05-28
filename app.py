@@ -19,9 +19,10 @@ import streamlit as st
 import pandas as pd
 import json
 
-from src.config import get_config, get_llm_config, LLM_PROVIDERS
+from src.config import get_config, get_llm_config, get_profit_defaults, LLM_PROVIDERS
 from src.scraper import fetch_amazon_best_sellers
 from src.analyzer import analyze_products
+from src.calculator import calculate_profit
 from src.database import (
     init_db,
     save_products,
@@ -127,6 +128,41 @@ def render_sidebar(source_info: dict | None = None):
             f"💡 在 `.env` 文件中配置 `{api_key_env}`\n"
             f"即可启用 {provider_name} AI 分析。"
         )
+
+    # ---- 💰 利润参数（可配置） ----
+    st.sidebar.divider()
+    with st.sidebar.expander("💰 利润参数（可配置）", expanded=False):
+        profit_defaults = get_profit_defaults()
+
+        exchange_rate = st.number_input(
+            "汇率 (CNY/USD)", min_value=5.0, max_value=10.0,
+            value=float(profit_defaults["exchange_rate"]), step=0.01,
+            help="1 美元兑换多少人民币",
+        )
+        commission_pct = st.slider(
+            "亚马逊佣金比例", min_value=0.0, max_value=0.50,
+            value=float(profit_defaults["commission_pct"]), step=0.01,
+            format="%.0f%%",
+        )
+        ad_pct = st.slider(
+            "广告预算占比", min_value=0.0, max_value=0.50,
+            value=float(profit_defaults["ad_pct"]), step=0.01,
+            format="%.0f%%",
+        )
+        shipping_cny = st.number_input(
+            "头程运费 (¥/件)", min_value=0.0, max_value=200.0,
+            value=float(profit_defaults["shipping_cny"]), step=1.0,
+            help="从国内发到亚马逊仓库的单件运费",
+        )
+
+    # 同步到 session_state 供计算器使用
+    st.session_state["profit_defaults"] = {
+        "exchange_rate": exchange_rate,
+        "commission_pct": commission_pct,
+        "ad_pct": ad_pct,
+        "shipping_cny": shipping_cny,
+        "procurement_cny": 0.0,
+    }
 
     # ---- 数据库状态 ----
     count = get_product_count()
@@ -328,6 +364,60 @@ def _render_live_page(api_ok: bool):
                         reason_val = dim_data.get("reason", "") if isinstance(dim_data, dict) else str(dim_data)
                         st.caption(f"**{label}** ({score_val}/10)")
                         st.text(reason_val)
+
+                # ---- 💰 利润试算 ----
+                st.divider()
+                st.markdown("**💰 利润试算**")
+
+                defaults = st.session_state.get("profit_defaults", get_profit_defaults())
+                product_price = st.session_state.products[i].get("price", 0) or 0
+
+                col_input, col_result = st.columns([1, 2])
+                with col_input:
+                    procurement = st.number_input(
+                        "预估采购成本 (¥/件)",
+                        min_value=0.0, max_value=1000.0, value=0.0, step=1.0,
+                        key=f"procurement_{i}",
+                        help="从 1688 等平台采购的单件成本",
+                    )
+
+                profit_result = calculate_profit(
+                    price_usd=product_price,
+                    defaults=defaults,
+                    procurement_cny=procurement,
+                )
+
+                with col_result:
+                    if profit_result["has_procurement"]:
+                        margin = profit_result["margin_pct"]
+                        if margin >= 30:
+                            margin_delta = "normal"
+                            margin_status = "🟢 利润可观"
+                        elif margin >= 15:
+                            margin_delta = "off"
+                            margin_status = "🟡 利润一般"
+                        else:
+                            margin_delta = "inverse"
+                            margin_status = "🔴 利润微薄"
+
+                        r1, r2, r3 = st.columns(3)
+                        r1.metric(
+                            "净利",
+                            f"¥{profit_result['net_profit_cny']:.2f}",
+                            delta=f"${profit_result['net_profit_usd']:.2f}",
+                        )
+                        r2.metric(
+                            "毛利率",
+                            f"{margin}%",
+                            delta=margin_status,
+                            delta_color=margin_delta,
+                        )
+                        r3.metric(
+                            "总成本",
+                            f"¥{profit_result['total_cost_cny']:.2f}",
+                        )
+                    else:
+                        st.caption("👆 请输入采购成本以计算利润")
 
     # ---- 空闲状态 ----
     elif st.session_state.step == "idle":
