@@ -12,21 +12,19 @@
 - 确认是否需要额外的输入数据（如采购成本、物流费用等）
 
 ### 2. 设计数据结构
-在 `src/analyzer.py` 中扩展 `AnalysisResult` 数据类：
+在 `src/analyzer.py` 中扩展分析结果字典：
 ```python
-@dataclass
-class AnalysisResult:
-    # ...existing fields...
-    new_dimension: str  # 新增字段
+# 在 BATCH_SYSTEM_PROMPT 中新增字段要求
+# 在 _validate_result() 中新增字段验证
+# 在 _mock_analyze() 中新增 mock 逻辑
 ```
-- 更新 `to_dict()` 方法
 - 确保新增字段有默认值，不影响现有逻辑
 
 ### 3. 更新分析 Prompt
-在 `src/analyzer.py`（或 `src/prompts.py`，如已创建）中：
-- 更新 `ANALYSIS_SYSTEM_PROMPT`，在输出 JSON 格式要求中新增字段
+在 `src/analyzer.py` 中：
+- 更新 `BATCH_SYSTEM_PROMPT`（批量分析）和 `SYSTEM_PROMPT`（单产品分析），在输出 JSON 格式要求中新增字段
 - 确保 Prompt 明确描述新维度的计算/评估逻辑
-- 在 mock 分析函数 `_mock_analyze()` 中添加对应逻辑
+- 在 `_mock_analyze()` 中添加对应逻辑
 
 ### 4. 更新前端展示
 在 `app.py` 中：
@@ -36,7 +34,7 @@ class AnalysisResult:
 ### 5. 更新测试
 在 `tests/test_basic.py` 中：
 - 验证新字段在 mock 分析结果中存在
-- 验证 `to_dict()` 包含新字段
+- 验证返回字典包含新字段
 
 ### 6. 验证
 - `python -m py_compile src/analyzer.py` 通过
@@ -54,3 +52,4 @@ class AnalysisResult:
 - 新增字段必须有默认值，确保向后兼容
 - mock 分析应覆盖新维度，保证离线可测试
 - 不修改与当前任务无关的分析逻辑
+- 当前 AI 分析支持多模型切换（DeepSeek / MiMo / OpenAI），新增维度对所有模型生效

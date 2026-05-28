@@ -19,7 +19,7 @@ import streamlit as st
 import pandas as pd
 import json
 
-from src.config import get_config
+from src.config import get_config, get_llm_config, LLM_PROVIDERS
 from src.scraper import fetch_amazon_best_sellers
 from src.analyzer import analyze_products
 from src.database import (
@@ -81,24 +81,58 @@ def render_sidebar(source_info: dict | None = None):
             if ts:
                 st.sidebar.caption(f"⏰ {ts}")
 
-    # ---- API 配置状态 ----
-    cfg = get_config()
-    api_ok = bool(cfg["deepseek_api_key"])
+    # ---- AI 模型选择器 ----
+    llm_cfg = get_llm_config()
     st.sidebar.divider()
-    st.sidebar.caption(
-        f"DeepSeek API: {'✅ 已配置' if api_ok else '⚠️ 未配置（使用模拟分析）'}"
+    st.sidebar.subheader("🤖 AI 模型")
+
+    # 供应商选择
+    provider_names = {k: v["name"] for k, v in LLM_PROVIDERS.items()}
+    provider_keys = list(LLM_PROVIDERS.keys())
+    current_provider_idx = provider_keys.index(llm_cfg["provider"]) if llm_cfg["provider"] in provider_keys else 0
+
+    selected_provider = st.sidebar.selectbox(
+        "AI 供应商",
+        options=provider_keys,
+        format_func=lambda k: provider_names[k],
+        index=current_provider_idx,
+        key="llm_provider_select",
     )
-    if not api_ok:
+
+    # 模型选择（根据供应商动态更新）
+    available_models = LLM_PROVIDERS[selected_provider]["models"]
+    current_model = llm_cfg["model"] if llm_cfg["model"] in available_models else available_models[0]
+    selected_model = st.sidebar.selectbox(
+        "模型",
+        options=available_models,
+        index=available_models.index(current_model),
+        key="llm_model_select",
+    )
+
+    # 供应商切换后更新 session_state 并 rerun
+    if selected_provider != llm_cfg["provider"] or selected_model != llm_cfg["model"]:
+        st.session_state["llm_provider"] = selected_provider
+        st.session_state["llm_model"] = selected_model
+        st.rerun()
+
+    # API 配置状态显示
+    provider_name = LLM_PROVIDERS[llm_cfg["provider"]]["name"]
+    model_name = llm_cfg["model"]
+    if llm_cfg["configured"]:
+        st.sidebar.caption(f"✅ {provider_name} {model_name}")
+    else:
+        st.sidebar.caption(f"⚠️ {provider_name} 未配置（使用模拟分析）")
+        api_key_env = LLM_PROVIDERS[llm_cfg["provider"]]["api_key_key"]
         st.sidebar.info(
-            "💡 在 `.env` 文件中设置 `DEEPSEEK_API_KEY`\n"
-            "即可启用真实 AI 分析，分析质量更精准！"
+            f"💡 在 `.env` 文件中配置 `{api_key_env}`\n"
+            f"即可启用 {provider_name} AI 分析。"
         )
 
     # ---- 数据库状态 ----
     count = get_product_count()
     st.sidebar.caption(f"📦 历史记录：{count} 条产品数据")
 
-    return api_ok, page
+    return llm_cfg["configured"], page
 
 
 # ============================================================
@@ -188,13 +222,17 @@ def _render_live_page(api_ok: bool):
                 st.session_state.history_data.append(record)
 
             if not api_ok:
+                llm_info = get_llm_config()
+                provider_name = llm_info["provider_name"]
+                api_key_env = LLM_PROVIDERS[llm_info["provider"]]["api_key_key"]
                 st.info(
-                    "💡 **提示：** 当前使用的是本地模拟分析引擎。\n\n"
-                    "想获得更精准的 AI 分析？只需在项目根目录的 `.env` 文件中配置 "
-                    "`DEEPSEEK_API_KEY=你的Key`，就能解锁 DeepSeek 真实 AI 分析能力！"
+                    f"💡 **提示：** 当前使用的是本地模拟分析引擎。\n\n"
+                    f"想获得更精准的 AI 分析？只需在项目根目录的 `.env` 文件中配置 "
+                    f"`{api_key_env}=你的Key`，就能解锁 {provider_name} AI 分析能力！"
                 )
             else:
-                st.success("✅ 分析完成！DeepSeek AI 已为你深度评估每个产品的选品潜力。")
+                llm_info = get_llm_config()
+                st.success(f"✅ 分析完成！{llm_info['provider_name']} AI 已为你深度评估每个产品的选品潜力。")
 
             st.session_state.analyzing = False
             st.rerun()

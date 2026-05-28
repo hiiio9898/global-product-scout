@@ -1,12 +1,12 @@
 """
-分析模块 — 调用 DeepSeek API 进行五维度选品评估。
+分析模块 — 调用 AI API 进行五维度选品评估。
 
 角色定位：资深跨境电商选品顾问。
 分析维度：市场容量、竞争程度、利润潜力、新手友好度、季节性风险。
 每个维度 1-10 分 + 解释，最终给出推荐/谨慎/不推荐 verdict。
 
-使用 OpenAI SDK 兼容模式调用 DeepSeek（base_url="https://api.deepseek.com"）。
-API Key 未配置时自动降级为本地模拟分析，结构完全一致。
+支持多模型供应商（DeepSeek、MiMo、OpenAI 等），
+通过 OpenAI SDK 兼容模式调用，API Key 未配置时自动降级为本地模拟分析。
 JSON 解析失败时回退为纯文本展示。
 """
 
@@ -14,7 +14,7 @@ import json
 import time
 from openai import OpenAI
 
-from .config import get_config
+from .config import get_llm_config
 
 # ============================================================
 # 系统 Prompt — 资深跨境电商选品顾问
@@ -357,13 +357,13 @@ def _parse_batch_response(content: str, batch_products: list[dict]) -> list[dict
     return results
 
 
-def _analyze_batch(batch: list[dict], client, cfg: dict) -> list[dict]:
-    """调用 DeepSeek API 分析一批产品。"""
+def _analyze_batch(batch: list[dict], client, llm_cfg: dict) -> list[dict]:
+    """调用 LLM API 分析一批产品。"""
     prompt = _build_batch_prompt(batch)
     for attempt in range(2):
         try:
             resp = client.chat.completions.create(
-                model=cfg["deepseek_model"],
+                model=llm_cfg["model"],
                 messages=[
                     {"role": "system", "content": BATCH_SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
@@ -390,8 +390,11 @@ def analyze_products(
     """
     批量分析产品 — 五维度量化评估。
 
-    将产品分组（每批 6 个），每组一次 DeepSeek API 调用，
+    将产品分组（每批 6 个），每组一次 LLM API 调用，
     大幅减少串行等待时间。支持进度回调以驱动前端进度条。
+
+    支持多模型供应商（DeepSeek / MiMo / OpenAI 等），
+    通过 get_llm_config() 读取当前激活的供应商配置。
 
     Args:
         products: 产品字典列表
@@ -400,8 +403,8 @@ def analyze_products(
     Returns:
         list[dict]: 每个产品的分析结果
     """
-    cfg = get_config()
-    api_key = cfg["deepseek_api_key"]
+    llm_cfg = get_llm_config()
+    api_key = llm_cfg["api_key"]
     total = len(products)
 
     # 无 API Key → 全部模拟（仍支持进度回调）
@@ -413,13 +416,17 @@ def analyze_products(
                 progress_callback(i + 1, total)
         return results
 
-    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com", timeout=120)
+    client = OpenAI(
+        api_key=api_key,
+        base_url=llm_cfg["base_url"],
+        timeout=120,
+    )
     BATCH_SIZE = 6
     results = []
 
     for batch_start in range(0, total, BATCH_SIZE):
         batch = products[batch_start:batch_start + BATCH_SIZE]
-        batch_results = _analyze_batch(batch, client, cfg)
+        batch_results = _analyze_batch(batch, client, llm_cfg)
         results.extend(batch_results)
 
         if progress_callback:

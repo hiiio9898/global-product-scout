@@ -5,8 +5,8 @@
 ## 1. 项目定位
 - 项目名称：Global Product Scout（全球产品侦察兵）
 - 目标用户：跨境电商卖家、外贸创业者
-- 核心功能：自动抓取多平台（亚马逊、速卖通等）热销/飙升产品数据，通过 DeepSeek 大模型分析产品潜力，提供选品建议。
-- 技术栈：Python 3.10+、Streamlit（前端）、DeepSeek API（AI 分析）、Requests/BeautifulSoup（数据抓取）
+- 核心功能：自动抓取多平台（亚马逊、速卖通等）热销/飙升产品数据，通过多模型 AI 分析产品潜力，提供选品建议。
+- 技术栈：Python 3.10+、Streamlit（前端）、OpenAI SDK 兼容 API（多模型 AI 分析）、Requests/BeautifulSoup（数据抓取）
 
 ## 2. 硬规则
 - 不执行 `git commit`、`git push` 或任何远端操作，除非用户明确要求。
@@ -14,7 +14,7 @@
 - 代码注释和文档使用中文，变量名、函数名使用英文。
 - 新增功能必须同步更新 `.env.example` 文件。
 - 抓取数据需遵守目标网站 robots.txt，并设置合理延迟，避免被封。
-- DeepSeek 调用必须包含超时、重试和错误提示逻辑。
+- AI 分析调用必须包含超时、重试和错误提示逻辑（支持任意 OpenAI SDK 兼容供应商）。
 - 不做与当前任务无关的重构或"顺手优化"。
 
 ## 3. 目录结构
@@ -35,7 +35,7 @@
 │   ├── __init__.py
 │   ├── config.py           # 配置加载（st.secrets + .env 双源）
 │   ├── scraper.py          # 数据抓取模块
-│   ├── analyzer.py         # DeepSeek 分析模块
+│   ├── analyzer.py         # AI 分析模块（多模型支持）
 │   ├── database.py         # SQLite 数据库模块
 │   └── utils.py            # 工具函数
 ├── tests/
@@ -99,11 +99,15 @@ git push
 - 必须设置 User-Agent 和 Request 间延迟（1-2 秒）。
 - 如果网站结构变动导致抓取失败，应向用户提示，并降级为展示旧数据或示例数据。
 
-## 8. DeepSeek 集成
-- 使用 OpenAI SDK 兼容模式调用 DeepSeek（base_url="https://api.deepseek.com"）
-- 默认模型：deepseek-v4-flash/deepseek-v4-pro（后续要具备兼容更多模型能力）
-- 分析 Prompt 模板存放在 `src/prompts.py` 中（后续添加），现在可内嵌在 analyzer.py 内。
-- 分析任务需异步或长时间执行时，Streamlit 中应显示进度条。
+## 8. AI 多模型集成
+- 使用 OpenAI SDK 兼容模式，支持任意供应商（DeepSeek、MiMo、OpenAI 等）
+- 通过 `.env` 中的 `ACTIVATE_PROVIDER` + `ACTIVATE_MODEL` 切换供应商和模型
+- 侧边栏提供 UI 切换器，用户可在界面上实时切换模型
+- 每个供应商独立配置 `API_KEY` + `BASE_URL`（见 `.env.example`）
+- 默认供应商：DeepSeek（deepseek-v4-flash / deepseek-v4-pro）
+- 分析 Prompt 模板内嵌在 `src/analyzer.py` 的 `SYSTEM_PROMPT` 和 `BATCH_SYSTEM_PROMPT`
+- 批量分析策略：每批 6 个产品，拼接为一次 API 调用
+- 分析任务需长时间执行时，Streamlit 中应显示进度条
 
 ## 9. Git 推送规范
 
