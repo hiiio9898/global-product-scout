@@ -106,16 +106,23 @@ def render_sidebar(source_info: dict | None = None):
     )
 
     # 模型选择（根据供应商动态更新）
+    # 关键：切换供应商后，如果旧 model 不在新列表中，自动选第一个
     available_models = LLM_PROVIDERS[selected_provider]["models"]
-    current_model = llm_cfg["model"] if llm_cfg["model"] in available_models else available_models[0]
+    old_model = st.session_state.get("llm_model", "")
+    if old_model in available_models:
+        model_index = available_models.index(old_model)
+    else:
+        model_index = 0  # 供应商切换后，重置为第一个模型
+        st.session_state["llm_model"] = available_models[0]
+
     selected_model = st.sidebar.selectbox(
         "模型",
         options=available_models,
-        index=available_models.index(current_model),
+        index=model_index,
         key="llm_model_select",
     )
 
-    # 供应商切换后更新 session_state 并 rerun
+    # 供应商或模型切换后更新 session_state 并 rerun
     if selected_provider != llm_cfg["provider"] or selected_model != llm_cfg["model"]:
         st.session_state["llm_provider"] = selected_provider
         st.session_state["llm_model"] = selected_model
