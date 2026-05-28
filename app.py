@@ -260,12 +260,12 @@ def _render_dashboard_page():
         with st.container(border=True):
             col_title, col_score = st.columns([3, 1])
             with col_title:
-                st.markdown(f"**🟢 推荐 #{i}** {title[:55]}{'…' if len(title) > 55 else ''}")
+                st.markdown(f"**🟢 推荐 #{i}** {title}")
                 st.caption(f"💰 ${price:.2f} | ⭐ {rating} | 📊 容量 {cap_score}/10")
             with col_score:
                 verdict_reason = analysis.get("verdict_reason", "")
                 if verdict_reason:
-                    st.caption(verdict_reason[:60])
+                    st.caption(verdict_reason)
 
     # ---- 数据源分布 ----
     st.divider()
@@ -471,11 +471,11 @@ def _render_live_page(api_ok: bool):
             is_raw = r.get("parse_error", False)
             title_text = r.get("title", f"产品 #{i+1}")
             expander_label = (
-                f"⚠️ 解析异常 #{i+1} {title_text[:50]}…"
-                if is_raw else f"{verdict_label} #{i+1} {title_text[:55]}…"
+                f"⚠️ 解析异常 #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}"
+                if is_raw else f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}"
             )
 
-            with st.expander(expander_label, expanded=(i == 0)):
+            with st.expander(expander_label, expanded=(i == 0), help=title_text):
                 if is_raw:
                     st.warning("⚠️ AI 返回格式异常，以下为原始文本：")
                     st.text_area("原始响应", value=r.get("raw_text", ""), height=200,
@@ -506,8 +506,9 @@ def _render_live_page(api_ok: bool):
                         dc = "inverse" if key in ("competition", "seasonality_risk") else "normal"
                         st.metric(
                             label=label, value=f"{score_val}/10",
-                            delta=reason_val[:40] + ("…" if len(reason_val) > 40 else ""),
+                            delta=reason_val,
                             delta_color=dc,
+                            help=reason_val,
                         )
 
                 with st.expander("📝 查看详细分析文本", expanded=False):
@@ -620,14 +621,14 @@ def _render_live_page(api_ok: bool):
                             f"{source_label}：¥{pr['min']:.2f} ~ ¥{pr['max']:.2f}"
                         )
                         for item in result_1688["results"]:
-                            title = item.get('title', '')[:50]
+                            title_1688 = item.get('title', '')
                             price = item.get('price', 0)
                             moq = item.get('moq', '')
                             price_max = item.get('price_max', None)
                             if price_max:
-                                st.caption(f"  • {title} — ¥{price:.2f} ~ ¥{price_max:.2f} | {moq}")
+                                st.caption(f"  • {title_1688} — ¥{price:.2f} ~ ¥{price_max:.2f} | {moq}")
                             else:
-                                st.caption(f"  • {title} — ¥{price:.2f} {moq}")
+                                st.caption(f"  • {title_1688} — ¥{price:.2f} {moq}")
                         # 如果是真实价格 + 有 AI 估算，显示对比
                         if source == "1688_real" and result_1688.get("ai_estimate"):
                             ai_pr = result_1688["ai_estimate"]
@@ -877,7 +878,7 @@ def _render_targeted_page(api_ok: bool):
                         reason = rec.get("reason", "")
 
                         st.markdown(f"### 🥇 #{rank}")
-                        st.markdown(f"**{title[:60]}{'…' if len(title) > 60 else ''}**")
+                        st.markdown(f"**{title}**")
                         st.metric("综合评分", f"{score}/10")
                         st.caption(reason)
 
@@ -970,7 +971,7 @@ def _render_targeted_page(api_ok: bool):
                 verdict_label = verdict_label_map.get(verdict, "⚪ 未知")
                 title_text = r.get("title", f"产品 #{i+1}")
 
-                with st.expander(f"{verdict_label} #{i+1} {title_text[:55]}…", expanded=False):
+                with st.expander(f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}", expanded=False, help=title_text):
                     verdict_reason = r.get("verdict_reason", "")
                     if verdict == "recommended":
                         st.success(f"✅ **推荐入手** — {verdict_reason}")
@@ -995,8 +996,9 @@ def _render_targeted_page(api_ok: bool):
                             dc = "inverse" if key in ("competition", "seasonality_risk") else "normal"
                             st.metric(
                                 label=label, value=f"{score_val}/10",
-                                delta=reason_val[:40] + ("…" if len(reason_val) > 40 else ""),
+                                delta=reason_val,
                                 delta_color=dc,
+                                help=reason_val,
                             )
 
         # ---- 重新搜索按钮 ----
@@ -1081,7 +1083,8 @@ def _render_trend_page():
     selected_title = st.selectbox(
         "选择产品",
         options=unique_titles,
-        format_func=lambda t: t[:60] + "…" if len(t) > 60 else t,
+        format_func=lambda t: t[:50] + "…" if len(t) > 50 else t,
+        help="选择一个产品查看其历史趋势变化",
     )
 
     if not selected_title:
@@ -1251,7 +1254,7 @@ def _render_history_list(total_count: int):
     for p in products:
         analysis = p.get("analysis", {})
         table_data.append({
-            "标题": (p.get("title", "") or "")[:60],
+            "标题": p.get("title", "") or "",
             "价格(USD)": p.get("price", ""),
             "评分": p.get("rating", ""),
             "排名": p.get("rank", ""),
@@ -1278,7 +1281,8 @@ def _render_history_list(total_count: int):
         selected_idx = st.selectbox(
             "选择产品",
             options=range(len(products)),
-            format_func=lambda i: f"#{i+1} {(products[i].get('title', '') or '')[:60]}",
+            format_func=lambda i: f"#{i+1} {(products[i].get('title', '') or '')[:50]}{'…' if len((products[i].get('title', '') or '')) > 50 else ''}",
+            help="选择产品查看详情分析",
         )
         if selected_idx is not None:
             st.json(products[selected_idx].get("analysis", {}))

@@ -16,6 +16,7 @@
 - 抓取数据需遵守目标网站 robots.txt，并设置合理延迟，避免被封。
 - AI 分析调用必须包含超时、重试和错误提示逻辑（支持任意 OpenAI SDK 兼容供应商）。
 - 不做与当前任务无关的重构或"顺手优化"。
+- **内容展示禁止截断**：所有面向用户展示的文本必须完整可见。详见 `docs/specs/0-content-display-rule.md`。允许的例外：expander 标题（`[:40]` + `help=`）、selectbox 选项（`[:50]` + `help=`）、API 参数（`[:30]`）。DataFrame 用 `column_config` 控制宽度，不用字符串截断。
 
 ## 3. 目录结构
 ```
