@@ -18,7 +18,7 @@ import streamlit as st
 import pandas as pd
 import json
 
-from src.config import get_config, get_llm_config, get_profit_defaults, LLM_PROVIDERS
+from src.config import get_config, get_llm_config, get_profit_defaults, LLM_PROVIDERS, _get_secret
 from src.scraper import fetch_amazon_best_sellers
 from src.analyzer import analyze_products
 from src.calculator import calculate_profit
@@ -125,20 +125,18 @@ def render_sidebar(source_info: dict | None = None):
     st.session_state["llm_provider"] = selected_provider
     st.session_state["llm_model"] = selected_model
 
-    # API 配置状态显示（使用 UI 选择的供应商）
+    # API 配置状态显示（直接读取所选供应商的 Key，避免 session_state 时序问题）
     provider_info = LLM_PROVIDERS[selected_provider]
     provider_name = provider_info["name"]
-    provider_api_key = llm_cfg["api_key"] if llm_cfg["provider"] == selected_provider else ""
-    if not provider_api_key:
-        # 跨供应商时，重新读取目标 API Key
-        provider_api_key = get_llm_config()["api_key"]
+    # 直接从 st.secrets / .env 读取所选供应商的 API Key
+    provider_api_key = _get_secret(provider_info["api_key_key"], "")
     if provider_api_key:
         st.sidebar.caption(f"✅ {provider_name} {selected_model}")
     else:
         st.sidebar.caption(f"⚠️ {provider_name} 未配置（使用模拟分析）")
         st.sidebar.info(
-            f"💡 在 `.env` 文件中配置 `{provider_info['api_key_key']}`\n"
-            f"即可启用 {provider_name} AI 分析。"
+            f"💡 在 **Streamlit Secrets**（云端）或 `.env` 文件（本地）中\n"
+            f"配置 `{provider_info['api_key_key']}` 即可启用 {provider_name} AI 分析。"
         )
 
     # ---- 💰 利润参数（可配置） ----
