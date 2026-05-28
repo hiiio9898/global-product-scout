@@ -39,8 +39,8 @@ daily_scrape.py     独立定时抓取脚本（CLI 运行，导出 products.json
 **配置方式**（`.env.example` + `src/config.py`）：
 ```bash
 # 激活哪个供应商和模型
-ACTIVATE_PROVIDER=deepseek        # deepseek / mimo / openai
-ACTIVATE_MODEL=deepseek-v4-flash  # 对应供应商下的具体模型名
+ACTIVATE_PROVIDER=mimo             # deepseek / mimo / openai
+ACTIVATE_MODEL=mimo-v2.5           # 对应供应商下的具体模型名
 
 # 各供应商独立配置
 DEEPSEEK_API_KEY=sk-xxx

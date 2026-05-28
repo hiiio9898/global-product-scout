@@ -92,7 +92,7 @@ def get_llm_config() -> dict:
         }
     """
     # 1. 读取供应商
-    provider = _get_secret("ACTIVATE_PROVIDER", "deepseek")
+    provider = _get_secret("ACTIVATE_PROVIDER", "mimo")
     if provider not in LLM_PROVIDERS:
         provider = "deepseek"
 
