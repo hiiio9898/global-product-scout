@@ -245,8 +245,14 @@ def _render_dashboard_page():
     for i, p in enumerate(top5, 1):
         analysis = p.get("analysis", {})
         title = p.get("title", f"产品 #{i}")
-        price = p.get("price", 0)
-        rating = p.get("rating", 0)
+        try:
+            price = float(p.get("price", 0) or 0)
+        except (ValueError, TypeError):
+            price = 0.0
+        try:
+            rating = float(p.get("rating", 0) or 0)
+        except (ValueError, TypeError):
+            rating = 0.0
         capacity = analysis.get("market_capacity", {})
         cap_score = capacity.get("score", 0) if isinstance(capacity, dict) else 0
         cap_reason = capacity.get("reason", "") if isinstance(capacity, dict) else ""
