@@ -1,22 +1,24 @@
 """
-1688 比价模块 — 搜索 1688 获取参考采购价。
+1688 比价模块 — 混合策略获取参考采购价。
 
-反爬风险较高（JS 动态渲染 + IP 限制），
-采用"尝试 → 失败降级"策略：
-    1. 使用 requests 尝试抓取搜索结果
-    2. 失败时返回友好提示，不影响主流程
+策略优先级：
+    1. AI 估算参考价（秒返回，永不失败）
+    2. 尝试抓取 1688 真实价格（可能被反爬拦截）
+    3. 失败时返回 AI 估算结果 + 手动搜索链接
 
 用法：
     from src.scraper_1688 import search_1688
     result = search_1688("water bottle")
 """
 
+import json
 import re
 import time
 from typing import Optional
 
 import requests
 from bs4 import BeautifulSoup
+from openai import OpenAI
 
 # 请求间隔（秒），避免触发 1688 反爬
 _REQUEST_DELAY = 3
@@ -209,3 +211,212 @@ def _extract_price(text: str) -> Optional[float]:
         except ValueError:
             pass
     return None
+
+
+# ============================================================
+# AI 估算参考价 — 使用 LLM 给出合理采购价区间
+# ============================================================
+
+_PRICE_ESTIMATE_PROMPT = """你是一位资深跨境采购专家，熟悉 1688.com 上的批发价格。
+
+请根据以下产品信息，估算该产品在 1688 上的合理批发采购价区间（人民币）。
+
+产品标题：{title}
+售价：${price_usd}
+
+请考虑：
+1. 产品类型和材质（塑料/不锈钢/电子等）
+2. 亚马逊售价与 1688 采购价的典型倍率（通常 3-8 倍）
+3. 起订量（MOQ）通常为 2-50 件，量大价格更低
+
+只返回 JSON，不要其他文字：
+{{
+  "price_min": 最低批发价（人民币），
+  "price_max": 最高批发价（人民币），
+  "confidence": "high/medium/low"，
+  "reason": "一句话说明估算依据（30字内）"
+}}"""
+
+
+def estimate_1688_price(title: str, price_usd: float = 0.0) -> dict:
+    """
+    使用 AI 估算产品在 1688 上的参考采购价。
+
+    Args:
+        title:     产品标题
+        price_usd: 产品在亚马逊上的美元售价
+
+    Returns:
+        与 search_1688 相同格式的结果字典
+    """
+    # 导入放在函数内，避免循环依赖
+    from .config import get_llm_config
+
+    # 获取当前 LLM 配置
+    llm_config = get_llm_config()
+
+    if not llm_config.get("configured") or not llm_config.get("api_key"):
+        # API 未配置，使用本地估算规则
+        return _local_estimate(title, price_usd)
+
+    try:
+        client = OpenAI(
+            api_key=llm_config["api_key"],
+            base_url=llm_config.get("base_url") or None,
+            timeout=15,
+        )
+
+        prompt = _PRICE_ESTIMATE_PROMPT.format(
+            title=title[:80],
+            price_usd=price_usd,
+        )
+
+        response = client.chat.completions.create(
+            model=llm_config["model"],
+            messages=[
+                {"role": "system", "content": "你是跨境采购价格估算专家。只返回JSON。"},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+            max_tokens=200,
+        )
+
+        content = response.choices[0].message.content.strip()
+        # 清理 markdown 代码块包裹
+        if content.startswith("```"):
+            content = re.sub(r'^```\w*\n?', '', content)
+            content = re.sub(r'\n?```$', '', content)
+            content = content.strip()
+
+        data = json.loads(content)
+
+        price_min = float(data.get("price_min", 0))
+        price_max = float(data.get("price_max", 0))
+        confidence = data.get("confidence", "medium")
+        reason = data.get("reason", "")
+
+        if price_min > price_max:
+            price_min, price_max = price_max, price_min
+
+        return {
+            "success": True,
+            "keyword": title[:30],
+            "source": "ai_estimate",
+            "confidence": confidence,
+            "results": [
+                {
+                    "title": f"AI 估算参考价（{confidence}）",
+                    "price": price_min,
+                    "price_max": price_max,
+                    "moq": reason,
+                }
+            ],
+            "price_range": {
+                "min": round(price_min, 2),
+                "max": round(price_max, 2),
+            },
+            "error": None,
+        }
+
+    except Exception:
+        # AI 估算失败，使用本地规则
+        return _local_estimate(title, price_usd)
+
+
+def _local_estimate(title: str, price_usd: float) -> dict:
+    """
+    本地规则估算 1688 参考价（无需 API 调用）。
+
+    基于产品类型和亚马逊售价，使用典型倍率估算。
+    常见倍率：售价 / 采购价 = 3~8 倍。
+    """
+    # 默认倍率 5 倍
+    multiplier = 5.0
+    title_lower = title.lower()
+
+    # 根据产品类型调整倍率
+    # 电子产品倍率高（8-10倍），日用品倍率低（3-5倍）
+    if any(kw in title_lower for kw in ["cable", "charger", "earbuds", "speaker", "electronic", "led", "usb"]):
+        multiplier = 8.0
+    elif any(kw in title_lower for kw in ["phone", "tablet", "monitor", "camera"]):
+        multiplier = 7.0
+    elif any(kw in title_lower for kw in ["bottle", "cup", "container", " organizer", "holder", "hanger"]):
+        multiplier = 4.0
+    elif any(kw in title_lower for kw in ["bag", "case", "cover", "pouch"]):
+        multiplier = 4.5
+    elif any(kw in title_lower for kw in ["toy", "game", "puzzle"]):
+        multiplier = 5.5
+    elif any(kw in title_lower for kw in ["shoe", "boot", "sock"]):
+        multiplier = 5.0
+    elif any(kw in title_lower for kw in ["dress", "shirt", "jacket", "coat"]):
+        multiplier = 5.0
+    elif any(kw in title_lower for kw in ["tool", "drill", "wrench"]):
+        multiplier = 6.0
+
+    # USD 转 CNY（按 7.2 汇率）
+    usd_to_cny = 7.2
+
+    if price_usd and price_usd > 0:
+        # 亚马逊售价转为人民币后除以倍率
+        retail_cny = price_usd * usd_to_cny
+        est_min = retail_cny / (multiplier * 1.3)  # 量大价更低
+        est_max = retail_cny / (multiplier * 0.8)   # 量少价更高
+    else:
+        # 无售价信息，给一个宽泛区间
+        est_min = 5.0
+        est_max = 50.0
+
+    return {
+        "success": True,
+        "keyword": title[:30],
+        "source": "local_estimate",
+        "confidence": "low",
+        "results": [
+            {
+                "title": "本地规则估算（仅供参考）",
+                "price": round(est_min, 2),
+                "price_max": round(est_max, 2),
+                "moq": f"基于 {multiplier:.0f} 倍率估算，汇率 {usd_to_cny}",
+            }
+        ],
+        "price_range": {
+            "min": round(est_min, 2),
+            "max": round(est_max, 2),
+        },
+        "error": None,
+    }
+
+
+# ============================================================
+# 混合策略入口 — AI 估算 + 1688 真实价格
+# ============================================================
+
+def search_1688_hybrid(title: str, price_usd: float = 0.0) -> dict:
+    """
+    混合策略获取 1688 参考价：
+    1. 立即返回 AI 估算结果
+    2. 尝试抓取 1688 真实价格（成功则替换估算）
+
+    Args:
+        title:     产品标题
+        price_usd: 亚马逊美元售价
+
+    Returns:
+        与 search_1688 相同格式的结果字典
+    """
+    # 第一步：AI 估算（快速返回）
+    keyword = title[:30].strip()
+    ai_result = estimate_1688_price(title, price_usd)
+
+    # 第二步：尝试真实抓取
+    real_result = search_1688(keyword)
+
+    if real_result["success"]:
+        # 真实抓取成功，合并结果
+        real_result["source"] = "1688_real"
+        real_result["ai_estimate"] = ai_result.get("price_range")
+        return real_result
+    else:
+        # 真实抓取失败，使用 AI 估算
+        ai_result["fallback_reason"] = "1688 页面为 JS 动态渲染，已使用 AI 估算参考价"
+        return ai_result
