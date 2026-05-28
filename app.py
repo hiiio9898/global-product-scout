@@ -134,9 +134,20 @@ def render_sidebar(source_info: dict | None = None):
         st.sidebar.caption(f"✅ {provider_name} {selected_model}")
     else:
         st.sidebar.caption(f"⚠️ {provider_name} 未配置（使用模拟分析）")
+        # 诊断：显示 st.secrets 中可用的 API Key 名称（不显示值）
+        available_keys = []
+        try:
+            import streamlit as _st
+            if hasattr(_st, "secrets") and _st.secrets:
+                all_keys = list(_st.secrets.keys()) if hasattr(_st.secrets, "keys") else []
+                api_related = [k for k in all_keys if "API_KEY" in k.upper() or "BASE_URL" in k.upper()]
+                available_keys = api_related if api_related else ["（未找到 API_KEY 相关配置）"]
+        except Exception:
+            available_keys = ["（无法读取 st.secrets）"]
         st.sidebar.info(
             f"💡 在 **Streamlit Secrets**（云端）或 `.env` 文件（本地）中\n"
-            f"配置 `{provider_info['api_key_key']}` 即可启用 {provider_name} AI 分析。"
+            f"配置 `{provider_info['api_key_key']}` 即可启用 {provider_name} AI 分析。\n\n"
+            f"🔍 已检测到的 Secrets Key：`{', '.join(available_keys)}`"
         )
 
     # ---- 💰 利润参数（可配置） ----
@@ -743,27 +754,34 @@ def _render_trend_page():
     st.markdown("#### 💬 评论数变化")
     st.line_chart(df.set_index("scrape_time")["num_reviews"])
 
-    # 趋势总结
+    # 趋势总结（数值从 SQLite 返回为字符串，需转换为数字）
     first = trend_data[0]
     last = trend_data[-1]
-    rank_change = (first.get("rank") or 0) - (last.get("rank") or 0)
-    price_change = (last.get("price") or 0) - (first.get("price") or 0)
-    review_change = (last.get("num_reviews") or 0) - (first.get("num_reviews") or 0)
+    first_rank = float(first.get("rank") or 0)
+    last_rank = float(last.get("rank") or 0)
+    first_price = float(first.get("price") or 0)
+    last_price = float(last.get("price") or 0)
+    first_reviews = float(first.get("num_reviews") or 0)
+    last_reviews = float(last.get("num_reviews") or 0)
+
+    rank_change = first_rank - last_rank
+    price_change = last_price - first_price
+    review_change = last_reviews - first_reviews
 
     st.markdown("#### 📋 趋势总结")
     c1, c2, c3 = st.columns(3)
     c1.metric(
-        "排名变化", f"#{last.get('rank', '?')}",
-        delta=f"{'↑' if rank_change > 0 else '↓'} {abs(rank_change)} 位" if rank_change != 0 else "无变化",
+        "排名变化", f"#{int(last_rank)}",
+        delta=f"{'↑' if rank_change > 0 else '↓'} {abs(int(rank_change))} 位" if rank_change != 0 else "无变化",
         delta_color="normal" if rank_change > 0 else "inverse",
     )
     c2.metric(
-        "价格变化", f"${(last.get('price') or 0):.2f}",
+        "价格变化", f"${last_price:.2f}",
         delta=f"{'↑' if price_change > 0 else '↓'} ${abs(price_change):.2f}",
     )
     c3.metric(
-        "评论数变化", f"{(last.get('num_reviews') or 0):,}",
-        delta=f"{'↑' if review_change > 0 else '↓'} {abs(review_change):,}",
+        "评论数变化", f"{int(last_reviews):,}",
+        delta=f"{'↑' if review_change > 0 else '↓'} {abs(int(review_change)):,}",
     )
 
 
