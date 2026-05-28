@@ -263,7 +263,7 @@ def estimate_1688_price(title: str, price_usd: float = 0.0) -> dict:
         client = OpenAI(
             api_key=llm_config["api_key"],
             base_url=llm_config.get("base_url") or None,
-            timeout=15,
+            timeout=60,
         )
 
         prompt = _PRICE_ESTIMATE_PROMPT.format(
@@ -278,10 +278,32 @@ def estimate_1688_price(title: str, price_usd: float = 0.0) -> dict:
                 {"role": "user", "content": prompt},
             ],
             temperature=0.3,
-            max_tokens=200,
+            max_tokens=2000,
         )
 
-        content = response.choices[0].message.content.strip()
+        content = response.choices[0].message.content or ""
+        if not content.strip() and hasattr(response.choices[0].message, "reasoning_content"):
+            reasoning = response.choices[0].message.reasoning_content or ""
+            # 从推理内容中提取 JSON
+            last_brace = reasoning.rfind("}")
+            if last_brace != -1:
+                depth = 0
+                start = last_brace
+                for idx in range(last_brace, -1, -1):
+                    if reasoning[idx] == "}":
+                        depth += 1
+                    elif reasoning[idx] == "{":
+                        depth -= 1
+                    if depth == 0:
+                        start = idx
+                        break
+                if depth == 0:
+                    try:
+                        json.loads(reasoning[start:last_brace + 1])
+                        content = reasoning[start:last_brace + 1]
+                    except json.JSONDecodeError:
+                        pass
+        content = content.strip()
         # 清理 markdown 代码块包裹
         if content.startswith("```"):
             content = re.sub(r'^```\w*\n?', '', content)
@@ -394,8 +416,7 @@ def _local_estimate(title: str, price_usd: float) -> dict:
 def search_1688_hybrid(title: str, price_usd: float = 0.0) -> dict:
     """
     混合策略获取 1688 参考价：
-    1. 立即返回 AI 估算结果
-    2. 尝试抓取 1688 真实价格（成功则替换估算）
+    优先使用 AI 估算（1688 为 JS 动态渲染，requests 无法抓取）。
 
     Args:
         title:     产品标题
@@ -404,19 +425,6 @@ def search_1688_hybrid(title: str, price_usd: float = 0.0) -> dict:
     Returns:
         与 search_1688 相同格式的结果字典
     """
-    # 第一步：AI 估算（快速返回）
-    keyword = title[:30].strip()
+    # AI 估算（快速返回）
     ai_result = estimate_1688_price(title, price_usd)
-
-    # 第二步：尝试真实抓取
-    real_result = search_1688(keyword)
-
-    if real_result["success"]:
-        # 真实抓取成功，合并结果
-        real_result["source"] = "1688_real"
-        real_result["ai_estimate"] = ai_result.get("price_range")
-        return real_result
-    else:
-        # 真实抓取失败，使用 AI 估算
-        ai_result["fallback_reason"] = "1688 页面为 JS 动态渲染，已使用 AI 估算参考价"
-        return ai_result
+    return ai_result
