@@ -1,4 +1,4 @@
-"""
+﻿"""
 Streamlit 主程序入口 — 外贸 AI 选品助手（Global Product Scout）。
 
 提供"数据获取 → AI 分析 → 结果展示"一站式选品体验。
@@ -513,7 +513,7 @@ def _render_live_page(api_ok: bool):
 
                 # ---- � Google Trends 趋势 ----
                 if st.button("📈 查询 Google Trends 趋势", key=f"trend_{i}", use_container_width=True):
-                    trend_keyword = product_title.split(" - ")[0].split(",")[0][:30].strip()
+                    trend_keyword = title_text.split(" - ")[0].split(",")[0][:30].strip()
                     with st.spinner(f"正在查询趋势：{trend_keyword}..."):
                         trend = get_trend_direction(trend_keyword)
                     if trend["available"]:
