@@ -176,6 +176,46 @@ def _mock_analyze(product: dict) -> dict:
     }
 
 
+def _extract_json_from_reasoning(reasoning: str) -> str:
+    """
+    从思考模型的推理内容中提取 JSON 响应。
+
+    MiMo 等思考模型的 reasoning_content 中可能包含完整的 JSON，
+    尤其是当 max_tokens 不足导致 content 为空时。
+    """
+    if not reasoning:
+        return ""
+
+    # 尝试找到 JSON 块（最后一个完整的 JSON 对象）
+    # 思考模型通常在最后会写出最终的 JSON
+    last_brace = reasoning.rfind("}")
+    if last_brace == -1:
+        return ""
+
+    # 向前找到匹配的 {
+    depth = 0
+    start = last_brace
+    for i in range(last_brace, -1, -1):
+        if reasoning[i] == "}":
+            depth += 1
+        elif reasoning[i] == "{":
+            depth -= 1
+        if depth == 0:
+            start = i
+            break
+
+    if depth != 0:
+        return ""
+
+    candidate = reasoning[start:last_brace + 1]
+    # 验证是否是合法 JSON
+    try:
+        json.loads(candidate)
+        return candidate
+    except json.JSONDecodeError:
+        return ""
+
+
 # ============================================================
 # JSON 解析与容错
 # ============================================================
@@ -369,9 +409,13 @@ def _analyze_batch(batch: list[dict], client, llm_cfg: dict) -> list[dict]:
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.7,
-                max_tokens=2000,
+                max_tokens=8000,
             )
-            content = resp.choices[0].message.content.strip()
+            content = resp.choices[0].message.content or ""
+            if not content.strip() and hasattr(resp.choices[0].message, "reasoning_content"):
+                reasoning = resp.choices[0].message.reasoning_content or ""
+                content = _extract_json_from_reasoning(reasoning)
+            content = content.strip()
             batch_results = _parse_batch_response(content, batch)
             if batch_results:
                 return batch_results
@@ -530,9 +574,14 @@ def analyze_category_report(keyword: str, products: list[dict]) -> dict:
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.7,
-                max_tokens=1500,
+                max_tokens=8000,
             )
-            content = resp.choices[0].message.content.strip()
+            # MiMo 等思考模型：content 可能为空，推理结果在 reasoning_content 中
+            content = resp.choices[0].message.content or ""
+            if not content.strip() and hasattr(resp.choices[0].message, "reasoning_content"):
+                reasoning = resp.choices[0].message.reasoning_content or ""
+                # 尝试从推理内容中提取 JSON
+                content = _extract_json_from_reasoning(reasoning)
             return _parse_category_report_response(content, keyword, products)
         except Exception as e:
             last_error = e
