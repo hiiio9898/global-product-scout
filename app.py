@@ -29,6 +29,8 @@ from src.database import (
     get_all_products,
     get_product_count,
     export_csv,
+    save_procurement_cost,
+    get_procurement_cost,
 )
 
 # ============================================================
@@ -371,15 +373,33 @@ def _render_live_page(api_ok: bool):
 
                 defaults = st.session_state.get("profit_defaults", get_profit_defaults())
                 product_price = st.session_state.products[i].get("price", 0) or 0
+                product_title = st.session_state.products[i].get("title", "")
+                product_scrape_time = st.session_state.products[i].get("scrape_time", "")
+
+                # 从数据库恢复已保存的采购成本
+                saved_cost = 0.0
+                if product_title and product_scrape_time:
+                    try:
+                        saved_cost = get_procurement_cost(product_title, product_scrape_time)
+                    except Exception:
+                        pass  # 数据库不可用时忽略
 
                 col_input, col_result = st.columns([1, 2])
                 with col_input:
                     procurement = st.number_input(
                         "预估采购成本 (¥/件)",
-                        min_value=0.0, max_value=1000.0, value=0.0, step=1.0,
+                        min_value=0.0, max_value=1000.0,
+                        value=saved_cost, step=1.0,
                         key=f"procurement_{i}",
-                        help="从 1688 等平台采购的单件成本",
+                        help="从 1688 等平台采购的单件成本，输入后自动保存",
                     )
+
+                # 保存采购成本到数据库（仅非零值）
+                if procurement > 0 and product_title and product_scrape_time:
+                    try:
+                        save_procurement_cost(product_title, product_scrape_time, procurement)
+                    except Exception:
+                        pass  # 数据库不可用时忽略
 
                 profit_result = calculate_profit(
                     price_usd=product_price,

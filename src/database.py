@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS products (
     category        TEXT,
     analysis_json   TEXT,
     scrape_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    source          TEXT DEFAULT 'amazon_best_sellers'
+    source          TEXT DEFAULT 'amazon_best_sellers',
+    procurement_cost REAL DEFAULT 0.0
 );
 """
 
@@ -65,6 +66,13 @@ def init_db(db_path: Optional[str] = None) -> None:
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(_CREATE_TABLE_SQL)
+        # 兼容：为已有表新增 procurement_cost 字段（如不存在）
+        try:
+            conn.execute(
+                "ALTER TABLE products ADD COLUMN procurement_cost REAL DEFAULT 0.0"
+            )
+        except sqlite3.OperationalError:
+            pass  # 字段已存在，忽略
         conn.commit()
     finally:
         conn.close()
@@ -265,6 +273,77 @@ def _safe_float(value) -> float:
 # ============================================================
 # CSV 导出
 # ============================================================
+
+def save_procurement_cost(
+    title: str,
+    scrape_time: str,
+    procurement_cost: float,
+    db_path: Optional[str] = None,
+) -> bool:
+    """
+    保存单个产品的采购成本。
+
+    Args:
+        title:            产品标题
+        scrape_time:      抓取时间（用于唯一标识同一次抓取）
+        procurement_cost: 采购成本（人民币）
+        db_path:          数据库路径
+
+    Returns:
+        True 如果保存成功，False 如果未找到匹配记录
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+
+    init_db(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.execute(
+            "UPDATE products SET procurement_cost = ? WHERE title = ? AND scrape_time = ?",
+            (procurement_cost, title, scrape_time),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_procurement_cost(
+    title: str,
+    scrape_time: str,
+    db_path: Optional[str] = None,
+) -> float:
+    """
+    获取单个产品的已保存采购成本。
+
+    Args:
+        title:       产品标题
+        scrape_time: 抓取时间
+        db_path:     数据库路径
+
+    Returns:
+        采购成本（人民币），未找到返回 0.0
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+
+    init_db(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT procurement_cost FROM products WHERE title = ? AND scrape_time = ?",
+            (title, scrape_time),
+        ).fetchone()
+        if row:
+            return float(row[0] or 0.0)
+    finally:
+        conn.close()
+    return 0.0
+
 
 def export_csv(
     filepath: str,
