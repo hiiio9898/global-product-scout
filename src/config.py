@@ -35,8 +35,8 @@ LLM_PROVIDERS = {
         "name": "小米 MiMo",
         "base_url_key": "MIMO_BASE_URL",
         "api_key_key": "MIMO_API_KEY",
-        "models": ["mimo-v2.5-pro", "mimo-v2-pro"],
-        "default_model": "mimo-v2.5-pro",
+        "models": ["mimo-v2.5", "mimo-v2.5-pro"],
+        "default_model": "mimo-v2.5",
     },
     "openai": {
         "name": "OpenAI",
