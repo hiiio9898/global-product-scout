@@ -520,6 +520,7 @@ def analyze_category_report(keyword: str, products: list[dict]) -> dict:
         timeout=60,
     )
 
+    last_error = None
     for attempt in range(2):
         try:
             resp = client.chat.completions.create(
@@ -534,10 +535,11 @@ def analyze_category_report(keyword: str, products: list[dict]) -> dict:
             content = resp.choices[0].message.content.strip()
             return _parse_category_report_response(content, keyword, products)
         except Exception as e:
+            last_error = e
             if attempt < 1:
                 time.sleep(2)
 
-    # API 调用失败 → 返回错误
+    # API 调用失败 → 返回错误（包含具体原因）
     return {
         "success": False,
         "category_overview": "",
@@ -551,7 +553,7 @@ def analyze_category_report(keyword: str, products: list[dict]) -> dict:
         "risk_factors": [],
         "parse_error": False,
         "raw_text": None,
-        "error": "AI API 调用失败，请检查 API Key 和网络连接后重试。",
+        "error": f"AI API 调用失败：{last_error}",
     }
 
 
