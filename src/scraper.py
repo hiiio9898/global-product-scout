@@ -1,10 +1,9 @@
 """
-数据抓取模块 — Amazon Best Sellers 真实抓取 + 本地缓存 + 模拟降级。
+数据抓取模块 — Amazon Best Sellers 真实抓取 + 本地缓存。
 
-三层数据获取策略（按优先级）：
+两层数据获取策略（按优先级）：
     1. 实时抓取 — requests + BeautifulSoup 抓取 Amazon Best Sellers 首页
     2. 本地缓存 — 上次成功抓取的结果保存为 JSON，抓取失败时复用
-    3. 模拟数据 — 缓存也不可用时，降级为内置模拟数据确保体验
 
 抓取策略：
     - 真实浏览器 User-Agent，模拟正常用户访问
@@ -27,6 +26,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from .config import get_config
+from .utils import USER_AGENTS, is_blocked, parse_price, parse_rating, parse_review_count
 
 # ============================================================
 # 缓存路径常量
@@ -64,94 +64,6 @@ def _is_physical_product(title: str) -> bool:
 # ============================================================
 # 真实浏览器 User-Agent 池（模拟 Chrome / Firefox / Edge）
 # ============================================================
-
-_USER_AGENTS = [
-    # Chrome 125 on Windows 10
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    # Chrome 125 on macOS
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    # Firefox 126 on Windows 10
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) "
-    "Gecko/20100101 Firefox/126.0",
-    # Edge 125 on Windows 10
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 Edg/125.0.0.0",
-]
-
-# ============================================================
-# 内置模拟数据（终极降级方案）
-# ============================================================
-
-def _get_mock_products() -> list[dict]:
-    """
-    返回精心设计的模拟产品数据，确保无网络时也能完整体验。
-
-    模拟数据模拟了 Amazon Best Sellers 真实榜单特征，涵盖多个热门类目，
-    包含逼真的 Listing 标题风格和合理的价格/评分分布。
-    """
-    return [
-        {
-            "title": "SoundPro X1 Portable Bluetooth Speaker - IPX7 Waterproof, 24H Playtime, Deep Bass (Black)",
-            "price": 25.99,
-            "rating": 4.5,
-            "num_reviews": 18342,
-            "rank": 1,
-            "category": "Electronics",
-        },
-        {
-            "title": "ComfortRest Memory Foam Travel Neck Pillow - Ergonomic Design, Washable Cover, Portable with Carry Bag (Gray)",
-            "price": 17.99,
-            "rating": 4.3,
-            "num_reviews": 28760,
-            "rank": 2,
-            "category": "Home & Kitchen",
-        },
-        {
-            "title": "AquaSteel Stainless Steel Vacuum Insulated Water Bottle 32oz - Double Wall, Keeps Cold 24H/Hot 12H (Gradient Blue)",
-            "price": 22.99,
-            "rating": 4.7,
-            "num_reviews": 56123,
-            "rank": 3,
-            "category": "Sports & Outdoors",
-        },
-        {
-            "title": "LumiPro LED Desk Lamp with USB Charging Port - 5 Brightness Levels, Touch Control, Eye-Caring, Auto Timer (White)",
-            "price": 29.99,
-            "rating": 4.6,
-            "num_reviews": 15420,
-            "rank": 4,
-            "category": "Office Products",
-        },
-        {
-            "title": "EcoThreads Organic Cotton T-Shirt Men's Crew Neck 3-Pack - 180GSM Heavyweight, Pre-Shrunk (Black/White/Gray)",
-            "price": 34.99,
-            "rating": 4.4,
-            "num_reviews": 8520,
-            "rank": 5,
-            "category": "Clothing",
-        },
-        {
-            "title": "PowerMax 26800mAh Fast Charging Portable Charger - USB-C PD 3.0, 22.5W Quick Charge, Dual Output, LED Display (Black)",
-            "price": 39.99,
-            "rating": 4.6,
-            "num_reviews": 32100,
-            "rank": 6,
-            "category": "Electronics",
-        },
-        {
-            "title": "BambooChef Natural Bamboo Cutting Board 3-Piece Set - Organic, Knife-Friendly, Deep Juice Grooves, Easy Hang Handles",
-            "price": 24.99,
-            "rating": 4.5,
-            "num_reviews": 19200,
-            "rank": 7,
-            "category": "Home & Kitchen",
-        },
-    ]
-
-
-# ============================================================
 # 缓存读写
 # ============================================================
 
@@ -185,77 +97,6 @@ def _get_cache_timestamp() -> Optional[str]:
     except OSError:
         pass
     return None
-
-
-# ============================================================
-# 字段解析辅助函数
-# ============================================================
-
-def _parse_price(text: str) -> Optional[float]:
-    """
-    从价格文本中提取 USD 金额。
-
-    支持常见货币符号自动换算为 USD（基于 2026 年 5 月汇率）：
-    - USD ($) → 原值
-    - HKD / HK$ → ÷7.83
-    - SGD / S$ → ÷1.34
-    - CNY / ¥   → ÷7.24
-    - EUR / €   → ÷1.08
-    - GBP / £   → ×1.27
-    - AUD / A$  → ×0.65
-    """
-    if not text:
-        return None
-
-    text = text.strip()
-
-    # 货币→USD 换算率
-    CURRENCY_TO_USD = {
-        "USD": 1.0, "$": 1.0,
-        "HKD": 1 / 7.83, "HK$": 1 / 7.83,
-        "SGD": 1 / 1.34, "S$": 1 / 1.34,
-        "CNY": 1 / 7.24, "¥": 1 / 7.24, "RMB": 1 / 7.24,
-        "EUR": 1.08, "€": 1.08,
-        "GBP": 1.27, "£": 1.27,
-        "AUD": 0.65, "A$": 0.65,
-    }
-
-    # 检测货币代码（如 "HKD 93.95" 或 "S$ 38.32"）
-    matched_currency = None
-    for code in sorted(CURRENCY_TO_USD, key=len, reverse=True):
-        if text.startswith(code) or f" {code}" in text:
-            matched_currency = code
-            break
-
-    rate = CURRENCY_TO_USD.get(matched_currency, 1.0)
-
-    # 提取数字
-    match = re.search(r'[\d,]+\.?\d*', text)
-    if match:
-        value = float(match.group().replace(',', ''))
-        return round(value * rate, 2)
-    return None
-
-
-def _parse_rating(text: str) -> Optional[float]:
-    """从评分文本中提取浮点数，如 '4.5 out of 5 stars' → 4.5。"""
-    if not text:
-        return None
-    match = re.search(r'(\d+\.?\d*)', text)
-    if match:
-        return float(match.group(1))
-    return None
-
-
-def _parse_review_count(text: str) -> int:
-    """从评论数文本中提取整数，如 '12,345' → 12345。"""
-    if not text:
-        return 0
-    # 清理常见前缀
-    cleaned = re.sub(r'[^\d,]', '', text)
-    if cleaned:
-        return int(cleaned.replace(',', ''))
-    return 0
 
 
 # ============================================================
@@ -303,7 +144,7 @@ def _extract_price(card) -> Optional[float]:
         elem = card.select_one(sel)
         if elem:
             text = elem.get_text(strip=True)
-            price = _parse_price(text)
+            price = parse_price(text)
             if price and price > 0:
                 return price
     return None  # 不信任全文正则兜底，宁可返回 None 也不要错误的价格
@@ -320,7 +161,7 @@ def _extract_rating(card) -> Optional[float]:
     for sel in selectors:
         elem = card.select_one(sel)
         if elem:
-            rating = _parse_rating(elem.get_text(strip=True))
+            rating = parse_rating(elem.get_text(strip=True))
             if rating and 1.0 <= rating <= 5.0:
                 return rating
     # 全文正则兜底：匹配 "X.X out of 5" 或 "X.X stars"
@@ -348,7 +189,7 @@ def _extract_review_count(card) -> int:
             text = elem.get_text(strip=True)
             if any(kw in text.lower() for kw in ('rating', 'stars')):
                 continue  # 跳过评分文本，只要评论数
-            count = _parse_review_count(text)
+            count = parse_review_count(text)
             if count > 0:
                 return count
     # 全文正则兜底：匹配 "12,345 ratings" 或 "12345 reviews"
@@ -365,7 +206,7 @@ def _extract_review_count(card) -> int:
     # 最后兜底：从链接文本中提取数字
     for link in card.select('a.a-link-normal'):
         text = link.get_text(strip=True)
-        count = _parse_review_count(text)
+        count = parse_review_count(text)
         if count > 0:
             return count
     return 0
@@ -417,7 +258,7 @@ def _scrape_amazon_best_sellers() -> list[dict]:
 
     # 构建真实浏览器请求头
     headers = {
-        "User-Agent": _USER_AGENTS[0],
+        "User-Agent": USER_AGENTS[0],
         "Accept": (
             "text/html,application/xhtml+xml,application/xml;"
             "q=0.9,image/avif,image/webp,*/*;q=0.8"
@@ -443,7 +284,7 @@ def _scrape_amazon_best_sellers() -> list[dict]:
     resp.raise_for_status()
 
     # 检测是否被拦截（验证码/登录页）
-    if _is_blocked(resp.text):
+    if is_blocked(resp.text):
         raise RuntimeError("被 Amazon 反爬拦截，收到验证码或登录页面")
 
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -469,38 +310,22 @@ def _scrape_amazon_best_sellers() -> list[dict]:
     return products
 
 
-def _is_blocked(html: str) -> bool:
-    """检测页面是否被 Amazon 反爬机制拦截。"""
-    blocked_keywords = [
-        "Type the characters you see",
-        "Enter the characters you see",
-        "Sorry, we just need to make sure you're not a robot",
-        "To discuss automated access to Amazon data",
-        "api-services-support@amazon.com",
-        "<title>Robot Check</title>",
-        "<title>503 - Service Not Available</title>",
-    ]
-    html_lower = html.lower()
-    return any(kw.lower() in html_lower for kw in blocked_keywords)
-
-
 # ============================================================
 # 公开接口 — 仅真实抓取（调试模式）
 # ============================================================
 
 def fetch_amazon_best_sellers() -> tuple[list[dict], dict]:
     """
-    获取 Amazon Best Sellers 产品列表（三层降级策略）。
+    获取 Amazon Best Sellers 产品列表（两层降级策略）。
 
     策略：
         1. 实时抓取 → 至少 3 个产品才算成功
         2. 抓取失败或产品不足 → 本地缓存 JSON
-        3. 缓存也不可用 → 内置模拟数据
 
     Returns:
         (products, source_info) 元组：
         - products:    产品字典列表
-        - source_info: {"source": "live"|"cache"|"mock", "timestamp": "...", ...}
+        - source_info: {"source": "live"|"cache"|"unavailable", "timestamp": "...", ...}
     """
     # ---------- 第一层：实时抓取 ----------
     try:
@@ -521,7 +346,6 @@ def fetch_amazon_best_sellers() -> tuple[list[dict], dict]:
         print(f"📦 使用本地缓存（{len(cached)} 个产品，缓存时间：{cache_ts}）")
         return cached, {"source": "cache", "timestamp": cache_ts or "unknown"}
 
-    # ---------- 第三层：模拟数据 ----------
-    mock = _get_mock_products()
-    print(f"📋 使用内置模拟数据（{len(mock)} 个产品）")
-    return mock, {"source": "mock", "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}
+    # ---------- 均不可用 ----------
+    print("❌ 实时抓取和本地缓存均不可用")
+    return [], {"source": "unavailable", "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"), "error": "实时抓取和本地缓存均不可用"}

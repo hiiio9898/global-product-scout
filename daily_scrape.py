@@ -3,9 +3,9 @@
 
 工作流程：
     1. 调用 src.scraper.fetch_amazon_best_sellers() 获取产品数据
-       （三层降级：实时抓取 → 本地缓存 → 模拟数据）
+       （两层策略：实时抓取 → 本地缓存）
     2. 调用 src.analyzer.analyze_products() 进行 AI 分析
-       （有 DEEPSEEK_API_KEY 时用 DeepSeek，否则模拟分析）
+       （支持多模型供应商，通过 get_llm_config() 配置）
     3. 调用 src.database.save_products() 保存到 SQLite
 
 用法：
@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 # 将项目根目录加入 Python 路径，使 from src.xxx 能正常导入
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from src.config import get_config
+from src.config import get_llm_config
 from src.scraper import fetch_amazon_best_sellers
 from src.analyzer import analyze_products
 from src.database import save_products, get_product_count
@@ -48,7 +48,7 @@ def main():
     ts = source_info.get("timestamp", "")
     print(f"  数据来源：{src}")
     print(f"  ├─ 来源说明："
-          f"{'实时抓取 ✅' if src == 'live' else ('本地缓存 💾' if src == 'cache' else '模拟数据 📋')}")
+          f"{'实时抓取 ✅' if src == 'live' else ('本地缓存 💾' if src == 'cache' else '不可用 ❌')}")
     print(f"  └─ 获取产品：{len(products)} 个")
     if ts:
         print(f"     时间戳：{ts}")
@@ -58,10 +58,13 @@ def main():
         sys.exit(1)
 
     # ---------- 第二步：AI 分析 ----------
-    cfg = get_config()
-    api_ok = bool(cfg["deepseek_api_key"])
+    llm_cfg = get_llm_config()
+    api_ok = bool(llm_cfg["api_key"])
+    provider = llm_cfg.get("provider", "unknown")
+    model = llm_cfg.get("model", "unknown")
     print(f"\n🤖 第 2 步：AI 分析产品...")
-    print(f"  DeepSeek API：{'已配置 ✅' if api_ok else '未配置，使用模拟分析 ⚠️'}")
+    print(f"  AI 模型：{provider}/{model}")
+    print(f"  API Key：{'已配置 ✅' if api_ok else '未配置 ⚠️'}")
     results = analyze_products(products)
     print(f"  分析完成：{len(results)} 个产品")
     verdict_counts = {}

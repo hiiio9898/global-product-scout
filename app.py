@@ -24,7 +24,7 @@ from src.scraper import fetch_amazon_best_sellers
 from src.scraper_search import search_amazon
 from src.analyzer import analyze_products, analyze_category_report
 from src.calculator import calculate_profit
-from src.scraper_1688 import search_1688, search_1688_hybrid
+from src.scraper_1688 import search_1688_hybrid
 from src.trends import get_trend_direction, get_trend_icon
 from src.database import (
     init_db,
@@ -475,7 +475,8 @@ def _render_live_page(api_ok: bool):
                 if is_raw else f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}"
             )
 
-            with st.expander(expander_label, expanded=(i == 0), help=title_text):
+            with st.expander(expander_label, expanded=(i == 0)):
+                st.caption(f"📦 **完整标题：** {title_text}")
                 if is_raw:
                     st.warning("⚠️ AI 返回格式异常，以下为原始文本：")
                     st.text_area("原始响应", value=r.get("raw_text", ""), height=200,
@@ -971,7 +972,8 @@ def _render_targeted_page(api_ok: bool):
                 verdict_label = verdict_label_map.get(verdict, "⚪ 未知")
                 title_text = r.get("title", f"产品 #{i+1}")
 
-                with st.expander(f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}", expanded=False, help=title_text):
+                with st.expander(f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}", expanded=False):
+                    st.caption(f"📦 **完整标题：** {title_text}")
                     verdict_reason = r.get("verdict_reason", "")
                     if verdict == "recommended":
                         st.success(f"✅ **推荐入手** — {verdict_reason}")
@@ -1338,7 +1340,7 @@ def _load_products():
     两级数据策略：
     1. 优先读取 data/products.json（适用于 Streamlit Cloud 离线部署）
     2. 失败则实时抓取 Amazon，仅接受 source='live' 的结果
-    3. 实时抓取返回 cache/mock 时丢弃数据并抛出异常
+    3. 实时抓取返回 cache/unavailable 时丢弃数据并抛出异常
 
     Returns:
         (products, source_info) 元组
@@ -1364,7 +1366,7 @@ def _load_products():
     if source_info.get("source") == "live":
         return products, source_info
 
-    # 实时抓取也失败 → 丢弃 cache/mock，提示用户
+    # 实时抓取也失败 → 丢弃 cache/unavailable，提示用户
     raise RuntimeError(
         "实时抓取失败，请先运行 daily_scrape.py 并推送 products.json"
     )

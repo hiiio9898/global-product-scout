@@ -4,7 +4,7 @@ Amazon 关键词搜索抓取模块 — 指定选品功能的核心数据源。
 用户提供关键词 → 抓取 Amazon 搜索结果页 → 返回 Top N 产品列表。
 
 抓取策略：
-    - 复用 scraper.py 的 User-Agent 池和请求头模板
+    - 复用 utils.py 的 User-Agent 池和解析函数
     - 搜索结果页 CSS 选择器与 Best Sellers 页不同，单独维护
     - 请求间隔 2-4 秒随机延迟
     - 检测 503/验证码返回失败，不使用 Mock 数据
@@ -13,7 +13,6 @@ Amazon 关键词搜索抓取模块 — 指定选品功能的核心数据源。
     title, price, rating, num_reviews, rank, url, asin, category
 """
 
-import os
 import re
 import random
 import time
@@ -23,94 +22,7 @@ from typing import Optional
 import requests
 from bs4 import BeautifulSoup
 
-# ============================================================
-# User-Agent 池（与 scraper.py 保持一致）
-# ============================================================
-
-_USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) "
-    "Gecko/20100101 Firefox/126.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 Edg/125.0.0.0",
-]
-
-# ============================================================
-# 反爬检测关键词
-# ============================================================
-
-_BLOCK_PATTERNS = [
-    "captcha",
-    "automated access",
-    "blocked",
-    "请输入图中的字符",
-    "Type the characters you see below",
-    "robot check",
-    "are you a human",
-]
-
-
-def _is_blocked(html: str) -> bool:
-    """检测返回页面是否为验证码/拦截页。"""
-    html_lower = html.lower()
-    return any(pat in html_lower for pat in _BLOCK_PATTERNS)
-
-
-# ============================================================
-# 货币解析（复用 scraper.py 逻辑）
-# ============================================================
-
-def _parse_price(text: str) -> Optional[float]:
-    """从价格文本中提取 USD 金额，支持多币种换算。"""
-    if not text:
-        return None
-    text = text.strip()
-
-    CURRENCY_TO_USD = {
-        "USD": 1.0, "$": 1.0,
-        "HKD": 1 / 7.83, "HK$": 1 / 7.83,
-        "SGD": 1 / 1.34, "S$": 1 / 1.34,
-        "CNY": 1 / 7.24, "¥": 1 / 7.24, "RMB": 1 / 7.24,
-        "EUR": 1.08, "€": 1.08,
-        "GBP": 1.27, "£": 1.27,
-        "JPY": 1 / 150.0, "JPY\xa0": 1 / 150.0,
-    }
-
-    matched_currency = None
-    for code in sorted(CURRENCY_TO_USD, key=len, reverse=True):
-        if text.startswith(code) or f" {code}" in text:
-            matched_currency = code
-            break
-
-    rate = CURRENCY_TO_USD.get(matched_currency, 1.0)
-    match = re.search(r'[\d,]+\.?\d*', text)
-    if match:
-        value = float(match.group().replace(',', ''))
-        return round(value * rate, 2)
-    return None
-
-
-def _parse_rating(text: str) -> Optional[float]:
-    """从评分文本中提取浮点数。"""
-    if not text:
-        return None
-    match = re.search(r'(\d+\.?\d*)', text)
-    if match:
-        return float(match.group(1))
-    return None
-
-
-def _parse_review_count(text: str) -> int:
-    """从评论数文本中提取整数。"""
-    if not text:
-        return 0
-    cleaned = re.sub(r'[^\d,]', '', text)
-    if cleaned:
-        return int(cleaned.replace(',', ''))
-    return 0
+from .utils import USER_AGENTS, is_blocked, parse_price, parse_rating, parse_review_count
 
 
 # ============================================================
@@ -163,7 +75,7 @@ def _extract_search_price(card) -> Optional[float]:
         elem = card.select_one(sel)
         if elem:
             text = elem.get_text(strip=True)
-            price = _parse_price(text)
+            price = parse_price(text)
             if price and price > 0:
                 return price
     return None
@@ -179,7 +91,7 @@ def _extract_search_rating(card) -> Optional[float]:
     for sel in selectors:
         elem = card.select_one(sel)
         if elem:
-            rating = _parse_rating(elem.get_text(strip=True))
+            rating = parse_rating(elem.get_text(strip=True))
             if rating and 1.0 <= rating <= 5.0:
                 return rating
     # 全文正则兜底
@@ -205,7 +117,7 @@ def _extract_search_reviews(card) -> int:
             text = elem.get_text(strip=True)
             if any(kw in text.lower() for kw in ('rating', 'stars', 'out of')):
                 continue
-            count = _parse_review_count(text)
+            count = parse_review_count(text)
             if count > 0:
                 return count
     # 全文正则兜底
@@ -302,7 +214,7 @@ def _scrape_amazon_search(keyword: str, max_results: int = 20) -> list[dict]:
     url = f"https://www.amazon.com/s?k={encoded_kw}"
 
     headers = {
-        "User-Agent": random.choice(_USER_AGENTS),
+        "User-Agent": random.choice(USER_AGENTS),
         "Accept": (
             "text/html,application/xhtml+xml,application/xml;"
             "q=0.9,image/avif,image/webp,*/*;q=0.8"
@@ -329,7 +241,7 @@ def _scrape_amazon_search(keyword: str, max_results: int = 20) -> list[dict]:
     resp.raise_for_status()
 
     # 检测拦截
-    if _is_blocked(resp.text):
+    if is_blocked(resp.text):
         raise RuntimeError("被 Amazon 反爬拦截，收到验证码或登录页面")
 
     soup = BeautifulSoup(resp.text, "html.parser")

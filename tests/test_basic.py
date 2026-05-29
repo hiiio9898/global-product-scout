@@ -16,20 +16,95 @@ import json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
+from unittest.mock import patch
 from src.scraper import (
     fetch_amazon_best_sellers,
-    _get_mock_products,
     _load_cache,
     _save_cache,
 )
 from src.analyzer import (
     analyze_products,
-    _mock_analyze,
     _parse_ai_response,
     _validate_result,
 )
 from src.config import get_config
-from src.utils import format_number
+from src.utils import (
+    format_number,
+    parse_price,
+    parse_rating,
+    parse_review_count,
+    is_blocked,
+    USER_AGENTS,
+)
+
+
+# ============================================================
+# 测试用内联模拟数据
+# ============================================================
+
+SAMPLE_PRODUCTS = [
+    {
+        "title": "Portable Bluetooth Speaker",
+        "price": 29.99,
+        "rating": 4.5,
+        "num_reviews": 15000,
+        "rank": 1,
+        "category": "Electronics",
+        "asin": "B09EXAMPLE1",
+        "url": "https://www.amazon.com/dp/B09EXAMPLE1",
+    },
+    {
+        "title": "Wireless Earbuds Pro",
+        "price": 49.99,
+        "rating": 4.3,
+        "num_reviews": 28000,
+        "rank": 2,
+        "category": "Electronics",
+        "asin": "B09EXAMPLE2",
+        "url": "https://www.amazon.com/dp/B09EXAMPLE2",
+    },
+    {
+        "title": "USB-C Fast Charging Cable",
+        "price": 9.99,
+        "rating": 4.7,
+        "num_reviews": 50000,
+        "rank": 3,
+        "category": "Accessories",
+        "asin": "B09EXAMPLE3",
+        "url": "https://www.amazon.com/dp/B09EXAMPLE3",
+    },
+    {
+        "title": "Laptop Stand Aluminum",
+        "price": 34.99,
+        "rating": 4.1,
+        "num_reviews": 8200,
+        "rank": 4,
+        "category": "Office",
+        "asin": "B09EXAMPLE4",
+        "url": "https://www.amazon.com/dp/B09EXAMPLE4",
+    },
+    {
+        "title": "LED Desk Lamp Dimmable",
+        "price": 22.99,
+        "rating": 4.6,
+        "num_reviews": 12000,
+        "rank": 5,
+        "category": "Home & Kitchen",
+        "asin": "B09EXAMPLE5",
+        "url": "https://www.amazon.com/dp/B09EXAMPLE5",
+    },
+]
+
+# 模拟 AI 返回的完整 JSON
+SAMPLE_AI_RESPONSE = json.dumps({
+    "market_capacity": {"score": 8, "reason": "市场容量大，需求持续增长"},
+    "competition": {"score": 5, "reason": "中等竞争，头部品牌集中"},
+    "profit_potential": {"score": 7, "reason": "利润空间可观，FBA 费用可控"},
+    "beginner_friendly": {"score": 9, "reason": "入手门槛低，供应链成熟"},
+    "seasonality_risk": {"score": 2, "reason": "无明显季节波动"},
+    "final_verdict": "recommended",
+    "verdict_reason": "综合评分高，市场前景好，适合新手入场",
+})
 
 
 class TestConfig:
@@ -60,17 +135,11 @@ class TestScraper:
         assert isinstance(source_info, dict)
         assert "source" in source_info
         assert "timestamp" in source_info
-        assert source_info["source"] in ("live", "cache", "mock")
+        assert source_info["source"] in ("live", "cache", "unavailable")
 
-    def test_mock_products_has_minimum_items(self):
-        """模拟数据至少包含 5 个产品。"""
-        products = _get_mock_products()
-        assert len(products) >= 5
-
-    def test_product_has_required_fields(self):
-        """每个产品必须包含 title, price, rating, num_reviews, rank, category。"""
-        products = _get_mock_products()
-        for p in products:
+    def test_sample_products_have_required_fields(self):
+        """模拟数据中每个产品必须包含必要字段且类型正确。"""
+        for p in SAMPLE_PRODUCTS:
             assert "title" in p
             assert "price" in p
             assert "rating" in p
@@ -85,30 +154,21 @@ class TestScraper:
 
     def test_cache_write_and_read(self):
         """缓存写入后可成功读取，且数据一致。"""
-        products = _get_mock_products()
-        _save_cache(products)
+        _save_cache(SAMPLE_PRODUCTS)
         cached = _load_cache()
         assert cached is not None
-        assert len(cached) == len(products)
-        assert cached[0]["title"] == products[0]["title"]
+        assert len(cached) == len(SAMPLE_PRODUCTS)
+        assert cached[0]["title"] == SAMPLE_PRODUCTS[0]["title"]
 
 
 class TestAnalyzer:
     """分析模块测试 — 五维度评分结构 + 降级 + JSON 解析容错。"""
 
-    # ---- 结构校验 ----
+    # ---- 结构校验（通过 _parse_ai_response 测试） ----
 
-    def test_mock_analyze_returns_five_dimensions(self):
-        """模拟分析应返回 market_capacity 等 5 个维度，每个含 score 和 reason。"""
-        product = {
-            "title": "Test Bluetooth Speaker",
-            "price": 29.99,
-            "rating": 4.5,
-            "num_reviews": 15000,
-            "category": "Electronics",
-            "rank": 1,
-        }
-        result = _mock_analyze(product)
+    def test_parse_ai_response_returns_five_dimensions(self):
+        """AI 响应解析后应包含 market_capacity 等 5 个维度。"""
+        result = _parse_ai_response(SAMPLE_AI_RESPONSE, "Test Bluetooth Speaker")
         dims = [
             "market_capacity", "competition", "profit_potential",
             "beginner_friendly", "seasonality_risk",
@@ -120,70 +180,37 @@ class TestAnalyzer:
             assert "reason" in result[dim], f"{dim} 缺少 reason"
             assert 1 <= result[dim]["score"] <= 10, f"{dim} score 超出范围"
 
-    def test_mock_analyze_has_verdict(self):
-        """模拟分析必须包含 final_verdict 和 verdict_reason。"""
-        product = {
-            "title": "Test Pillow", "price": 17.99, "rating": 4.3,
-            "num_reviews": 28000, "category": "Home & Kitchen", "rank": 2,
-        }
-        result = _mock_analyze(product)
+    def test_parse_ai_response_has_verdict(self):
+        """AI 响应解析后必须包含 final_verdict 和 verdict_reason。"""
+        result = _parse_ai_response(SAMPLE_AI_RESPONSE, "Test Pillow")
         assert result["final_verdict"] in ("recommended", "cautious", "not_recommended")
         assert isinstance(result["verdict_reason"], str) and len(result["verdict_reason"]) > 0
 
     def test_title_preserved(self):
         """分析结果中的 title 应与输入一致。"""
-        product = {
-            "title": "Unique Product XYZ", "price": 19.99, "rating": 4.0,
-            "num_reviews": 5000, "category": "Misc", "rank": 5,
-        }
-        result = _mock_analyze(product)
+        result = _parse_ai_response(SAMPLE_AI_RESPONSE, "Unique Product XYZ")
         assert result["title"] == "Unique Product XYZ"
 
-    # ---- 降级逻辑 ----
+    # ---- 无 API Key 降级 ----
 
-    def test_analyze_products_fallback(self):
-        """无 API Key 时降级为模拟分析，结果数量与输入一致。"""
-        products = _get_mock_products()[:3]
-        results = analyze_products(products)
+    def test_analyze_products_no_api_key(self):
+        """无 API Key 时返回错误提示结果，数量与输入一致。"""
+        mock_cfg = {"api_key": "", "base_url": "", "model": "test"}
+        with patch("src.analyzer.get_llm_config", return_value=mock_cfg):
+            results = analyze_products(SAMPLE_PRODUCTS[:3])
         assert len(results) == 3
         for r in results:
             assert "title" in r
             assert "final_verdict" in r
-
-    def test_mock_analyze_verdicts_have_variety(self):
-        """不同产品应产生不同的 verdict，证明差异化逻辑生效。"""
-        products = _get_mock_products()
-        verdicts = [_mock_analyze(p)["final_verdict"] for p in products]
-        assert len(set(verdicts)) >= 2, f"verdict 过于均一: {set(verdicts)}"
-
-    def test_analyzer_handles_missing_optional_fields(self):
-        """真实数据可能缺少 price/rating 等字段，分析器应容错。"""
-        product = {
-            "title": "Minimal Product",
-            "price": None,
-            "rating": None,
-            "num_reviews": 0,
-            "category": "",
-            "rank": 99,
-        }
-        result = _mock_analyze(product)
-        assert result["title"] == "Minimal Product"
-        assert result["final_verdict"] in ("recommended", "cautious", "not_recommended")
+            # 无 API Key 时返回 cautious verdict + 错误信息
+            assert r["final_verdict"] == "cautious"
+            assert r.get("parse_error") is True
 
     # ---- JSON 解析容错 ----
 
     def test_parse_valid_json(self):
         """正确格式的 JSON 应成功解析。"""
-        valid_json = json.dumps({
-            "market_capacity": {"score": 8, "reason": "大市场"},
-            "competition": {"score": 5, "reason": "中等竞争"},
-            "profit_potential": {"score": 7, "reason": "利润不错"},
-            "beginner_friendly": {"score": 9, "reason": "很友好"},
-            "seasonality_risk": {"score": 2, "reason": "无季节波动"},
-            "final_verdict": "recommended",
-            "verdict_reason": "综合推荐",
-        })
-        result = _parse_ai_response(valid_json, "Test Product")
+        result = _parse_ai_response(SAMPLE_AI_RESPONSE, "Test Product")
         assert result["title"] == "Test Product"
         assert result["final_verdict"] == "recommended"
         assert result["market_capacity"]["score"] == 8
@@ -224,7 +251,9 @@ class TestAnalyzer:
 
 
 class TestUtils:
-    """工具函数测试 — format_number 数值格式化。"""
+    """工具函数测试 — format_number、parse_price、parse_rating、parse_review_count、is_blocked。"""
+
+    # ---- format_number ----
 
     def test_format_number_thousands(self):
         """千位数格式化为 x.xk。"""
@@ -239,6 +268,71 @@ class TestUtils:
         """小于 1000 的数字保持原样。"""
         assert format_number(999) == "999"
         assert format_number(0) == "0"
+
+    # ---- parse_price ----
+
+    def test_parse_price_usd(self):
+        """解析 USD 价格。"""
+        assert parse_price("$29.99") == 29.99
+        assert parse_price("USD 100") == 100.0
+
+    def test_parse_price_jpy(self):
+        """解析 JPY 价格并自动换算。"""
+        # JPY 15000 → 100.0 USD（¥ 符号匹配 CNY，需用 JPY 前缀）
+        result = parse_price("JPY15,000")
+        assert result is not None
+        assert abs(result - 100.0) < 1.0
+
+    def test_parse_price_none(self):
+        """空输入返回 None。"""
+        assert parse_price("") is None
+        assert parse_price(None) is None
+
+    # ---- parse_rating ----
+
+    def test_parse_rating_normal(self):
+        """正常评分文本提取。"""
+        assert parse_rating("4.5 out of 5 stars") == 4.5
+        assert parse_rating("3.0") == 3.0
+
+    def test_parse_rating_none(self):
+        """空输入返回 None。"""
+        assert parse_rating("") is None
+        assert parse_rating(None) is None
+
+    # ---- parse_review_count ----
+
+    def test_parse_review_count_normal(self):
+        """正常评论数提取。"""
+        assert parse_review_count("12,345") == 12345
+        assert parse_review_count("100") == 100
+
+    def test_parse_review_count_empty(self):
+        """空输入返回 0。"""
+        assert parse_review_count("") == 0
+        assert parse_review_count(None) == 0
+
+    # ---- is_blocked ----
+
+    def test_is_blocked_captcha(self):
+        """包含 captcha 关键词应判定为被拦截。"""
+        assert is_blocked("<html>please complete the captcha</html>") is True
+
+    def test_is_blocked_robot_check(self):
+        """包含 Robot Check 应判定为被拦截。"""
+        assert is_blocked("<html><title>Robot Check</title></html>") is True
+
+    def test_is_blocked_normal_page(self):
+        """正常页面不应被判定为拦截。"""
+        assert is_blocked("<html><title>Best Sellers</title></html>") is False
+
+    # ---- USER_AGENTS ----
+
+    def test_user_agents_not_empty(self):
+        """User-Agent 池不应为空。"""
+        assert len(USER_AGENTS) > 0
+        for ua in USER_AGENTS:
+            assert "Mozilla" in ua
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@
 每个维度 1-10 分 + 解释，最终给出推荐/谨慎/不推荐 verdict。
 
 支持多模型供应商（DeepSeek、MiMo、OpenAI 等），
-通过 OpenAI SDK 兼容模式调用，API Key 未配置时自动降级为本地模拟分析。
+通过 OpenAI SDK 兼容模式调用。API Key 未配置时返回错误提示。
 JSON 解析失败时回退为纯文本展示。
 """
 
@@ -45,135 +45,6 @@ SYSTEM_PROMPT = """你是一位拥有 10 年经验的资深跨境电商选品顾
   "verdict_reason": "高需求低门槛低风险，适合新手入门选品，建议差异化包装提升竞争力"
 }
 只返回 JSON。"""
-
-
-# ============================================================
-# 模拟分析引擎 — 与 DeepSeek 输出结构完全一致
-# ============================================================
-
-def _mock_analyze(product: dict) -> dict:
-    """
-    本地模拟分析 — 基于产品多维数据生成五维度量化评分。
-
-    评分逻辑：
-        - 市场容量：评论数越高 → 市场越大（但上限为 9，留余地给真实数据）
-        - 竞争程度：评论数越高 → 竞争越激烈（反向关系）
-        - 利润潜力：价格区间 + 类目推断毛利率
-        - 新手友好度：类目特性（电子低、家居高）+ 价格门槛
-        - 季节性风险：类目特性（服装高、日用品低）
-        - final_verdict：综合加权计算
-
-    返回结构与 DeepSeek API 输出完全一致，确保前端无缝渲染。
-    """
-    title = product["title"]
-    price = product.get("price", 0) or 0
-    rating = product.get("rating", 0) or 0
-    reviews = product.get("num_reviews", 0) or 0
-    category = product.get("category", "")
-    title_lower = title.lower()
-
-    # ---- 市场容量（基于评论数推算） ----
-    if reviews > 50000:
-        mc_score, mc_reason = 9, "头部类目，月搜索量百万级，市场容量极大"
-    elif reviews > 20000:
-        mc_score, mc_reason = 7, "中大型类目，月搜索量数十万级，需求旺盛"
-    elif reviews > 10000:
-        mc_score, mc_reason = 6, "中等类目，市场有一定规模，增长稳定"
-    elif reviews > 5000:
-        mc_score, mc_reason = 4, "中小类目，需求较集中，天花板有限"
-    else:
-        mc_score, mc_reason = 3, "小众类目，市场规模较小但可能有蓝海机会"
-
-    # ---- 竞争程度（评论数越高竞争越激烈） ----
-    if reviews > 50000:
-        comp_score, comp_reason = 9, "头部品牌垄断严重，广告竞价高，新卖家进入难度大"
-    elif reviews > 20000:
-        comp_score, comp_reason = 7, "竞争激烈但存在细分缝隙市场，需差异化切入"
-    elif reviews > 10000:
-        comp_score, comp_reason = 5, "竞争适中，腰部卖家有机会通过优化 Listing 突围"
-    elif reviews > 5000:
-        comp_score, comp_reason = 3, "竞争较低，早期进入者可建立先发优势"
-    else:
-        comp_score, comp_reason = 2, "蓝海类目，竞争对手少，易于占领市场份额"
-
-    # ---- 利润潜力（基于价格 + 类目） ----
-    if price < 15:
-        profit_score, profit_reason = 4, "客单价低，毛利空间有限需走量。FBA费用占比高，净利约15-25%"
-    elif price < 25:
-        profit_score, profit_reason = 6, "轻小件物流成本可控，毛利率约35-50%，净利空间良好"
-    elif price < 40:
-        profit_score, profit_reason = 7, "中等价位利润可观，毛利率约30-45%，单品利润绝对值高"
-    else:
-        profit_score, profit_reason = 8, "高客单价毛利率25-35%，单笔利润高但资金周转需注意"
-
-    # 按类目微调利润
-    if "electronics" in category.lower():
-        profit_score = max(1, profit_score - 1)
-        profit_reason += "。电子类退货率较高需预留售后成本"
-
-    # ---- 新手友好度（基于类目 + 价格） ----
-    if "speaker" in title_lower or "charger" in title_lower or "power bank" in title_lower or "lamp" in title_lower:
-        bf_score, bf_reason = 4, "电子产品需FCC/UL认证，存在退货和售后压力，启动资金$3000+"
-    elif "t-shirt" in title_lower or "cotton" in title_lower:
-        bf_score, bf_reason = 5, "服装类需管理尺码和颜色SKU，退货率偏高，但采购门槛不高"
-    elif "pillow" in title_lower:
-        bf_score, bf_reason = 8, "轻小件无认证门槛，物流简单，启动资金$1000即够"
-    elif "bottle" in title_lower:
-        bf_score, bf_reason = 8, "耐用品复购好，无特殊认证，适合新手试水"
-    elif "cutting board" in title_lower:
-        bf_score, bf_reason = 9, "厨房用品无认证门槛，退货率极低，启动资金$500-$1000"
-    else:
-        bf_score, bf_reason = 6, "类目门槛适中，建议先小批量试销验证市场反应"
-
-    if price > 30:
-        bf_score = max(1, bf_score - 1)
-        bf_reason += "。客单价较高，需要更多启动资金"
-
-    # ---- 季节性风险 ----
-    if "t-shirt" in title_lower or "cotton" in title_lower:
-        sr_score, sr_reason = 7, "服装有换季需求波动，需精准备货避免库存积压"
-    elif "speaker" in title_lower or "charger" in title_lower or "power bank" in title_lower:
-        sr_score, sr_reason = 3, "电子产品全年需求稳定，Q4 旺季（黑五/圣诞）销量冲高"
-    elif "pillow" in title_lower:
-        sr_score, sr_reason = 4, "旅行用品暑假和节假日为旺季，平时需求略降但整体稳定"
-    elif "bottle" in title_lower:
-        sr_score, sr_reason = 2, "日用品全年需求均衡，夏天略高但不影响整体稳定性"
-    elif "lamp" in title_lower:
-        sr_score, sr_reason = 3, "办公/学习场景需求稳定，开学季小幅冲高"
-    elif "cutting board" in title_lower:
-        sr_score, sr_reason = 2, "厨房刚需品，全年无显著季节性波动"
-    else:
-        sr_score, sr_reason = 3, "需求波动较小，属于稳定性类目"
-
-    # ---- 综合 verdict ----
-    # 加权计算：市场容量(正向) + 利润(正向) + 新手友好(正向) - 竞争(反向) - 季节风险(反向)
-    weighted = (
-        mc_score * 1.0
-        + profit_score * 1.2
-        + bf_score * 0.8
-        - comp_score * 1.0
-        - sr_score * 0.5
-    )
-    if weighted >= 12:
-        final_verdict = "recommended"
-        verdict_reason = "市场容量大、利润可观、新手友好，综合选品价值高，建议入手"
-    elif weighted >= 8:
-        final_verdict = "cautious"
-        verdict_reason = "有一定机会但需注意竞争或季节性风险，建议精细化运营后进入"
-    else:
-        final_verdict = "not_recommended"
-        verdict_reason = "竞争激烈或利润偏低，新手进入风险较高，建议观望或寻找细分切口"
-
-    return {
-        "title": title,
-        "market_capacity": {"score": mc_score, "reason": mc_reason},
-        "competition": {"score": comp_score, "reason": comp_reason},
-        "profit_potential": {"score": profit_score, "reason": profit_reason},
-        "beginner_friendly": {"score": bf_score, "reason": bf_reason},
-        "seasonality_risk": {"score": sr_score, "reason": sr_reason},
-        "final_verdict": final_verdict,
-        "verdict_reason": verdict_reason,
-    }
 
 
 def _extract_json_from_reasoning(reasoning: str) -> str:
@@ -222,7 +93,7 @@ def _extract_json_from_reasoning(reasoning: str) -> str:
 
 def _parse_ai_response(content: str, product_title: str) -> dict:
     """
-    解析 DeepSeek 返回的 JSON 字符串。
+    解析 AI 返回的 JSON 字符串。
 
     容错策略：
         1. 清理 markdown 代码块标记（```json ... ```）
@@ -346,10 +217,10 @@ def _build_batch_prompt(products: list[dict]) -> str:
 
 def _parse_batch_response(content: str, batch_products: list[dict]) -> list[dict]:
     """
-    解析 DeepSeek 返回的批量 JSON 数组。
+    解析 AI 返回的批量 JSON 数组。
 
     容错策略：与 _parse_ai_response 类似，但处理 JSON 数组。
-    如果某个产品的解析结果无效，会回退为 mock 数据。
+    如果某个产品的解析结果无效，会回退为错误提示字典。
     """
     cleaned = content.strip()
     if cleaned.startswith("```"):
@@ -391,8 +262,14 @@ def _parse_batch_response(content: str, batch_products: list[dict]) -> list[dict
             matched["title"] = title
             results.append(matched)
         else:
-            # 回退为 mock 数据
-            results.append(_mock_analyze(product))
+            # 回退为错误提示
+            results.append({
+                "title": title,
+                "raw_text": "AI 未返回该产品的分析",
+                "parse_error": True,
+                "final_verdict": "cautious",
+                "verdict_reason": "AI 返回结果中未匹配到该产品",
+            })
 
     return results
 
@@ -423,8 +300,8 @@ def _analyze_batch(batch: list[dict], client, llm_cfg: dict) -> list[dict]:
             if attempt < 1:
                 time.sleep(2)
 
-    # 全部失败 → 逐个 mock
-    return [_mock_analyze(p) for p in batch]
+    # 全部失败 → 返回错误信息
+    return [{"title": p["title"], "raw_text": "AI 分析失败，请检查 API 配置或稍后重试", "parse_error": True, "final_verdict": "cautious", "verdict_reason": "AI 批量分析调用失败"} for p in batch]
 
 
 def analyze_products(
@@ -451,11 +328,17 @@ def analyze_products(
     api_key = llm_cfg["api_key"]
     total = len(products)
 
-    # 无 API Key → 全部模拟（仍支持进度回调）
+    # 无 API Key → 返回错误提示
     if not api_key:
         results = []
         for i, p in enumerate(products):
-            results.append(_mock_analyze(p))
+            results.append({
+                "title": p["title"],
+                "raw_text": "未配置 AI API Key，无法进行智能分析。请在侧边栏选择模型并输入 API Key。",
+                "parse_error": True,
+                "final_verdict": "cautious",
+                "verdict_reason": "API Key 未配置",
+            })
             if progress_callback:
                 progress_callback(i + 1, total)
         return results
