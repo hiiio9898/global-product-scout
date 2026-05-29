@@ -4,7 +4,7 @@ openai
 requests
 beautifulsoup4
 selenium
-undetected-chromedriver
+webdriver-manager
 pytest
 flake8
 pandas

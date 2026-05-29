@@ -1,7 +1,7 @@
 """
 Selenium 降级抓取模块 — 共享无头浏览器抓取功能。
 
-当 requests 方式被反爬拦截时，使用 undetected-chromedriver 绕过检测。
+当 requests 方式被反爬拦截时，使用 Selenium 绕过检测。
 所有平台的 scraper 可以共享此模块进行降级抓取。
 
 使用方式：
@@ -17,38 +17,14 @@ from typing import Optional
 from bs4 import BeautifulSoup
 
 
-def _get_chrome_major_version() -> int:
-    """自动检测已安装 Chrome 的主版本号。"""
-    import subprocess
-    import re
-    try:
-        # Windows: 通过注册表获取 Chrome 版本
-        result = subprocess.run(
-            ["reg", "query", r"HKEY_CURRENT_USER\Software\Google\Chrome\BLBeacon", "/v", "version"],
-            capture_output=True, text=True, timeout=10
-        )
-        match = re.search(r"version\s+REG_SZ\s+(\d+)\.", result.stdout)
-        if match:
-            return int(match.group(1))
-    except Exception:
-        pass
-    try:
-        # 备选：通过 chrome --version
-        result = subprocess.run(
-            ["chrome", "--version"], capture_output=True, text=True, timeout=10
-        )
-        match = re.search(r"(\d+)\.\d+\.\d+\.\d+", result.stdout)
-        if match:
-            return int(match.group(1))
-    except Exception:
-        pass
-    return 0
-
-
 def _create_driver():
-    """创建 undetected Chrome 实例。"""
-    import undetected_chromedriver as uc
-    options = uc.ChromeOptions()
+    """创建 Chrome 实例，自动下载匹配的 ChromeDriver。"""
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.chrome.options import Options
+    from webdriver_manager.chrome import ChromeDriverManager
+
+    options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
@@ -60,13 +36,11 @@ def _create_driver():
         "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     )
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
 
-    chrome_ver = _get_chrome_major_version()
-    if chrome_ver > 0:
-        print(f"[selenium_helper] 检测到 Chrome 版本: {chrome_ver}")
-        driver = uc.Chrome(options=options, version_main=chrome_ver)
-    else:
-        driver = uc.Chrome(options=options, version_main=None)
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
     driver.set_page_load_timeout(60)
     return driver
 

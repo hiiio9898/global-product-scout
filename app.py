@@ -438,11 +438,11 @@ def _render_live_page(api_ok: bool):
                         )
                     elif platform == "aliexpress":
                         st.info(
-                            "💡 AliExpress 抓取需要 Chrome 浏览器。\n\n"
-                            "**如果抓取失败：**\n"
-                            "1. 确保已安装 Chrome 浏览器\n"
-                            "2. 使用「📄 分析 JSON 数据」分析已有数据\n"
-                            "3. 使用「🎯 指定选品」通过 AI 搜索产品信息"
+                            "💡 **AliExpress 需要登录才能浏览产品数据。**\n\n"
+                            "**推荐方案：**\n"
+                            "1. 使用「📄 分析 JSON 数据」分析已有的 AliExpress 数据\n"
+                            "2. 使用「🎯 指定选品」通过 AI 搜索产品信息\n"
+                            "3. 手动在 AliExpress 选品后，使用利润计算器评估利润"
                         )
                     else:
                         st.info(
