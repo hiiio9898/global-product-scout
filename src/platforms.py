@@ -43,8 +43,29 @@ PLATFORMS = {
             "shipping_cny": 15.0,
         },
     },
+    "aliexpress": {
+        "name": "AliExpress",
+        "icon": "🔴",
+        "scraper_module": "src.scraper_aliexpress",
+        "scraper_func": "fetch_aliexpress_best_sellers",
+        "search_module": "src.scraper_aliexpress",
+        "search_func": "search_aliexpress",
+        "calculator": "calculate_aliexpress_profit",
+        "currency": "USD",
+        "regions": {
+            "us": {"name": "美国站", "domain": "aliexpress.com", "currency": "USD", "exchange_rate": 7.24},
+            "eu": {"name": "欧洲站", "domain": "aliexpress.com", "currency": "EUR", "exchange_rate": 7.88},
+            "ru": {"name": "俄罗斯站", "domain": "aliexpress.ru", "currency": "RUB", "exchange_rate": 0.079},
+        },
+        "default_region": "us",
+        "profit_defaults": {
+            "commission_pct": 0.08,
+            "withdrawal_fee_pct": 0.01,
+            "shipping_cny": 8.0,
+            "packaging_cny": 2.0,
+        },
+    },
     # --- 以下平台在后续 Spec 中注册 ---
-    # "aliexpress": { ... },   # Spec 9
     # "shopee":     { ... },   # Spec 10
     # "ebay":       { ... },   # Spec 11
 }
