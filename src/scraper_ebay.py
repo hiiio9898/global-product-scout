@@ -15,6 +15,8 @@ eBay 数据抓取模块 — eBay 热销产品抓取 + 本地缓存。
     title, price, rating, num_reviews, url, image, shipping
 """
 
+from __future__ import annotations
+
 import json
 import os
 import re

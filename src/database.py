@@ -14,6 +14,8 @@
     export_csv()         — 导出 CSV 文件
 """
 
+from __future__ import annotations
+
 import csv
 import json
 import os

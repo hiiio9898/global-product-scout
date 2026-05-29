@@ -10,6 +10,8 @@
 JSON 解析失败时回退为纯文本展示。
 """
 
+from __future__ import annotations
+
 import json
 import time
 from openai import OpenAI

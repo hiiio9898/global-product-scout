@@ -15,6 +15,8 @@
     title, price, rating, num_reviews, rank, category
 """
 
+from __future__ import annotations
+
 import json
 import os
 import re

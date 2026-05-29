@@ -15,6 +15,8 @@ AliExpress 数据抓取模块 — 速卖通热销产品抓取 + 本地缓存。
     title, price, rating, num_reviews, url, image, orders
 """
 
+from __future__ import annotations
+
 import json
 import os
 import re

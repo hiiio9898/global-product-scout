@@ -15,6 +15,8 @@
     from src.platforms import PLATFORMS, get_platform_info, get_active_platform
 """
 
+from __future__ import annotations
+
 
 # ============================================================
 # 平台注册表

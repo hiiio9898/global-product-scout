@@ -11,6 +11,8 @@
 用户可在 Streamlit 侧边栏修改。
 """
 
+from __future__ import annotations
+
 from typing import Callable
 
 

@@ -13,6 +13,8 @@ Amazon 关键词搜索抓取模块 — 指定选品功能的核心数据源。
     title, price, rating, num_reviews, rank, url, asin, category
 """
 
+from __future__ import annotations
+
 import re
 import random
 import time
