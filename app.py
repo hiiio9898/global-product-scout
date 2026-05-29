@@ -431,15 +431,18 @@ def _render_live_page(api_ok: bool):
                     st.warning(f"原因: {error_detail}")
 
                     platform = st.session_state.get("active_platform", "amazon")
-                    if platform in ("amazon", "ebay", "walmart"):
+                    if platform in ("amazon", "ebay"):
                         st.info(
                             "💡 请检查网络连接后重试，"
                             "或使用「📄 分析 JSON 数据」按钮。"
                         )
-                    elif platform == "etsy":
+                    elif platform == "aliexpress":
                         st.info(
-                            "💡 Etsy 抓取可能受限。请检查网络连接后重试，"
-                            "或使用「📄 分析 JSON 数据」按钮。"
+                            "💡 AliExpress 抓取需要 Chrome 浏览器。\n\n"
+                            "**如果抓取失败：**\n"
+                            "1. 确保已安装 Chrome 浏览器\n"
+                            "2. 使用「📄 分析 JSON 数据」分析已有数据\n"
+                            "3. 使用「🎯 指定选品」通过 AI 搜索产品信息"
                         )
                     else:
                         st.info(

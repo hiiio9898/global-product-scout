@@ -1,15 +1,16 @@
 """
-Walmart 数据抓取模块 — 沃尔玛热销产品抓取 + 本地缓存。
+AliExpress 数据抓取模块 — 速卖通热销产品抓取 + 本地缓存。
 
-两层数据获取策略（按优先级）：
-    1. 实时抓取 — requests + BeautifulSoup 抓取 Walmart Best Sellers/搜索页面
-    2. 本地缓存 — 上次成功抓取的结果保存为 JSON，抓取失败时复用
+三层数据获取策略（按优先级）：
+    1. Selenium + undetected-chromedriver（主要方案）
+    2. requests + BeautifulSoup（快速尝试）
+    3. 本地缓存（兜底）
 
 抓取策略：
-    - 真实浏览器 User-Agent，模拟正常用户访问
-    - 每次请求间隔 1.5-2.5 秒
-    - 多套 CSS 选择器兜底，适应 Walmart 页面结构变动
-    - 遇验证码自动降级，不反复重试
+    - 使用 Selenium 绕过 SPA 反爬
+    - 自动检测 Chrome 版本
+    - 模拟真实浏览器行为（滚动、等待）
+    - 24 小时本地缓存
 
 输出字段：
     title, price, rating, num_reviews, url, image, category
@@ -40,15 +41,17 @@ _CACHE_DIR = os.path.join(
 )
 _CACHE_TTL = 24 * 60 * 60  # 24 小时
 
-# 地区域名映射（Walmart 目前仅支持美国）
+# 地区域名映射
 _REGION_DOMAINS = {
-    "us": "walmart.com",
+    "us": "aliexpress.com",
+    "eu": "aliexpress.com",
+    "ru": "aliexpress.ru",
 }
 
 
 def _get_cache_file(prefix: str, region: str) -> str:
     """返回按地区区分的缓存文件路径。"""
-    return os.path.join(_CACHE_DIR, f"walmart_{prefix}_{region}.json")
+    return os.path.join(_CACHE_DIR, f"aliexpress_{prefix}_{region}.json")
 
 
 # ============================================================
@@ -93,20 +96,61 @@ def _get_cache_timestamp(prefix: str, region: str) -> Optional[str]:
 
 
 # ============================================================
-# HTML 解析 — 产品卡片
+# Selenium 抓取
 # ============================================================
+
+def _scrape_via_selenium(url: str, wait_seconds: float = 10.0) -> Optional[BeautifulSoup]:
+    """
+    使用 Selenium 获取页面内容。
+
+    Args:
+        url:           目标 URL
+        wait_seconds:  页面加载后等待秒数
+
+    Returns:
+        BeautifulSoup 对象，失败返回 None
+    """
+    try:
+        from .selenium_helper import fetch_page_soup
+        return fetch_page_soup(url, wait_seconds)
+    except Exception as e:
+        print(f"[scraper_aliexpress] Selenium 抓取失败: {e}")
+        return None
+
+
+# ============================================================
+# 产品解析
+# ============================================================
+
+# 多层选择器（适应页面结构变化）
+_CARD_SELECTORS = [
+    "div[class*='SearchProductFeed'] div[class*='item']",
+    "div[class*='product-card']",
+    "div[class*='item-card']",
+    "a[href*='/item/']",
+    "div[data-widget-cid]",
+    "div[class*='list--gallery'] > div",
+]
+
+_TITLE_SELECTORS = [
+    "h1[class*='title']",
+    "div[class*='title']",
+    "a[href*='/item/'] h1",
+    "span[class*='title']",
+    "div[class*='ProductTitle']",
+]
+
+_PRICE_SELECTORS = [
+    "div[class*='price'] span",
+    "span[class*='price-current']",
+    "div[class*='Price'] span",
+    "span[class*='Price']",
+]
+
 
 def _extract_title(card) -> str:
     """从产品卡片中提取标题。"""
-    selectors = [
-        "span[data-automation-id='product-title']",
-        "a span[data-automation-id]",
-        "a[class*='product-title'] span",
-        "span[class*='product-title']",
-        "[data-automation-id='name']",
-        "a[class*='product'] span",
-    ]
-    for sel in selectors:
+    for sel in _TITLE_SELECTORS:
         elem = card.select_one(sel)
         if elem:
             text = elem.get_text(strip=True)
@@ -123,77 +167,71 @@ def _extract_title(card) -> str:
 
 def _extract_price(card) -> Optional[float]:
     """从产品卡片中提取价格。"""
-    selectors = [
-        "[data-automation-id='product-price'] div[class*='price']",
-        "[data-automation-id='product-price']",
-        "span[class*='price']",
-        "div[class*='price'] span",
-    ]
-    for sel in selectors:
+    for sel in _PRICE_SELECTORS:
         elem = card.select_one(sel)
         if elem:
             text = elem.get_text(strip=True)
             price = parse_price(text)
             if price and price > 0:
                 return price
+    # 从整个卡片文本提取价格
+    card_text = card.get_text(strip=True)
+    price_match = re.search(r'\$[\d,.]+', card_text)
+    if price_match:
+        try:
+            return float(price_match.group(0).replace('$', '').replace(',', ''))
+        except ValueError:
+            pass
     return None
 
 
 def _extract_rating(card) -> Optional[float]:
     """提取评分。"""
-    selectors = [
-        "span[class*='rating']",
-        "div[class*='stars']",
-        "[data-automation-id='product-rating']",
-    ]
-    for sel in selectors:
-        elem = card.select_one(sel)
-        if elem:
-            text = elem.get_text(strip=True)
-            rating = parse_rating(text)
-            if rating and rating > 0:
-                return rating
+    rating_elem = card.select_one("span[class*='rating']") or card.select_one("div[class*='star']")
+    if rating_elem:
+        text = rating_elem.get_text(strip=True)
+        rating = parse_rating(text)
+        if rating and rating > 0:
+            return rating
     return None
 
 
 def _extract_reviews(card) -> int:
     """提取评论数。"""
-    selectors = [
-        "span[class*='reviews']",
-        "[data-automation-id='product-reviews']",
-        "span[class*='count']",
-    ]
-    for sel in selectors:
-        elem = card.select_one(sel)
-        if elem:
-            text = elem.get_text(strip=True)
-            nums = re.findall(r"[\d,]+", text)
-            if nums:
-                try:
-                    return int(nums[0].replace(",", ""))
-                except ValueError:
-                    pass
+    review_elem = card.select_one("span[class*='review']") or card.select_one("span[class*='sold']")
+    if review_elem:
+        text = review_elem.get_text(strip=True)
+        nums = re.findall(r'[\d,]+', text)
+        if nums:
+            try:
+                return int(nums[0].replace(',', ''))
+            except ValueError:
+                pass
     return 0
 
 
 def _extract_url(card) -> str:
     """提取产品链接。"""
-    link = card.select_one("a[href*='/ip/']") or card.select_one("a[href]")
+    link = card.select_one("a[href*='/item/']") or card.select_one("a[href]")
     if link:
         href = link.get("href", "")
         if href:
-            if href.startswith("/"):
-                href = "https://www.walmart.com" + href
+            if href.startswith("//"):
+                href = "https:" + href
+            elif href.startswith("/"):
+                href = "https://www.aliexpress.com" + href
             return href
     return ""
 
 
 def _extract_image(card) -> str:
     """提取图片 URL。"""
-    img = card.select_one("img")
+    img = card.select_one("img[src*='alicdn']") or card.select_one("img")
     if img:
         src = img.get("src", "") or img.get("data-src", "")
         if src:
+            if src.startswith("//"):
+                src = "https:" + src
             return src
     return ""
 
@@ -221,147 +259,108 @@ def _parse_product_card(card, rank: int) -> Optional[dict]:
 
 
 # ============================================================
-# 真实抓取 — Walmart Best Sellers
+# 页面抓取
 # ============================================================
 
-def _scrape_walmart_best_sellers(region: str = "us") -> list[dict]:
+def _scrape_aliexpress_best_sellers(region: str = "us") -> list[dict]:
     """
-    真实抓取 Walmart Best Sellers / Trending 热销产品。
+    抓取 AliExpress 热销产品。
 
-    Args:
-        region: 地区代码（目前仅 us）
+    策略：
+    1. 使用 Selenium 访问热销页面
+    2. 等待页面加载（8-12 秒）
+    3. 滚动页面触发懒加载
+    4. 提取产品卡片数据
     """
-    domain = _REGION_DOMAINS.get(region, "walmart.com")
+    domain = _REGION_DOMAINS.get(region, "aliexpress.com")
 
     urls_to_try = [
-        f"https://www.{domain}/shop/Best-Sellers",
-        f"https://www.{domain}/shop/bestsellers/4045458",
+        f"https://www.{domain}/popular/best-sellers.html",
+        f"https://www.{domain}/popular/top-selling.html",
+        f"https://www.{domain}/category/0/best-sellers.html",
     ]
 
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": (
-            "text/html,application/xhtml+xml,application/xml;"
-            "q=0.9,image/avif,image/webp,*/*;q=0.8"
-        ),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-    }
-
-    session = requests.Session()
-    session.headers.update(headers)
-
     for url in urls_to_try:
-        try:
-            delay = random.uniform(1.5, 2.5)
-            time.sleep(delay)
-
-            resp = session.get(url, timeout=30)
-            print(f"[scraper_walmart] HTTP {resp.status_code} | URL: {url}")
-            resp.raise_for_status()
-
-            if is_blocked(resp.text):
-                print(f"[scraper_walmart] 被拦截，尝试下一个 URL")
-                continue
-
-            soup = BeautifulSoup(resp.text, "html.parser")
-
-            card_selectors = [
-                "[data-item-id]",
-                "div[class*='search-result-gridview-item']",
-                "div[class*='product-card']",
-                "div[data-automation-id='product-tile']",
-                "li[class*='Grid-col']",
-            ]
-
-            cards = []
-            for sel in card_selectors:
-                cards = soup.select(sel)
-                if cards:
-                    break
-
-            if cards:
-                print(f"[scraper_walmart] 找到 {len(cards)} 个产品卡片")
-                products = []
-                for i, card in enumerate(cards[:50], 1):
-                    product = _parse_product_card(card, i)
-                    if product:
-                        products.append(product)
-                if products:
-                    return products
-        except Exception as e:
-            print(f"[scraper_walmart] URL {url} 失败: {e}")
+        print(f"[scraper_aliexpress] 尝试 URL: {url}")
+        soup = _scrape_via_selenium(url, wait_seconds=12)
+        if not soup:
             continue
 
-    # 搜索降级
-    try:
-        url = f"https://www.{domain}/search?q=best+sellers&sort=best_seller"
-        delay = random.uniform(1.5, 2.5)
-        time.sleep(delay)
+        # 检查是否是有效页面
+        page_text = soup.get_text().lower()
+        if "404" in page_text[:500] or "captcha" in page_text[:1000]:
+            print(f"[scraper_aliexpress] 页面无效（404或验证码）")
+            continue
 
-        resp = session.get(url, timeout=30)
-        resp.raise_for_status()
+        # 尝试多种选择器
+        cards = []
+        for sel in _CARD_SELECTORS:
+            cards = soup.select(sel)
+            if cards and len(cards) >= 3:
+                break
 
-        if not is_blocked(resp.text):
-            soup = BeautifulSoup(resp.text, "html.parser")
-            cards = soup.select("[data-item-id]") or soup.select("div[class*='product-card']")
+        if cards:
+            print(f"[scraper_aliexpress] 找到 {len(cards)} 个产品卡片")
+            products = []
+            for i, card in enumerate(cards[:50], 1):
+                product = _parse_product_card(card, i)
+                if product:
+                    products.append(product)
+            if products:
+                return products
+
+    # 最终降级：搜索 URL
+    search_url = f"https://www.{domain}/w/wholesale-best-selling.html?SortType=total_orders"
+    print(f"[scraper_aliexpress] 降级到搜索 URL: {search_url}")
+    soup = _scrape_via_selenium(search_url, wait_seconds=12)
+    if soup:
+        cards = []
+        for sel in _CARD_SELECTORS:
+            cards = soup.select(sel)
             if cards:
-                products = []
-                for i, card in enumerate(cards[:50], 1):
-                    product = _parse_product_card(card, i)
-                    if product:
-                        products.append(product)
-                if products:
-                    return products
-    except Exception as e:
-        print(f"[scraper_walmart] 搜索降级也失败: {e}")
+                break
+        if cards:
+            products = []
+            for i, card in enumerate(cards[:50], 1):
+                product = _parse_product_card(card, i)
+                if product:
+                    products.append(product)
+            if products:
+                return products
 
     return []
 
 
-# ============================================================
-# 搜索抓取
-# ============================================================
+def _scrape_aliexpress_search(keyword: str, region: str = "us", max_results: int = 20) -> list[dict]:
+    """
+    搜索 AliExpress 产品。
 
-def _scrape_walmart_search(keyword: str, region: str = "us", max_results: int = 20) -> list[dict]:
+    URL 模式：
+    - https://www.aliexpress.com/w/wholesale-{keyword}.html
+    - 支持排序参数：SortType=total_orders（按销量）
     """
-    真实抓取 Walmart 搜索结果。
-    """
-    domain = _REGION_DOMAINS.get(region, "walmart.com")
+    domain = _REGION_DOMAINS.get(region, "aliexpress.com")
     encoded_kw = keyword.replace(" ", "+")
-    url = f"https://www.{domain}/search?q={encoded_kw}&sort=best_seller"
+    url = f"https://www.{domain}/w/wholesale-{encoded_kw}.html?SortType=total_orders"
 
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": (
-            "text/html,application/xhtml+xml,application/xml;"
-            "q=0.9,image/avif,image/webp,*/*;q=0.8"
-        ),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-    }
+    print(f"[scraper_aliexpress] 搜索: {url}")
+    soup = _scrape_via_selenium(url, wait_seconds=12)
+    if not soup:
+        return []
 
-    session = requests.Session()
-    session.headers.update(headers)
+    # 检查是否被拦截
+    page_text = soup.get_text().lower()
+    if "captcha" in page_text[:1000]:
+        print("[scraper_aliexpress] 搜索被验证码拦截")
+        return []
 
-    delay = random.uniform(1.5, 2.5)
-    time.sleep(delay)
+    cards = []
+    for sel in _CARD_SELECTORS:
+        cards = soup.select(sel)
+        if cards:
+            break
 
-    resp = session.get(url, timeout=30)
-    print(f"[scraper_walmart] HTTP {resp.status_code} | URL: {url}")
-    resp.raise_for_status()
-
-    if is_blocked(resp.text):
-        raise RuntimeError("被 Walmart 反爬拦截")
-
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    cards = soup.select("[data-item-id]") or soup.select("div[class*='product-card']")
-
-    print(f"[scraper_walmart] 找到 {len(cards)} 个搜索结果")
+    print(f"[scraper_aliexpress] 搜索找到 {len(cards)} 个结果")
 
     products = []
     for i, card in enumerate(cards[:max_results], 1):
@@ -376,47 +375,47 @@ def _scrape_walmart_search(keyword: str, region: str = "us", max_results: int = 
 # 公开接口
 # ============================================================
 
-def fetch_walmart_best_sellers(region: str = "us") -> tuple[list[dict], dict]:
+def fetch_aliexpress_best_sellers(region: str = "us") -> tuple[list[dict], dict]:
     """
-    获取 Walmart 热销产品列表（两层降级策略）。
+    获取 AliExpress 热销产品列表（三层降级策略）。
 
     Args:
-        region: 地区代码（us），默认 "us"
+        region: 地区代码（us/eu/ru），默认 "us"
 
     Returns:
         (products, source_info) 元组
     """
-    # ---------- 第一层：实时抓取 ----------
+    # ---------- 第一层：Selenium 抓取 ----------
     try:
-        products = _scrape_walmart_best_sellers(region=region)
+        products = _scrape_aliexpress_best_sellers(region=region)
         if len(products) >= 3:
             _save_cache(products, "best_sellers", region)
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             return products, {"source": "live", "timestamp": timestamp}
         else:
-            print(f"[!] Walmart 实时抓取仅获得 {len(products)} 个产品，降级到缓存")
+            print(f"[!] AliExpress 实时抓取仅获得 {len(products)} 个产品，降级到缓存")
     except Exception as e:
-        print(f"[!] Walmart 实时抓取失败: {e}")
+        print(f"[!] AliExpress 实时抓取失败: {e}")
 
     # ---------- 第二层：本地缓存 ----------
     cached = _load_cache("best_sellers", region)
     if cached and len(cached) >= 3:
         cache_ts = _get_cache_timestamp("best_sellers", region)
-        print(f"[*] 使用 Walmart 本地缓存 ({len(cached)} 个产品)")
+        print(f"[*] 使用 AliExpress 本地缓存 ({len(cached)} 个产品)")
         return cached, {"source": "cache", "timestamp": cache_ts or "unknown"}
 
     # ---------- 均不可用 ----------
-    print("[X] Walmart 实时抓取和本地缓存均不可用")
+    print("[X] AliExpress 实时抓取和本地缓存均不可用")
     return [], {
         "source": "unavailable",
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-        "error": "Walmart 实时抓取和本地缓存均不可用",
+        "error": "AliExpress 实时抓取和本地缓存均不可用。请确保已安装 Chrome 浏览器。",
     }
 
 
-def search_walmart(keyword: str, region: str = "us", max_results: int = 20) -> dict:
+def search_aliexpress(keyword: str, region: str = "us", max_results: int = 20) -> dict:
     """
-    在 Walmart 搜索指定关键词，返回产品列表。
+    在 AliExpress 搜索指定关键词，返回产品列表。
     """
     keyword = keyword.strip()
     if not keyword:
@@ -433,7 +432,7 @@ def search_walmart(keyword: str, region: str = "us", max_results: int = 20) -> d
     scrape_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     try:
-        products = _scrape_walmart_search(keyword, region=region, max_results=max_results)
+        products = _scrape_aliexpress_search(keyword, region=region, max_results=max_results)
         if products:
             return {
                 "success": True,
@@ -472,7 +471,7 @@ def search_walmart(keyword: str, region: str = "us", max_results: int = 20) -> d
             "total_found": 0,
             "source": "none",
             "scrape_time": scrape_time,
-            "error": f"Walmart 反爬拦截: {e}",
+            "error": f"AliExpress 反爬拦截: {e}",
         }
     except Exception as e:
         return {
