@@ -121,46 +121,37 @@ def calculate_amazon_profit(
 
 
 # ============================================================
-# AliExpress 利润计算器
+# 阿里巴巴国际站利润计算器
 # ============================================================
 
-@register_calculator("aliexpress")
-def calculate_aliexpress_profit(
+@register_calculator("alibaba")
+def calculate_alibaba_profit(
     price: float,
     defaults: dict,
     procurement_cny: float = 0.0,
     **kwargs,
 ) -> dict:
     """
-    AliExpress 卖家利润计算。
+    阿里巴巴国际站 (B2B) 卖家利润计算。
 
     公式：
         售价(USD) × 汇率 = 售价(CNY)
-        佣金 = 售价(CNY) × commission_pct (8%)
-        提现手续费 = 售价(CNY) × withdrawal_fee_pct (1%)
-        总成本 = 采购成本 + 国内运费 + 包装费 + 佣金 + 提现手续费
+        佣金 = 售价(CNY) × commission_pct (5%)
+        信保费用 = 售价(CNY) × trade_assurance_pct (2%)
+        总成本 = 采购成本 + 国际运费 + 包装费 + 佣金 + 信保费用
         净利 = 售价(CNY) - 总成本
         毛利率 = 净利 / 售价(CNY)
-
-    Args:
-        price:             产品售价（本地货币）
-        defaults:          利润默认参数字典
-        procurement_cny:   采购成本（人民币）
-        **kwargs:          预留扩展
-
-    Returns:
-        标准利润结果字典
     """
     exchange_rate = defaults.get("exchange_rate", 7.24)
-    commission_pct = defaults.get("commission_pct", 0.08)
-    withdrawal_fee_pct = defaults.get("withdrawal_fee_pct", 0.01)
-    shipping_cny = defaults.get("shipping_cny", 8.0)
-    packaging_cny = defaults.get("packaging_cny", 2.0)
+    commission_pct = defaults.get("commission_pct", 0.05)
+    trade_assurance_pct = defaults.get("trade_assurance_pct", 0.02)
+    shipping_cny = defaults.get("shipping_cny", 25.0)
+    packaging_cny = defaults.get("packaging_cny", 3.0)
 
     price_cny = price * exchange_rate
     commission_cny = price_cny * commission_pct
-    withdrawal_fee_cny = price_cny * withdrawal_fee_pct
-    total_cost = procurement_cny + shipping_cny + packaging_cny + commission_cny + withdrawal_fee_cny
+    trade_assurance_cny = price_cny * trade_assurance_pct
+    total_cost = procurement_cny + shipping_cny + packaging_cny + commission_cny + trade_assurance_cny
     net_profit_cny = price_cny - total_cost
     net_profit_usd = net_profit_cny / exchange_rate if exchange_rate > 0 else 0.0
     margin_pct = (net_profit_cny / price_cny * 100) if price_cny > 0 else 0.0
@@ -169,7 +160,7 @@ def calculate_aliexpress_profit(
         "price_local": round(price, 2),
         "price_cny": round(price_cny, 2),
         "commission_cny": round(commission_cny, 2),
-        "withdrawal_fee_cny": round(withdrawal_fee_cny, 2),
+        "trade_assurance_cny": round(trade_assurance_cny, 2),
         "shipping_cny": round(shipping_cny, 2),
         "packaging_cny": round(packaging_cny, 2),
         "procurement_cny": round(procurement_cny, 2),
