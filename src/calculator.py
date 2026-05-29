@@ -121,46 +121,37 @@ def calculate_amazon_profit(
 
 
 # ============================================================
-# AliExpress 利润计算器
+# Walmart 利润计算器
 # ============================================================
 
-@register_calculator("aliexpress")
-def calculate_aliexpress_profit(
+@register_calculator("walmart")
+def calculate_walmart_profit(
     price: float,
     defaults: dict,
     procurement_cny: float = 0.0,
     **kwargs,
 ) -> dict:
     """
-    AliExpress 卖家利润计算。
+    Walmart 卖家利润计算。
 
     公式：
         售价(USD) × 汇率 = 售价(CNY)
-        成交费 = 售价(CNY) × commission_pct (8%)
-        提现手续费 = 售价(CNY) × withdrawal_fee_pct (1%)
-        总成本 = 采购成本 + 国内运费 + 包装费 + 成交费 + 提现手续费
+        佣金 = 售价(CNY) × commission_pct (15%)
+        WFS费用 = 售价(CNY) × wfs_fee_pct (5%)
+        总成本 = 采购成本 + 运费 + 包装费 + 佣金 + WFS费用
         净利 = 售价(CNY) - 总成本
         毛利率 = 净利 / 售价(CNY)
-
-    Args:
-        price:             产品售价（本地货币）
-        defaults:          利润默认参数字典
-        procurement_cny:   采购成本（人民币）
-        **kwargs:          预留扩展
-
-    Returns:
-        标准利润结果字典
     """
     exchange_rate = defaults.get("exchange_rate", 7.24)
-    commission_pct = defaults.get("commission_pct", 0.08)
-    withdrawal_fee_pct = defaults.get("withdrawal_fee_pct", 0.01)
-    shipping_cny = defaults.get("shipping_cny", 8.0)
-    packaging_cny = defaults.get("packaging_cny", 2.0)
+    commission_pct = defaults.get("commission_pct", 0.15)
+    wfs_fee_pct = defaults.get("wfs_fee_pct", 0.05)
+    shipping_cny = defaults.get("shipping_cny", 18.0)
+    packaging_cny = defaults.get("packaging_cny", 4.0)
 
     price_cny = price * exchange_rate
     commission_cny = price_cny * commission_pct
-    withdrawal_fee_cny = price_cny * withdrawal_fee_pct
-    total_cost = procurement_cny + shipping_cny + packaging_cny + commission_cny + withdrawal_fee_cny
+    wfs_fee_cny = price_cny * wfs_fee_pct
+    total_cost = procurement_cny + shipping_cny + packaging_cny + commission_cny + wfs_fee_cny
     net_profit_cny = price_cny - total_cost
     net_profit_usd = net_profit_cny / exchange_rate if exchange_rate > 0 else 0.0
     margin_pct = (net_profit_cny / price_cny * 100) if price_cny > 0 else 0.0
@@ -169,7 +160,7 @@ def calculate_aliexpress_profit(
         "price_local": round(price, 2),
         "price_cny": round(price_cny, 2),
         "commission_cny": round(commission_cny, 2),
-        "withdrawal_fee_cny": round(withdrawal_fee_cny, 2),
+        "wfs_fee_cny": round(wfs_fee_cny, 2),
         "shipping_cny": round(shipping_cny, 2),
         "packaging_cny": round(packaging_cny, 2),
         "procurement_cny": round(procurement_cny, 2),
@@ -183,60 +174,51 @@ def calculate_aliexpress_profit(
 
 
 # ============================================================
-# Shopee 利润计算器
+# Etsy 利润计算器
 # ============================================================
 
-@register_calculator("shopee")
-def calculate_shopee_profit(
+@register_calculator("etsy")
+def calculate_etsy_profit(
     price: float,
     defaults: dict,
     procurement_cny: float = 0.0,
     **kwargs,
 ) -> dict:
     """
-    Shopee 卖家利润计算。
+    Etsy 卖家利润计算。
 
     公式：
-        售价(本地货币) × 汇率 = 售价(CNY)
-        佣金 = 售价(CNY) × commission_pct (6%)
-        服务费 = 售价(CNY) × service_fee_pct (2%)
-        汇率损耗 = 售价(CNY) × exchange_loss_pct (1%)
-        总成本 = 采购成本 + 国际运费 + 包装费 + 佣金 + 服务费 + 汇率损耗
+        售价(USD) × 汇率 = 售价(CNY)
+        交易费 = 售价(CNY) × transaction_fee_pct (6.5%)
+        上架费 = listing_fee_usd × 汇率
+        支付处理费 = 售价(CNY) × payment_processing_pct (3%)
+        总成本 = 采购成本 + 运费 + 包装费 + 交易费 + 上架费 + 支付处理费
         净利 = 售价(CNY) - 总成本
         毛利率 = 净利 / 售价(CNY)
-
-    Args:
-        price:             产品售价（本地货币，如 SGD/MYR/THB）
-        defaults:          利润默认参数字典
-        procurement_cny:   采购成本（人民币）
-        **kwargs:          预留扩展
-
-    Returns:
-        标准利润结果字典
     """
-    exchange_rate = defaults.get("exchange_rate", 5.42)
-    commission_pct = defaults.get("commission_pct", 0.06)
-    service_fee_pct = defaults.get("service_fee_pct", 0.02)
-    shipping_cny = defaults.get("shipping_cny", 12.0)
-    packaging_cny = defaults.get("packaging_cny", 3.0)
-    exchange_loss_pct = defaults.get("exchange_loss_pct", 0.01)
+    exchange_rate = defaults.get("exchange_rate", 7.24)
+    transaction_fee_pct = defaults.get("transaction_fee_pct", 0.065)
+    listing_fee_usd = defaults.get("listing_fee_usd", 0.20)
+    payment_processing_pct = defaults.get("payment_processing_pct", 0.03)
+    shipping_cny = defaults.get("shipping_cny", 22.0)
+    packaging_cny = defaults.get("packaging_cny", 6.0)
 
     price_cny = price * exchange_rate
-    commission_cny = price_cny * commission_pct
-    service_fee_cny = price_cny * service_fee_pct
-    exchange_loss_cny = price_cny * exchange_loss_pct
+    transaction_fee_cny = price_cny * transaction_fee_pct
+    listing_fee_cny = listing_fee_usd * exchange_rate
+    payment_fee_cny = price_cny * payment_processing_pct
     total_cost = (procurement_cny + shipping_cny + packaging_cny
-                  + commission_cny + service_fee_cny + exchange_loss_cny)
+                  + transaction_fee_cny + listing_fee_cny + payment_fee_cny)
     net_profit_cny = price_cny - total_cost
-    net_profit_usd = net_profit_cny / 7.24 if 7.24 > 0 else 0.0
+    net_profit_usd = net_profit_cny / exchange_rate if exchange_rate > 0 else 0.0
     margin_pct = (net_profit_cny / price_cny * 100) if price_cny > 0 else 0.0
 
     return {
         "price_local": round(price, 2),
         "price_cny": round(price_cny, 2),
-        "commission_cny": round(commission_cny, 2),
-        "service_fee_cny": round(service_fee_cny, 2),
-        "exchange_loss_cny": round(exchange_loss_cny, 2),
+        "transaction_fee_cny": round(transaction_fee_cny, 2),
+        "listing_fee_cny": round(listing_fee_cny, 2),
+        "payment_fee_cny": round(payment_fee_cny, 2),
         "shipping_cny": round(shipping_cny, 2),
         "packaging_cny": round(packaging_cny, 2),
         "procurement_cny": round(procurement_cny, 2),

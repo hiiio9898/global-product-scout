@@ -431,26 +431,15 @@ def _render_live_page(api_ok: bool):
                     st.warning(f"原因: {error_detail}")
 
                     platform = st.session_state.get("active_platform", "amazon")
-                    if platform == "ebay":
+                    if platform in ("amazon", "ebay", "walmart"):
                         st.info(
-                            "💡 eBay 通常可以抓取成功。请检查网络连接后重试，"
+                            "💡 请检查网络连接后重试，"
                             "或使用「📄 分析 JSON 数据」按钮。"
                         )
-                    elif platform == "aliexpress":
+                    elif platform == "etsy":
                         st.info(
-                            "💡 **AliExpress 目前无法抓取**（页面结构变更/反爬拦截）。\n\n"
-                            "**替代方案：**\n"
-                            "1. 使用「📄 分析 JSON 数据」分析已有数据\n"
-                            "2. 使用「🎯 指定选品」通过 AI 搜索 AliExpress 产品信息\n"
-                            "3. 手动在 AliExpress 选品后输入采购成本计算利润"
-                        )
-                    elif platform == "shopee":
-                        st.info(
-                            "💡 **Shopee 目前无法抓取**（API 403 / 反爬拦截）。\n\n"
-                            "**替代方案：**\n"
-                            "1. 使用「📄 分析 JSON 数据」分析已有数据\n"
-                            "2. 使用「🎯 指定选品」通过 AI 搜索 Shopee 产品信息\n"
-                            "3. 手动在 Shopee 选品后输入采购成本计算利润"
+                            "💡 Etsy 抓取可能受限。请检查网络连接后重试，"
+                            "或使用「📄 分析 JSON 数据」按钮。"
                         )
                     else:
                         st.info(

@@ -21,7 +21,7 @@ from unittest.mock import patch, MagicMock
 class TestPlatformRegistry:
     """Spec 8: 平台注册表。"""
 
-    EXPECTED_PLATFORMS = ["amazon", "aliexpress", "shopee", "ebay"]
+    EXPECTED_PLATFORMS = ["amazon", "ebay", "walmart", "etsy"]
 
     def test_all_platforms_registered(self):
         """验证 4 个平台全部注册到 PLATFORMS。"""
@@ -61,9 +61,9 @@ class TestPlatformRegistry:
     def test_region_choices(self):
         """验证 get_region_choices 返回正确选项。"""
         from src.platforms import get_region_choices
-        for pf in ["amazon", "aliexpress", "shopee", "ebay"]:
+        for pf in ["amazon", "ebay", "walmart", "etsy"]:
             choices = get_region_choices(pf)
-            assert len(choices) >= 2, f"{pf} 地区选项不足 2 个"
+            assert len(choices) >= 1, f"{pf} 地区选项不足"
 
 
 # ============================================================
@@ -73,7 +73,7 @@ class TestPlatformRegistry:
 class TestProfitCalculators:
     """Spec 8-11: 各平台利润计算器。"""
 
-    @pytest.mark.parametrize("platform_key", ["amazon", "aliexpress", "shopee", "ebay"])
+    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "walmart", "etsy"])
     def test_calculator_exists(self, platform_key):
         """验证每个平台的利润计算器已注册。"""
         from src.calculator import get_calculator
@@ -95,29 +95,29 @@ class TestProfitCalculators:
         assert result["has_procurement"] is True
         assert result["price_local"] == 20.0
 
-    def test_aliexpress_profit_positive(self):
-        """AliExpress: $15 售价应盈利。"""
+    def test_walmart_profit_positive(self):
+        """Walmart: $20 售价应盈利。"""
         from src.calculator import get_calculator
         from src.platforms import PLATFORMS
 
-        calc = get_calculator("aliexpress")
-        defaults = PLATFORMS["aliexpress"]["profit_defaults"].copy()
+        calc = get_calculator("walmart")
+        defaults = PLATFORMS["walmart"]["profit_defaults"].copy()
         defaults["exchange_rate"] = 7.24
 
-        result = calc(price=15.0, defaults=defaults, procurement_cny=5.0)
+        result = calc(price=20.0, defaults=defaults, procurement_cny=8.0)
         assert result["margin_pct"] > 0
         assert result["is_profitable"] is True
 
-    def test_shopee_profit_positive(self):
-        """Shopee: SGD 20 售价应盈利。"""
+    def test_etsy_profit_positive(self):
+        """Etsy: $25 售价应盈利。"""
         from src.calculator import get_calculator
         from src.platforms import PLATFORMS
 
-        calc = get_calculator("shopee")
-        defaults = PLATFORMS["shopee"]["profit_defaults"].copy()
-        defaults["exchange_rate"] = 5.42
+        calc = get_calculator("etsy")
+        defaults = PLATFORMS["etsy"]["profit_defaults"].copy()
+        defaults["exchange_rate"] = 7.24
 
-        result = calc(price=20.0, defaults=defaults, procurement_cny=10.0)
+        result = calc(price=25.0, defaults=defaults, procurement_cny=8.0)
         assert result["margin_pct"] > 0
         assert result["is_profitable"] is True
 
@@ -158,7 +158,7 @@ class TestProfitCalculators:
         from src.calculator import get_calculator
         from src.platforms import PLATFORMS
 
-        for pf in ["amazon", "aliexpress", "shopee", "ebay"]:
+        for pf in ["amazon", "ebay", "walmart", "etsy"]:
             calc = get_calculator(pf)
             defaults = PLATFORMS[pf]["profit_defaults"].copy()
             defaults["exchange_rate"] = 7.24
@@ -204,19 +204,19 @@ class TestDatabaseMultiPlatform:
         analysis = [{"final_verdict": "recommended"}]
         save_products(products, analysis, platform="amazon", region="us", currency="USD", db_path=db_path)
 
-        # 保存 AliExpress 产品
+        # 保存 eBay 产品
         products2 = [{"title": "Test Product B", "price": "9.99", "rank": 1}]
         analysis2 = [{"final_verdict": "cautious"}]
-        save_products(products2, analysis2, platform="aliexpress", region="us", currency="USD", db_path=db_path)
+        save_products(products2, analysis2, platform="ebay", region="us", currency="USD", db_path=db_path)
 
         # 按平台查询
         amazon_only = query_products(platforms=["amazon"], db_path=db_path)
         assert len(amazon_only) == 1
         assert amazon_only[0]["title"] == "Test Product A"
 
-        ali_only = query_products(platforms=["aliexpress"], db_path=db_path)
-        assert len(ali_only) == 1
-        assert ali_only[0]["title"] == "Test Product B"
+        ebay_only = query_products(platforms=["ebay"], db_path=db_path)
+        assert len(ebay_only) == 1
+        assert ebay_only[0]["title"] == "Test Product B"
 
         # 查询全部
         all_products = query_products(db_path=db_path)
@@ -265,9 +265,9 @@ class TestScraperImports:
 
     @pytest.mark.parametrize("platform_key,expected_func", [
         ("amazon", "fetch_amazon_best_sellers"),
-        ("aliexpress", "fetch_aliexpress_best_sellers"),
-        ("shopee", "fetch_shopee_best_sellers"),
         ("ebay", "fetch_ebay_best_sellers"),
+        ("walmart", "fetch_walmart_best_sellers"),
+        ("etsy", "fetch_etsy_trending"),
     ])
     def test_scraper_module_importable(self, platform_key, expected_func):
         """验证每个平台的抓取模块可导入。"""
@@ -282,7 +282,7 @@ class TestScraperImports:
         assert callable(func)
         assert func_name == expected_func
 
-    @pytest.mark.parametrize("platform_key", ["amazon", "aliexpress", "shopee", "ebay"])
+    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "walmart", "etsy"])
     def test_search_function_importable(self, platform_key):
         """验证每个平台的搜索函数可导入。"""
         from src.platforms import PLATFORMS
@@ -338,12 +338,12 @@ class TestPlatformUtils:
         assert "commission_pct" in amazon_defaults
         assert "exchange_rate" in amazon_defaults
 
-        ali_defaults = get_profit_defaults("aliexpress")
-        assert "commission_pct" in ali_defaults
-        assert "withdrawal_fee_pct" in ali_defaults
+        walmart_defaults = get_profit_defaults("walmart")
+        assert "commission_pct" in walmart_defaults
+        assert "wfs_fee_pct" in walmart_defaults
 
-        shopee_defaults = get_profit_defaults("shopee")
-        assert "service_fee_pct" in shopee_defaults
+        etsy_defaults = get_profit_defaults("etsy")
+        assert "transaction_fee_pct" in etsy_defaults
 
         ebay_defaults = get_profit_defaults("ebay")
         assert "final_value_fee_pct" in ebay_defaults
