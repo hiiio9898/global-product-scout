@@ -1,299 +1,308 @@
 [
   {
-    "title": "Apple EarPods Headphones with USB-C Plug, Wired Ear Buds with Built-in Remote to Control Music, Phone Calls, and Volume",
-    "price": 19.0,
-    "rating": 4.6,
-    "num_reviews": 13745,
-    "rank": 2,
-    "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
-  },
-  {
-    "title": "Apple AirTag (2nd Generation): Tracker for Keychain, Wallet, and More; Locator with Sound; Simple One-Tap Setup with iPhone or iPad; Key Finder with up to 1.5X Precision Finding Range",
-    "price": 29.0,
-    "rating": 4.6,
-    "num_reviews": 4200,
-    "rank": 3,
-    "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
-  },
-  {
-    "title": "Apple AirPods 4 Wireless Earbuds, Bluetooth Headphones, Personalized Spatial Audio, Sweat and Water Resistant, USB-C Charging Case, H2 Chip, Up to 30 Hours of Battery Life, Effortless Setup for iPhone",
-    "price": 99.0,
-    "rating": 4.6,
-    "num_reviews": 29725,
-    "rank": 4,
-    "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
-  },
-  {
-    "title": "Apple iPad 11-inch: A16 chip, 11-inch Model, Liquid Retina Display, 128GB, Wi-Fi 6, 12MP Front/12MP Back Camera, Touch ID, All-Day Battery Life — Blue",
-    "price": 299.0,
-    "rating": 4.7,
-    "num_reviews": 24042,
-    "rank": 5,
-    "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
-  },
-  {
-    "title": "Apple AirPods Pro 3 Wireless Earbuds, Active Noise Cancellation, Live Translation, Heart Rate Sensing, Hearing Aid Feature, Bluetooth Headphones, Spatial Audio, High-Fidelity Sound, USB-C Charging",
-    "price": 229.0,
-    "rating": 4.5,
-    "num_reviews": 9799,
-    "rank": 6,
-    "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
-  },
-  {
     "title": "Hanes mens Underwear Boxer Briefs Pack, Cool & Breathable Cotton Moisture-wicking Underwear for Men, No Ride Up",
-    "price": 17.9,
+    "price": 0.0,
     "rating": 4.5,
-    "num_reviews": 132671,
-    "rank": 7,
+    "num_reviews": 132732,
+    "rank": 1,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
     "title": "LetsJoli Bras for Women Supportive Wireless Push Up Bra Full Coverage No Underwire Seamless Plus Size for Older Women",
-    "price": 19.99,
+    "price": 0.0,
     "rating": 4.1,
-    "num_reviews": 13935,
-    "rank": 8,
+    "num_reviews": 14003,
+    "rank": 2,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
-  },
-  {
-    "title": "Nippies Nipple Covers for Women - Reusable Sticky Silicone Pasties with Travel Case - Original Circle or Lift Style Available",
-    "price": 26.5,
-    "rating": 4.4,
-    "num_reviews": 43143,
-    "rank": 9,
-    "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
     "title": "Gildan Men's Crew T-Shirts, Multipack, Style G1100",
-    "price": 18.89,
+    "price": 0.0,
     "rating": 4.6,
-    "num_reviews": 329825,
-    "rank": 10,
+    "num_reviews": 329876,
+    "rank": 3,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
     "title": "COOFANDY Men's Linen Shirts Short Sleeve Casual Shirts Button Down Shirt for Men Beach Summer Wedding Shirt",
-    "price": 24.47,
+    "price": 0.0,
     "rating": 4.4,
-    "num_reviews": 13646,
-    "rank": 11,
+    "num_reviews": 13665,
+    "rank": 4,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
+  },
+  {
+    "title": "Nippies Nipple Covers for Women - Reusable Sticky Silicone Pasties with Travel Case - Original Circle or Lift Style Available",
+    "price": 0.0,
+    "rating": 4.4,
+    "num_reviews": 43144,
+    "rank": 5,
+    "category": "",
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
     "title": "OEAK Womens Deep V Bras Wireless Comfortable Bra Supportive No Underwire Bras Tshirt Push Up Bralettes Plunge Seamless Bra",
-    "price": 18.99,
+    "price": 0.0,
     "rating": 4.0,
-    "num_reviews": 12430,
+    "num_reviews": 12238,
+    "rank": 6,
+    "category": "",
+    "scrape_time": "2026-05-29 10:08:04"
+  },
+  {
+    "title": "Apple EarPods Headphones with USB-C Plug, Wired Ear Buds with Built-in Remote to Control Music, Phone Calls, and Volume",
+    "price": 0.0,
+    "rating": 4.6,
+    "num_reviews": 13772,
+    "rank": 8,
+    "category": "",
+    "scrape_time": "2026-05-29 10:08:04"
+  },
+  {
+    "title": "Apple AirTag (2nd Generation): Tracker for Keychain, Wallet, and More; Locator with Sound; Simple One-Tap Setup with iPhone or iPad; Key Finder with up to 1.5X Precision Finding Range",
+    "price": 0.0,
+    "rating": 4.6,
+    "num_reviews": 4241,
+    "rank": 9,
+    "category": "",
+    "scrape_time": "2026-05-29 10:08:04"
+  },
+  {
+    "title": "Apple AirPods 4 Wireless Earbuds, Bluetooth Headphones, Personalized Spatial Audio, Sweat and Water Resistant, USB-C Charging Case, H2 Chip, Up to 30 Hours of Battery Life, Effortless Setup for iPhone",
+    "price": 0.0,
+    "rating": 4.6,
+    "num_reviews": 29779,
+    "rank": 10,
+    "category": "",
+    "scrape_time": "2026-05-29 10:08:04"
+  },
+  {
+    "title": "Apple iPad 11-inch: A16 chip, 11-inch Model, Liquid Retina Display, 128GB, Wi-Fi 6, 12MP Front/12MP Back Camera, Touch ID, All-Day Battery Life — Blue",
+    "price": 0.0,
+    "rating": 4.7,
+    "num_reviews": 24083,
+    "rank": 11,
+    "category": "",
+    "scrape_time": "2026-05-29 10:08:04"
+  },
+  {
+    "title": "Amazon Fire TV Stick 4K Plus (newest model) with AI-powered Fire TV Search, Wi-Fi 6, stream hundreds of thousands of movies and shows, free & live TV, find shows faster with Alexa+",
+    "price": 0.0,
+    "rating": 4.6,
+    "num_reviews": 109385,
     "rank": 12,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
     "title": "Owala FreeSip Insulated Stainless Steel Water Bottle with Straw, BPA-Free Sports Water Bottle, Great for Travel, 24 Oz, Denim",
-    "price": 29.99,
+    "price": 0.0,
     "rating": 4.7,
-    "num_reviews": 121976,
+    "num_reviews": 122075,
     "rank": 13,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
     "title": "Etekcity Food Kitchen Scale, Digital Grams and Ounces for Weight Loss, Baking, Cooking, Keto and Meal Prep, LCD Display, Medium, 304 Stainless Steel",
-    "price": 10.99,
+    "price": 0.0,
     "rating": 4.6,
-    "num_reviews": 147553,
+    "num_reviews": 147567,
     "rank": 14,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
     "title": "STANLEY Quencher H2.0 Tumbler with Handle and Straw 30 oz | Flowstate 3-Position Lid | Cup Holder Compatible for Travel | Insulated Stainless Steel Cup | BPA-Free | Rose Quartz 2.0",
-    "price": 24.35,
+    "price": 0.0,
     "rating": 4.7,
-    "num_reviews": 93510,
+    "num_reviews": 93574,
     "rank": 15,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
     "title": "HydroJug Traveler - 32 oz Water Bottle with Handle & Flip Straw - Fits in Cup Holder, Leak Resistant Tumbler-Reusable Insulated Stainless Steel & Rubber Base - Gifts for Women & Men, Pink Sand",
-    "price": 29.74,
+    "price": 0.0,
     "rating": 4.6,
-    "num_reviews": 19348,
+    "num_reviews": 19377,
     "rank": 16,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
     "title": "Alpha Grillers Meat Thermometer Digital – Instant Read Food Thermometer for Cooking & Grilling – Professional Kitchen Fathers Day Gift for Dad Men Him Husband",
-    "price": 12.97,
+    "price": 0.0,
     "rating": 4.8,
-    "num_reviews": 88858,
+    "num_reviews": 88891,
     "rank": 17,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
-    "title": "STANLEY Quencher ProTour Flip Straw Tumbler with Leakproof Lid 40 oz | Built-In Straw and Handle | Cup Holder Compatible for Travel | Insulated Stainless Steel Cup | BPA-Free | Dried Pine VRT",
-    "price": 45.0,
-    "rating": 4.7,
-    "num_reviews": 17114,
+    "title": "Pureegg Plastic Table Cloth 10 Pack, 54 x 108 Inch Disposable Table Cloths for Party, Picnic and Wedding, Rectangle, White",
+    "price": 0.0,
+    "rating": 4.5,
+    "num_reviews": 6376,
     "rank": 18,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
-    "title": "Neutrogena Ultra Sheer Dry-Touch Sunscreen Lotion SPF 70, Broad Spectrum, Water Resistant 80 Min, Oil-Free, Oxybenzone-Free, Non-Comedogenic, Matte Finish, Body Sunscreen, Travel Size 3 Fl Oz",
-    "price": 7.99,
-    "rating": 4.6,
-    "num_reviews": 37964,
+    "title": "Bounty Paper Towels Quick Size, White, 16 Family Rolls = 40 Regular Rolls",
+    "price": 0.0,
+    "rating": 4.8,
+    "num_reviews": 232202,
     "rank": 19,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
-  },
-  {
-    "title": "medicube Toner Pads Zero Pore Pad 2.0 | Dual-Textured Facial Pad for Exfoliation and Pore Care with 4.5% AHA Lactic Acid, 0.45% BHA Salicylic Acid | Ideal for All, Korean Skin Care, 70 Pads (1 Pack)",
-    "price": 18.9,
-    "rating": 4.6,
-    "num_reviews": 24646,
-    "rank": 20,
-    "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
-  },
-  {
-    "title": "eos Shea Better Body Lotion Vanilla Cashmere, 24-Hour Moisture Skin Care, Lightweight & Non-Greasy, Natural Shea, Vegan, Vanilla Body Lotion, 16 fl oz",
-    "price": 9.97,
-    "rating": 4.7,
-    "num_reviews": 73810,
-    "rank": 21,
-    "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
-  },
-  {
-    "title": "Mighty Patch Original Patch from Hero Cosmetics - #1 Hydrocolloid Acne Pimple Patches for Face, Shrinking Zits & Whiteheads in 1 Use, Nighttime Spot Pimple Stickers for Face, 36 Count",
-    "price": 12.99,
-    "rating": 4.6,
-    "num_reviews": 183408,
-    "rank": 22,
-    "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
-  },
-  {
-    "title": "Amazon Basics Double-Tipped Cotton Swabs for Personal Hygiene and Baby Care, Cotton, Versatile, Baby Safe, 500 Count",
-    "price": 2.68,
-    "rating": 4.7,
-    "num_reviews": 75113,
-    "rank": 23,
-    "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
-  },
-  {
-    "title": "Bounty Quick Size Paper Towels, White, 8 Family Rolls",
-    "price": 24.42,
-    "rating": 4.8,
-    "num_reviews": 232155,
-    "rank": 25,
-    "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
     "title": "Scott ComfortPlus Toilet Paper, 12 Triple Rolls, 231 Sheets per Roll, Septic-Safe, 1-Ply Toilet Tissue",
-    "price": 7.29,
+    "price": 0.0,
     "rating": 4.6,
-    "num_reviews": 139344,
-    "rank": 26,
+    "num_reviews": 139468,
+    "rank": 20,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
     "title": "Amazon Basics 20-Pack AA Alkaline Batteries, 1.5 Volt, 10-Year Leak-Free Shelf Life, for Everyday and Household Devices",
-    "price": 9.99,
+    "price": 0.0,
     "rating": 4.7,
-    "num_reviews": 938048,
-    "rank": 27,
+    "num_reviews": 938187,
+    "rank": 21,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
     "title": "Angel Soft Toilet Paper, 18 Mega Rolls = 72 Regular Rolls, Soft and Strong Toilet Tissue",
-    "price": 12.66,
+    "price": 0.0,
     "rating": 4.8,
-    "num_reviews": 101753,
-    "rank": 28,
+    "num_reviews": 101815,
+    "rank": 22,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
-  },
-  {
-    "title": "LMNT Zero Sugar Electrolytes - Raspberry Salt | Drink Mix | 30-Count",
-    "price": 45.0,
-    "rating": 4.6,
-    "num_reviews": 6193,
-    "rank": 29,
-    "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
     "title": "Amazon Basics Everyday Disposable Paper Plates, 8.62 Inch, Microwave-Safe, Cut Resistant, Soak-Proof, 100 Count, Packaging May Vary",
-    "price": 5.97,
+    "price": 0.0,
     "rating": 4.7,
-    "num_reviews": 54732,
-    "rank": 30,
+    "num_reviews": 54780,
+    "rank": 23,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
-    "title": "Occer 12x25 Compact Binoculars for Adults and Kids, Large Eyepiece Waterproof Binocular with Low Light Vision,High Powered Easy Focus Binoculars for Bird Watching,Outdoor Hunting,Travel,Sightseeing",
-    "price": 35.98,
-    "rating": 4.4,
-    "num_reviews": 33182,
+    "title": "Charmin Ultra Soft Cushiony Touch Toilet Paper, 24 Family Mega = 123 Regular Rolls, White",
+    "price": 0.0,
+    "rating": 4.8,
+    "num_reviews": 125355,
+    "rank": 24,
+    "category": "",
+    "scrape_time": "2026-05-29 10:08:04"
+  },
+  {
+    "title": "medicube Toner Pads Zero Pore Pad 2.0 | Dual-Textured Facial Pad for Exfoliation and Pore Care with 4.5% AHA Lactic Acid, 0.45% BHA Salicylic Acid | Ideal for All, Korean Skin Care, 70 Pads (1 Pack)",
+    "price": 0.0,
+    "rating": 4.6,
+    "num_reviews": 24702,
+    "rank": 25,
+    "category": "",
+    "scrape_time": "2026-05-29 10:08:04"
+  },
+  {
+    "title": "eos Shea Better Body Lotion Vanilla Cashmere, 24-Hour Moisture Skin Care, Lightweight & Non-Greasy, Natural Shea, Vegan, Vanilla Body Lotion, 16 fl oz",
+    "price": 0.0,
+    "rating": 4.7,
+    "num_reviews": 73888,
+    "rank": 26,
+    "category": "",
+    "scrape_time": "2026-05-29 10:08:04"
+  },
+  {
+    "title": "Neutrogena Ultra Sheer Dry-Touch Sunscreen Lotion SPF 70, Broad Spectrum, Water Resistant 80 Min, Oil-Free, Oxybenzone-Free, Non-Comedogenic, Matte Finish, Body Sunscreen, Travel Size 3 Fl Oz",
+    "price": 0.0,
+    "rating": 4.6,
+    "num_reviews": 37997,
+    "rank": 27,
+    "category": "",
+    "scrape_time": "2026-05-29 10:08:04"
+  },
+  {
+    "title": "Mighty Patch Original Patch from Hero Cosmetics - #1 Hydrocolloid Acne Pimple Patches for Face, Shrinking Zits & Whiteheads in 1 Use, Nighttime Spot Pimple Stickers for Face, 36 Count",
+    "price": 0.0,
+    "rating": 4.6,
+    "num_reviews": 183432,
+    "rank": 28,
+    "category": "",
+    "scrape_time": "2026-05-29 10:08:04"
+  },
+  {
+    "title": "Amazon Basics Double-Tipped Cotton Swabs for Personal Hygiene and Baby Care, Cotton, Versatile, Baby Safe, 500 Count",
+    "price": 0.0,
+    "rating": 4.7,
+    "num_reviews": 75167,
+    "rank": 29,
+    "category": "",
+    "scrape_time": "2026-05-29 10:08:04"
+  },
+  {
+    "title": "Supmedic Medical Soft Max™ Nitrile Exam Gloves, 100 Count Latex-Free Powder-Free Non-Sterile Food Safe Disposable Glove, Blue",
+    "price": 0.0,
+    "rating": 4.7,
+    "num_reviews": 26614,
     "rank": 31,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
-    "title": "POLDR 12X25 Small Pocket Binoculars Compact Adults, Mini Kids Binoculars Boys for Bird Watching, Concert Theater Opera",
-    "price": 14.99,
-    "rating": 4.3,
-    "num_reviews": 12814,
+    "title": "MedPride Powder-Free Nitrile Exam Gloves, Iris Blue, Medium, Box/100",
+    "price": 0.0,
+    "rating": 4.7,
+    "num_reviews": 103660,
     "rank": 32,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
-    "title": "20x50 High Powered Binoculars for Adults, Waterproof Compact Binoculars with Low Light Vision for Bird Watching Hunting Camping Travel Cruise Hiking Sports Stargazing, Christmas Birthday Gifts for Men",
-    "price": 35.98,
-    "rating": 4.4,
-    "num_reviews": 4771,
+    "title": "Amazon Brand - Presto! Ultra-Strong Premium Paper Towels, 158 Sheet Huge Roll - Flex-a-Size, 12 Rolls (2 Packs of 6), Equivalent to 38 Regular Rolls, White",
+    "price": 0.0,
+    "rating": 4.6,
+    "num_reviews": 115092,
     "rank": 33,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
-    "title": "Hontry Binoculars for Adults and Kids, 10x25 Compact Binoculars for Bird Watching, Theater and Concerts, Hunting and Sport Games",
-    "price": 24.95,
+    "title": "Gorilla Super Glue Gel XL, Clear 25g (Pack of 1) - Fast‑Setting, No‑Drip Control for Precise All‑Purpose Repairs",
+    "price": 0.0,
     "rating": 4.6,
-    "num_reviews": 24210,
+    "num_reviews": 41560,
     "rank": 34,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
   },
   {
-    "title": "Elikliv Microscope, LCD Digital Coin Microscope 1000x, Coin Magnifier with 8 Adjustable LED Lights, PC View Compatible with Windows/MacBook, EDM4, 4.3-Inch",
-    "price": 33.88,
-    "rating": 4.5,
-    "num_reviews": 11288,
+    "title": "Molly's Suds Dishwasher Pods | Clean Dishwasher Detergent, Cuts Grease & Rinses Clean (Residue-Free) for Sparkling Dishes | 60 Auto-Release Tabs (Unscented)",
+    "price": 0.0,
+    "rating": 4.3,
+    "num_reviews": 8898,
     "rank": 35,
     "category": "",
-    "scrape_time": "2026-05-28 10:18:18"
+    "scrape_time": "2026-05-29 10:08:04"
+  },
+  {
+    "title": "SUNLU PLA 3D Printer Filament PLA Filament 1.75mm, Neatly Wound 3D Printing Filament 1.75mm, Dimensional Accuracy +/- 0.02 mm, Fit Most FDM 3D Printers, 1kg Spool (2.2lbs), Black",
+    "price": 0.0,
+    "rating": 4.4,
+    "num_reviews": 22245,
+    "rank": 36,
+    "category": "",
+    "scrape_time": "2026-05-29 10:08:04"
   }
 ]
