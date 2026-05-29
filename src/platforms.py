@@ -90,8 +90,29 @@ PLATFORMS = {
             "exchange_loss_pct": 0.01,
         },
     },
-    # --- 以下平台在后续 Spec 中注册 ---
-    # "ebay":       { ... },   # Spec 11
+    "ebay": {
+        "name": "eBay",
+        "icon": "🔵",
+        "scraper_module": "src.scraper_ebay",
+        "scraper_func": "fetch_ebay_best_sellers",
+        "search_module": "src.scraper_ebay",
+        "search_func": "search_ebay",
+        "calculator": "calculate_ebay_profit",
+        "currency": "USD",
+        "regions": {
+            "us": {"name": "美国站", "domain": "ebay.com", "currency": "USD", "exchange_rate": 7.24},
+            "uk": {"name": "英国站", "domain": "ebay.co.uk", "currency": "GBP", "exchange_rate": 9.18},
+            "de": {"name": "德国站", "domain": "ebay.de", "currency": "EUR", "exchange_rate": 7.88},
+        },
+        "default_region": "us",
+        "profit_defaults": {
+            "final_value_fee_pct": 0.1325,
+            "listing_fee_usd": 0.30,
+            "shipping_cny": 20.0,
+            "packaging_cny": 5.0,
+            "payoneer_fee_pct": 0.01,
+        },
+    },
 }
 
 

@@ -248,6 +248,73 @@ def calculate_shopee_profit(
 
 
 # ============================================================
+# eBay 利润计算器
+# ============================================================
+
+@register_calculator("ebay")
+def calculate_ebay_profit(
+    price: float,
+    defaults: dict,
+    procurement_cny: float = 0.0,
+    **kwargs,
+) -> dict:
+    """
+    eBay 卖家利润计算（Managed Payments）。
+
+    公式：
+        售价(USD) × 汇率 = 售价(CNY)
+        成交费 = 售价(CNY) × final_value_fee_pct (13.25%)
+        刊登费 = listing_fee_usd × 汇率
+        Payoneer 提现费 = 售价(CNY) × payoneer_fee_pct (1%)
+        总成本 = 采购成本 + 国际运费 + 包装费 + 成交费 + 刊登费 + 提现费
+        净利 = 售价(CNY) - 总成本
+        毛利率 = 净利 / 售价(CNY)
+
+    Args:
+        price:             产品售价（本地货币）
+        defaults:          利润默认参数字典
+        procurement_cny:   采购成本（人民币）
+        **kwargs:          预留扩展
+
+    Returns:
+        标准利润结果字典
+    """
+    exchange_rate = defaults.get("exchange_rate", 7.24)
+    final_value_fee_pct = defaults.get("final_value_fee_pct", 0.1325)
+    listing_fee_usd = defaults.get("listing_fee_usd", 0.30)
+    shipping_cny = defaults.get("shipping_cny", 20.0)
+    packaging_cny = defaults.get("packaging_cny", 5.0)
+    payoneer_fee_pct = defaults.get("payoneer_fee_pct", 0.01)
+
+    price_cny = price * exchange_rate
+    fvf_cny = price_cny * final_value_fee_pct
+    listing_cny = listing_fee_usd * exchange_rate
+    payoneer_cny = price_cny * payoneer_fee_pct
+    total_cost = (procurement_cny + shipping_cny + packaging_cny
+                  + fvf_cny + listing_cny + payoneer_cny)
+    net_profit_cny = price_cny - total_cost
+    net_profit_usd = net_profit_cny / exchange_rate if exchange_rate > 0 else 0.0
+    margin_pct = (net_profit_cny / price_cny * 100) if price_cny > 0 else 0.0
+
+    return {
+        "price_local": round(price, 2),
+        "price_cny": round(price_cny, 2),
+        "fvf_cny": round(fvf_cny, 2),
+        "listing_cny": round(listing_cny, 2),
+        "payoneer_cny": round(payoneer_cny, 2),
+        "shipping_cny": round(shipping_cny, 2),
+        "packaging_cny": round(packaging_cny, 2),
+        "procurement_cny": round(procurement_cny, 2),
+        "total_cost_cny": round(total_cost, 2),
+        "net_profit_cny": round(net_profit_cny, 2),
+        "net_profit_usd": round(net_profit_usd, 2),
+        "margin_pct": round(margin_pct, 1),
+        "is_profitable": net_profit_cny > 0,
+        "has_procurement": procurement_cny > 0,
+    }
+
+
+# ============================================================
 # 统一利润计算入口（向后兼容）
 # ============================================================
 
