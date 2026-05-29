@@ -108,12 +108,14 @@ def _get_cache_timestamp(prefix: str, region: str) -> Optional[str]:
 def _extract_title(card) -> str:
     """从产品卡片中提取标题。"""
     selectors = [
+        "h3",                                  # 新版 trending article 内的 h3
         "div.s-item__title span",
         "div.s-item__title",
         "h3.s-item__title",
         "a.s-item__link span",
         "div[class*='itemtcard'] h3",
         "h3.texttt",
+        "[class*='title']",
     ]
     for sel in selectors:
         elem = card.select_one(sel)
@@ -128,8 +130,15 @@ def _extract_title(card) -> str:
 def _extract_price(card) -> Optional[float]:
     """
     从产品卡片中提取价格。
-    eBay 价格格式："$12.99", "$12.99 to $29.99"
+    eBay 价格格式："$12.99", "$12.99 to $29.99", "￥58,917.00"
     """
+    # 先尝试获取所有含价格的文本节点
+    all_text = card.get_text(strip=True)
+    # 尝试从整个卡片文本中提取第一个价格
+    price = _extract_first_price_from_text(all_text)
+    if price and price > 0:
+        return price
+
     selectors = [
         "span.s-item__price",
         "span.s-item__price span",
@@ -146,12 +155,32 @@ def _extract_price(card) -> Optional[float]:
     return None
 
 
+def _extract_first_price_from_text(text: str) -> Optional[float]:
+    """从文本中提取第一个价格数字。"""
+    if not text:
+        return None
+    # 匹配各种货币格式：$12.99, ￥58,917.00, €15.00, £9.99
+    match = re.search(r'[\$￥€£]\s*([\d,]+\.?\d*)', text)
+    if match:
+        try:
+            price_str = match.group(1).replace(",", "")
+            price = float(price_str)
+            # 日元转换：如果金额 > 1000 且原始符号是 ￥，转为 USD
+            if price > 1000 and "￥" in text[:match.start() + 5]:
+                price = price / 150.0  # 粗略 JPY -> USD
+            return round(price, 2)
+        except ValueError:
+            pass
+    return None
+
+
 def _clean_price(price_str: str) -> Optional[float]:
     """
     清洗价格字符串，处理各种 eBay 价格格式。
     "$12.99" → 12.99
     "$12.99 to $29.99" → 12.99（取最低价）
     "C $15.00" → 15.00
+    "￥58,917.00" → 392.78（JPY 转 USD）
     """
     if not price_str:
         return None
@@ -163,11 +192,21 @@ def _clean_price(price_str: str) -> Optional[float]:
     if " to " in cleaned.lower():
         cleaned = cleaned.lower().split(" to ")[0].strip()
 
+    # 检测是否是日元
+    is_jpy = "￥" in cleaned or "¥" in cleaned
+    # 检测是否是欧元
+    is_eur = "€" in cleaned
+
     # 提取数字
     nums = re.findall(r"[\d,.]+", cleaned)
     if nums:
         try:
-            return float(nums[0].replace(",", ""))
+            price = float(nums[0].replace(",", ""))
+            if is_jpy and price > 1000:
+                price = price / 150.0  # JPY -> USD 近似
+            elif is_eur:
+                price = price * 1.08  # EUR -> USD 近似
+            return round(price, 2)
         except ValueError:
             pass
     return None
@@ -238,25 +277,32 @@ def _extract_reviews(card) -> int:
 def _extract_url(card) -> str:
     """提取产品链接。"""
     selectors = [
-        "a.s-item__link",
         "a[href*='itm']",
+        "a.s-item__link",
+        "a[href*='ebay.com/itm']",
         "a[href*='ebay']",
     ]
     for sel in selectors:
         elem = card.select_one(sel)
         if elem:
             href = elem.get("href", "")
-            if href and "ebay" in href:
-                return href
+            if href:
+                # 清理 eBay 追踪参数
+                if "?" in href:
+                    href = href.split("?")[0]
+                if "ebay" in href or href.startswith("/"):
+                    return href
     return ""
 
 
 def _extract_image(card) -> str:
     """提取图片 URL。"""
-    img = card.select_one("img.s-item__image-img") or card.select_one("img")
+    img = card.select_one("img")
     if img:
         src = img.get("src", "") or img.get("data-src", "")
-        if src and "ebayimg.com" in src:
+        if src:
+            if src.startswith("//"):
+                src = "https:" + src
             return src
     return ""
 
@@ -334,12 +380,13 @@ def _scrape_ebay_best_sellers(region: str = "us") -> list[dict]:
 
             soup = BeautifulSoup(resp.text, "html.parser")
 
-            # 多套选择器兜底
+            # 多套选择器兜底（article 标签是新版 eBay trending 页面的主要结构）
             card_selectors = [
-                "ul.srp-results li.s-item",         # 搜索结果页
-                "div.ebayui-dne-itemtcard",          # Trending 页
-                "div.s-item__wrapper",                # 通用卡片
-                "li.s-item",                          # 简化选择器
+                "article",                              # 新版 trending 页面
+                "ul.srp-results li.s-item",             # 搜索结果页
+                "div.ebayui-dne-itemtcard",             # 旧版 Trending 页
+                "div.s-item__wrapper",                   # 通用卡片
+                "li.s-item",                             # 简化选择器
             ]
 
             cards = []
@@ -470,19 +517,58 @@ def fetch_ebay_best_sellers(region: str = "us") -> tuple[list[dict], dict]:
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             return products, {"source": "live", "timestamp": timestamp}
         else:
-            print(f"⚠️ eBay 实时抓取仅获得 {len(products)} 个产品，降级到缓存")
+            print(f"[!] eBay 实时抓取仅获得 {len(products)} 个产品，降级到缓存")
     except Exception as e:
-        print(f"⚠️ eBay 实时抓取失败：{e}")
+        print(f"[!] eBay 实时抓取失败: {e}")
 
-    # ---------- 第二层：本地缓存 ----------
+    # ---------- 第二层：Selenium 降级 ----------
+    try:
+        print("[scraper_ebay] requests 方式失败，尝试 Selenium 降级...")
+        from .selenium_helper import fetch_page_soup
+        domain = _REGION_DOMAINS.get(region, "ebay.com")
+        urls_to_try = [
+            f"https://www.{domain}/trending",
+            f"https://www.{domain}/sch/i.html?_nkw=best+sellers&_sop=12",
+        ]
+        card_selectors = [
+            "ul.srp-results li.s-item",
+            "div.ebayui-dne-itemtcard",
+            "div.s-item__wrapper",
+            "li.s-item",
+        ]
+        for url in urls_to_try:
+            selenium_soup = fetch_page_soup(url, wait_seconds=8)
+            if selenium_soup:
+                if is_blocked(str(selenium_soup)):
+                    print(f"[scraper_ebay] Selenium 也被拦截：{url}")
+                    continue
+                cards = []
+                for sel in card_selectors:
+                    cards = selenium_soup.select(sel)
+                    if cards:
+                        break
+                if cards:
+                    products = []
+                    for i, card in enumerate(cards[:50], 1):
+                        product = _parse_product_card(card, i)
+                        if product:
+                            products.append(product)
+                    if len(products) >= 3:
+                        _save_cache(products, "best_sellers", region)
+                        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+                        return products, {"source": "live", "timestamp": timestamp}
+    except Exception as e:
+        print(f"[!] eBay Selenium 降级也失败: {e}")
+
+    # ---------- 第三层：本地缓存 ----------
     cached = _load_cache("best_sellers", region)
     if cached and len(cached) >= 3:
         cache_ts = _get_cache_timestamp("best_sellers", region)
-        print(f"📦 使用 eBay 本地缓存（{len(cached)} 个产品）")
+        print(f"[*] 使用 eBay 本地缓存 ({len(cached)} 个产品)")
         return cached, {"source": "cache", "timestamp": cache_ts or "unknown"}
 
     # ---------- 均不可用 ----------
-    print("❌ eBay 实时抓取和本地缓存均不可用")
+    print("[X] eBay 实时抓取和本地缓存均不可用")
     return [], {
         "source": "unavailable",
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),

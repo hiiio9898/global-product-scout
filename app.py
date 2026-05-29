@@ -426,12 +426,38 @@ def _render_live_page(api_ok: bool):
 
                 if source_info.get("source") not in ("live", "cache"):
                     st.session_state.analyzing = False
-                    st.error(f"❌ 实时抓取 {pf_name} 失败（网站可能拦截了请求）")
-                    st.info(
-                        "💡 建议使用「📄 分析 JSON 数据」按钮。\n\n"
-                        "如需最新数据，请在本机执行 `python daily_scrape.py`，"
-                        "然后将 `data/products.json` 提交并推送到 GitHub。"
-                    )
+                    error_detail = source_info.get("error", "网站反爬拦截或页面不可用")
+                    st.error(f"❌ 实时抓取 {pf_name} 失败")
+                    st.warning(f"原因: {error_detail}")
+
+                    platform = st.session_state.get("active_platform", "amazon")
+                    if platform == "ebay":
+                        st.info(
+                            "💡 eBay 通常可以抓取成功。请检查网络连接后重试，"
+                            "或使用「📄 分析 JSON 数据」按钮。"
+                        )
+                    elif platform == "aliexpress":
+                        st.info(
+                            "💡 **AliExpress 目前无法抓取**（页面结构变更/反爬拦截）。\n\n"
+                            "**替代方案：**\n"
+                            "1. 使用「📄 分析 JSON 数据」分析已有数据\n"
+                            "2. 使用「🎯 指定选品」通过 AI 搜索 AliExpress 产品信息\n"
+                            "3. 手动在 AliExpress 选品后输入采购成本计算利润"
+                        )
+                    elif platform == "shopee":
+                        st.info(
+                            "💡 **Shopee 目前无法抓取**（API 403 / 反爬拦截）。\n\n"
+                            "**替代方案：**\n"
+                            "1. 使用「📄 分析 JSON 数据」分析已有数据\n"
+                            "2. 使用「🎯 指定选品」通过 AI 搜索 Shopee 产品信息\n"
+                            "3. 手动在 Shopee 选品后输入采购成本计算利润"
+                        )
+                    else:
+                        st.info(
+                            "💡 建议使用「📄 分析 JSON 数据」按钮。\n\n"
+                            "如需最新数据，请在本机执行 `python daily_scrape.py`，"
+                            "然后将 `data/products.json` 提交并推送到 GitHub。"
+                        )
                 else:
                     st.session_state.products = products
                     st.session_state.source_info = source_info

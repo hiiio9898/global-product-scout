@@ -280,9 +280,8 @@ def _scrape_aliexpress_best_sellers(region: str = "us") -> list[dict]:
     """
     domain = _REGION_DOMAINS.get(region, "aliexpress.com")
 
-    # AliExpress 热销页面 URL
-    # 使用搜索排序方式获取热销产品
-    url = f"https://www.{domain}/glo/best-sellers.html"
+    # AliExpress 搜索排序页面（best-sellers URL 已失效，改用搜索方式）
+    url = f"https://www.{domain}/w/wholesale-best-selling.html?SortType=total_orders"
 
     headers = {
         "User-Agent": random.choice(USER_AGENTS),
@@ -352,6 +351,26 @@ def _scrape_aliexpress_best_sellers(region: str = "us") -> list[dict]:
             if cards:
                 break
 
+    # Selenium 降级：如果 requests 方式失败或被拦截
+    if not cards or len(cards) < 3:
+        print("[scraper_aliexpress] requests 方式产品不足，尝试 Selenium 降级...")
+        try:
+            from .selenium_helper import fetch_page_soup
+            selenium_url = f"https://www.{domain}/w/wholesale-best-selling.html?SortType=total_orders"
+            selenium_soup = fetch_page_soup(selenium_url, wait_seconds=10)
+            if selenium_soup:
+                # 检查是否是 404 或 CAPTCHA
+                page_text = selenium_soup.get_text().lower()
+                if "404" in page_text[:200] or "captcha" in page_text:
+                    print("[scraper_aliexpress] Selenium 页面为 404 或 CAPTCHA")
+                else:
+                    for sel in card_selectors:
+                        cards = selenium_soup.select(sel)
+                        if cards:
+                            break
+        except Exception as e:
+            print(f"[scraper_aliexpress] Selenium 降级也失败: {e}")
+
     print(f"[scraper_aliexpress] 找到 {len(cards)} 个产品卡片")
 
     products = []
@@ -420,6 +439,20 @@ def _scrape_aliexpress_search(keyword: str, region: str = "us", max_results: int
         if cards:
             break
 
+    # Selenium 降级
+    if not cards or len(cards) < 3:
+        print("[scraper_aliexpress] 搜索 requests 方式产品不足，尝试 Selenium 降级...")
+        try:
+            from .selenium_helper import fetch_page_soup
+            selenium_soup = fetch_page_soup(url, wait_seconds=8)
+            if selenium_soup:
+                for sel in card_selectors:
+                    cards = selenium_soup.select(sel)
+                    if cards:
+                        break
+        except Exception as e:
+            print(f"[scraper_aliexpress] 搜索 Selenium 降级也失败：{e}")
+
     print(f"[scraper_aliexpress] 找到 {len(cards)} 个搜索结果")
 
     products = []
@@ -453,19 +486,19 @@ def fetch_aliexpress_best_sellers(region: str = "us") -> tuple[list[dict], dict]
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             return products, {"source": "live", "timestamp": timestamp}
         else:
-            print(f"⚠️ AliExpress 实时抓取仅获得 {len(products)} 个产品，降级到缓存")
+            print(f"[!] AliExpress 实时抓取仅获得 {len(products)} 个产品，降级到缓存")
     except Exception as e:
-        print(f"⚠️ AliExpress 实时抓取失败：{e}")
+        print(f"[!] AliExpress 实时抓取失败: {e}")
 
     # ---------- 第二层：本地缓存 ----------
     cached = _load_cache(region=region)
     if cached and len(cached) >= 3:
         cache_ts = _get_cache_timestamp(region=region)
-        print(f"📦 使用 AliExpress 本地缓存（{len(cached)} 个产品）")
+        print(f"[*] 使用 AliExpress 本地缓存 ({len(cached)} 个产品)")
         return cached, {"source": "cache", "timestamp": cache_ts or "unknown"}
 
     # ---------- 均不可用 ----------
-    print("❌ AliExpress 实时抓取和本地缓存均不可用")
+    print("[X] AliExpress 实时抓取和本地缓存均不可用")
     return [], {
         "source": "unavailable",
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),

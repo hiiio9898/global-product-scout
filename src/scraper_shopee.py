@@ -492,7 +492,7 @@ def fetch_shopee_best_sellers(region: str = "sg") -> tuple[list[dict], dict]:
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             return products, {"source": "live", "timestamp": timestamp}
     except Exception as e:
-        print(f"⚠️ Shopee API 抓取失败：{e}")
+        print(f"[!] Shopee API 抓取失败: {e}")
 
     # ---------- 第二层：HTML 降级 ----------
     try:
@@ -502,17 +502,34 @@ def fetch_shopee_best_sellers(region: str = "sg") -> tuple[list[dict], dict]:
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             return products, {"source": "live", "timestamp": timestamp}
     except Exception as e:
-        print(f"⚠️ Shopee HTML 抓取也失败：{e}")
+        print(f"[!] Shopee HTML 抓取也失败: {e}")
 
-    # ---------- 第三层：本地缓存 ----------
+    # ---------- 第三层：Selenium 降级 ----------
+    try:
+        print("[scraper_shopee] API/HTML 均失败，尝试 Selenium 降级...")
+        from .selenium_helper import fetch_page_soup
+        top_sold_url = f"https://{domain}/top_sold"
+        selenium_soup = fetch_page_soup(top_sold_url, wait_seconds=8)
+        if selenium_soup:
+            products = _extract_json_from_scripts(selenium_soup, domain, region)
+            if not products:
+                products = _extract_from_html_elements(selenium_soup, domain, region)
+            if len(products) >= 3:
+                _save_cache(products, "best_sellers", region)
+                timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+                return products, {"source": "live", "timestamp": timestamp}
+    except Exception as e:
+        print(f"[!] Shopee Selenium 降级也失败: {e}")
+
+    # ---------- 第四层：本地缓存 ----------
     cached = _load_cache("best_sellers", region)
     if cached and len(cached) >= 3:
         cache_ts = _get_cache_timestamp("best_sellers", region)
-        print(f"📦 使用 Shopee 本地缓存（{len(cached)} 个产品）")
+        print(f"[*] 使用 Shopee 本地缓存 ({len(cached)} 个产品)")
         return cached, {"source": "cache", "timestamp": cache_ts or "unknown"}
 
     # ---------- 均不可用 ----------
-    print("❌ Shopee 实时抓取和本地缓存均不可用")
+    print("[X] Shopee 实时抓取和本地缓存均不可用")
     return [], {
         "source": "unavailable",
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),

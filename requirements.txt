@@ -3,6 +3,8 @@ python-dotenv
 openai
 requests
 beautifulsoup4
+selenium
+undetected-chromedriver
 pytest
 flake8
 pandas
