@@ -557,3 +557,138 @@ def get_latest_products(db_path: Optional[str] = None) -> list[dict]:
         ]
     finally:
         conn.close()
+
+
+# ============================================================
+# 多平台增强查询（Spec 12）
+# ============================================================
+
+def query_products(
+    platforms: list[str] = None,
+    regions: list[str] = None,
+    date_range: tuple = None,
+    min_margin: float = None,
+    keyword: str = None,
+    limit: int = 500,
+    db_path: Optional[str] = None,
+) -> list[dict]:
+    """
+    多条件查询历史产品（支持平台、地区、时间范围等筛选）。
+
+    Args:
+        platforms:  平台列表，如 ["amazon", "aliexpress"]
+        regions:    地区列表，如 ["us", "sg"]
+        date_range: 时间范围 (start_date, end_date)
+        min_margin: 最低毛利率
+        keyword:    标题关键词搜索
+        limit:      返回数量上限
+        db_path:    数据库路径
+
+    Returns:
+        产品字典列表（包含分析结果）
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+
+    init_db(db_path)
+
+    conditions = []
+    params = []
+
+    if platforms:
+        placeholders = ",".join(["?"] * len(platforms))
+        conditions.append(f"platform IN ({placeholders})")
+        params.extend(platforms)
+
+    if regions:
+        placeholders = ",".join(["?"] * len(regions))
+        conditions.append(f"region IN ({placeholders})")
+        params.extend(regions)
+
+    if date_range and len(date_range) == 2:
+        conditions.append("scrape_time BETWEEN ? AND ?")
+        start_str = date_range[0].isoformat() if hasattr(date_range[0], 'isoformat') else str(date_range[0])
+        end_str = date_range[1].isoformat() if hasattr(date_range[1], 'isoformat') else str(date_range[1])
+        params.extend([start_str, end_str])
+
+    if keyword:
+        conditions.append("title LIKE ?")
+        params.append(f"%{keyword}%")
+
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
+    sql = f"SELECT * FROM products WHERE {where_clause} ORDER BY scrape_time DESC LIMIT ?"
+    params.append(limit)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(sql, params).fetchall()
+        results = []
+        for row in rows:
+            product = dict(row)
+            # 解析分析结果
+            try:
+                analysis = json.loads(product.get("analysis_json", "{}"))
+            except (json.JSONDecodeError, TypeError):
+                analysis = {}
+            product["analysis"] = analysis
+
+            # 从分析结果中提取利润信息供筛选使用
+            product["margin_pct"] = analysis.get("margin_pct", -999)
+            product["is_profitable"] = analysis.get("is_profitable", False)
+
+            results.append(product)
+
+        # 毛利率筛选（Python 层过滤）
+        if min_margin is not None and min_margin > -50:
+            results = [p for p in results if p.get("margin_pct", -999) >= min_margin]
+
+        return results
+    finally:
+        conn.close()
+
+
+def get_platform_summary(db_path: Optional[str] = None) -> dict:
+    """
+    获取各平台的数据摘要统计。
+
+    Returns:
+        {
+            "amazon": {"count": 36, "regions": ["us", "uk"], "latest": "2025-01-15"},
+            ...
+        }
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+
+    init_db(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        # 检查 platform 列是否存在
+        try:
+            rows = conn.execute(
+                "SELECT platform, region, COUNT(*) as cnt, MAX(scrape_time) as latest "
+                "FROM products GROUP BY platform, region ORDER BY platform, region"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            # 旧数据库可能没有 platform 列
+            return {}
+
+        summary = {}
+        for row in rows:
+            pf = row[0] or "amazon"
+            if pf not in summary:
+                summary[pf] = {"count": 0, "regions": [], "latest": ""}
+            summary[pf]["count"] += row[1]
+            region = row[1] or "us"
+            if region not in summary[pf]["regions"]:
+                summary[pf]["regions"].append(region)
+            latest = row[3] or ""
+            if latest > summary[pf]["latest"]:
+                summary[pf]["latest"] = latest
+        return summary
+    finally:
+        conn.close()

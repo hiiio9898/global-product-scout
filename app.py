@@ -44,6 +44,8 @@ from src.database import (
     save_procurement_cost,
     get_procurement_cost,
     get_trend_data,
+    query_products,
+    get_platform_summary,
 )
 
 # ============================================================
@@ -1110,7 +1112,7 @@ def _render_targeted_page(api_ok: bool):
 # ============================================================
 
 def _render_history_page():
-    """渲染历史记录页面 — 查询、筛选、导出过往分析结果 + 产品趋势。"""
+    """渲染历史记录页面 — 多平台增强版（筛选、统计、跨平台对比、导出）。"""
 
     st.title("📚 历史分析记录")
 
@@ -1135,13 +1137,18 @@ def _render_history_page():
         )
 
     # ---- Tabs ----
-    tab_list, tab_trend = st.tabs(["📚 历史记录", "📈 产品趋势"])
+    tab_list, tab_trend, tab_compare = st.tabs([
+        "📚 历史记录", "📈 产品趋势", "⚖️ 跨平台对比"
+    ])
 
     with tab_list:
         _render_history_list(total_count)
 
     with tab_trend:
         _render_trend_page()
+
+    with tab_compare:
+        _render_cross_platform_tab()
 
 
 def _render_trend_page():
@@ -1232,12 +1239,39 @@ def _render_trend_page():
 
 
 def _render_history_list(total_count: int):
-    """渲染历史记录列表（筛选、排序、导出）。"""
-    # ---- 筛选控件 ----
+    """渲染历史记录列表（多平台增强版 — 平台/地区筛选 + 统计仪表盘）。"""
+
+    # ---- 多平台筛选器 ----
     with st.container(border=True):
         st.markdown("### 🔍 筛选条件")
-        col1, col2, col3 = st.columns(3)
 
+        # 第一行：平台 + 地区
+        col_plat, col_region = st.columns(2)
+        with col_plat:
+            platform_keys = get_platform_choices()
+            platform_options = list(platform_keys)
+            selected_platforms = st.multiselect(
+                "🛒 平台",
+                options=platform_options,
+                default=platform_options,
+                format_func=lambda k: f"{PLATFORMS[k]['icon']} {PLATFORMS[k]['name']}",
+            )
+        with col_region:
+            # 根据选中平台动态更新地区列表
+            available_regions = []
+            for pf in selected_platforms:
+                for rk, rv in PLATFORMS[pf]["regions"].items():
+                    label = f"{PLATFORMS[pf]['icon']} {rv['name']}"
+                    if label not in available_regions:
+                        available_regions.append(label)
+            selected_regions = st.multiselect(
+                "🌍 地区",
+                options=available_regions,
+                default=available_regions,
+            )
+
+        # 第二行：判定 + 容量 + 排序
+        col1, col2, col3 = st.columns(3)
         with col1:
             verdict_options = st.multiselect(
                 "综合判定",
@@ -1277,47 +1311,48 @@ def _render_history_list(total_count: int):
     }
     sort_by, sort_order = sort_map.get(sort_option, ("scrape_time", "DESC"))
 
-    filters = {}
-    if verdict_options:
-        filters["verdicts"] = verdict_options
-    if min_capacity > 1:
-        filters["min_capacity_score"] = min_capacity
-    if min_price > 0:
-        filters["min_price"] = min_price
-    if max_price < 1000:
-        filters["max_price"] = max_price
-    filters["sort_by"] = sort_by
-    filters["sort_order"] = sort_order
-
-    # 从 DB 或 session state 读取数据
+    # 使用新的多条件查询
     if total_count > 0:
-        products = get_all_products(filters=filters)
+        products = query_products(
+            platforms=selected_platforms if len(selected_platforms) < len(platform_options) else None,
+            regions=None,  # 地区在 Python 层筛选（因为 region 格式不完全匹配）
+            min_margin=None,
+            keyword=None,
+        )
+        # 应用旧版筛选
+        filters = {}
+        if verdict_options:
+            filters["verdicts"] = verdict_options
+        if min_capacity > 1:
+            filters["min_capacity_score"] = min_capacity
+        if min_price > 0:
+            filters["min_price"] = min_price
+        if max_price < 1000:
+            filters["max_price"] = max_price
+        filters["sort_by"] = sort_by
+        filters["sort_order"] = sort_order
+
+        products = [p for p in products if _match_filters_simple(p, filters)]
     else:
-        # Cloud 端：使用 session state 数据，手动筛选
         products = st.session_state.history_data
         if verdict_options:
             products = [p for p in products
                         if p.get("analysis", {}).get("final_verdict") in verdict_options]
-        if min_capacity > 1:
-            products = [p for p in products
-                        if (p.get("analysis", {}).get("market_capacity", {}) or {}).get("score", 0) >= min_capacity]
         if min_price > 0:
             products = [p for p in products if (p.get("price") or 0) >= min_price]
         if max_price < 1000:
             products = [p for p in products if (p.get("price") or 0) <= max_price]
-        reverse = sort_order == "DESC"
-        if sort_by == "price":
-            products.sort(key=lambda p: p.get("price") or 0, reverse=reverse)
-        elif sort_by == "rank":
-            products.sort(key=lambda p: p.get("rank") or 0, reverse=reverse)
-        else:
-            products.sort(key=lambda p: p.get("scrape_time") or "", reverse=reverse)
 
     st.divider()
 
     if not products:
         st.warning("没有符合当前筛选条件的历史记录。请调整筛选条件后重试。")
         return
+
+    # ---- 统计仪表盘 ----
+    _render_stats_dashboard(products, selected_platforms)
+
+    st.divider()
 
     # ---- 统计摘要 ----
     st.caption(f"筛选结果：{len(products)} 条记录")
@@ -1392,11 +1427,176 @@ def _render_history_list(total_count: int):
 
     # 页脚
     st.divider()
-    st.caption(" | Global Product Scout v0.2.0 | 数据来源：历史分析记录 |")
+    st.caption(" | Global Product Scout v0.3.0 | 数据来源：多平台历史分析记录 |")
 
 
 # ============================================================
-# 辅助函数
+# 多平台增强辅助函数（Spec 12）
+# ============================================================
+
+def _match_filters_simple(product: dict, filters: dict) -> bool:
+    """简化的筛选条件匹配（用于 Python 层过滤）。"""
+    analysis = product.get("analysis", {})
+
+    # verdict 筛选
+    verdicts = filters.get("verdicts")
+    if verdicts:
+        actual = analysis.get("final_verdict", "")
+        if actual not in verdicts:
+            return False
+
+    # 市场容量
+    min_cap = filters.get("min_capacity_score")
+    if min_cap is not None and min_cap > 1:
+        mc = analysis.get("market_capacity", {})
+        if isinstance(mc, dict) and mc.get("score", 0) < min_cap:
+            return False
+
+    # 价格区间
+    min_price = filters.get("min_price")
+    max_price = filters.get("max_price")
+    try:
+        price = float(product.get("price", 0) or 0)
+    except (ValueError, TypeError):
+        price = 0.0
+    if min_price is not None and min_price > 0 and price < min_price:
+        return False
+    if max_price is not None and max_price < 1000 and price > max_price:
+        return False
+
+    return True
+
+
+def _render_stats_dashboard(products: list[dict], selected_platforms: list[str]):
+    """渲染数据统计仪表盘。"""
+    st.subheader("📈 数据统计")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("总产品数", len(products))
+
+    with col2:
+        platform_counts = {}
+        for p in products:
+            pf = p.get("platform", "amazon")
+            platform_counts[pf] = platform_counts.get(pf, 0) + 1
+        st.metric("平台覆盖", f"{len(platform_counts)} 个平台")
+
+    with col3:
+        margins = []
+        for p in products:
+            analysis = p.get("analysis", {})
+            m = analysis.get("margin_pct")
+            if m is not None:
+                margins.append(m)
+        avg_margin = sum(margins) / len(margins) if margins else 0
+        st.metric("平均毛利率", f"{avg_margin:.1f}%")
+
+    with col4:
+        profitable = sum(
+            1 for p in products
+            if p.get("analysis", {}).get("is_profitable", False)
+        )
+        pct = (profitable / len(products) * 100) if products else 0
+        st.metric("盈利产品占比", f"{pct:.0f}%")
+
+    # 各平台产品数量柱状图
+    if platform_counts:
+        chart_data = pd.DataFrame(
+            list(platform_counts.items()),
+            columns=["平台", "产品数"],
+        )
+        # 添加平台名称
+        chart_data["平台名"] = chart_data["平台"].apply(
+            lambda k: f"{PLATFORMS.get(k, {}).get('icon', '❓')} {PLATFORMS.get(k, {}).get('name', k)}"
+        )
+        st.bar_chart(chart_data.set_index("平台名")["产品数"])
+
+
+def _render_cross_platform_tab():
+    """渲染跨平台对比 Tab。"""
+    st.subheader("⚖️ 跨平台对比")
+    st.caption("对比各平台的平均售价、利润率、费用结构等指标")
+
+    # 获取所有产品数据
+    all_products = query_products()
+    if not all_products:
+        st.info("📭 暂无数据，请先运行分析。")
+        return
+
+    # 按平台分组统计
+    platform_stats = {}
+    for p in all_products:
+        pf = p.get("platform", "amazon")
+        analysis = p.get("analysis", {})
+        if pf not in platform_stats:
+            platform_stats[pf] = {
+                "prices": [], "margins": [], "commissions": [],
+                "shippings": [], "count": 0,
+            }
+        try:
+            price = float(p.get("price", 0) or 0)
+        except (ValueError, TypeError):
+            price = 0.0
+        platform_stats[pf]["prices"].append(price)
+        margin = analysis.get("margin_pct")
+        if margin is not None:
+            platform_stats[pf]["margins"].append(margin)
+        platform_stats[pf]["count"] += 1
+
+    # 构建对比表格
+    comparison_data = []
+    for pf, stats in platform_stats.items():
+        pf_info = PLATFORMS.get(pf, {})
+        avg_price = sum(stats["prices"]) / len(stats["prices"]) if stats["prices"] else 0
+        avg_margin = sum(stats["margins"]) / len(stats["margins"]) if stats["margins"] else 0
+        comparison_data.append({
+            "平台": f"{pf_info.get('icon', '❓')} {pf_info.get('name', pf)}",
+            "产品数": stats["count"],
+            "平均售价(USD)": round(avg_price, 2),
+            "平均毛利率%": round(avg_margin, 1),
+        })
+
+    if comparison_data:
+        df = pd.DataFrame(comparison_data)
+        st.dataframe(
+            df, use_container_width=True, hide_index=True,
+            column_config={
+                "平均售价(USD)": st.column_config.NumberColumn(format="$%.2f"),
+                "平均毛利率%": st.column_config.NumberColumn(format="%.1f%%"),
+            },
+        )
+
+        # 毛利率对比柱状图
+        if len(comparison_data) >= 2:
+            st.subheader("📊 毛利率对比")
+            chart_df = pd.DataFrame(comparison_data)
+            st.bar_chart(chart_df.set_index("平台")["平均毛利率%"])
+
+    # 产品详情表格
+    st.subheader("📋 全平台产品列表")
+    table_data = []
+    for p in all_products:
+        pf = p.get("platform", "amazon")
+        pf_info = PLATFORMS.get(pf, {})
+        analysis = p.get("analysis", {})
+        table_data.append({
+            "平台": f"{pf_info.get('icon', '')} {pf_info.get('name', pf)}",
+            "标题": (p.get("title", "") or "")[:60],
+            "价格": p.get("price", ""),
+            "判定": _verdict_emoji(analysis.get("final_verdict", "")),
+            "分析时间": p.get("scrape_time", ""),
+        })
+
+    if table_data:
+        st.dataframe(
+            pd.DataFrame(table_data), use_container_width=True, hide_index=True,
+        )
+
+
+# ============================================================
+# 原有辅助函数
 # ============================================================
 
 def _dim_score(analysis: dict, key: str) -> str:
