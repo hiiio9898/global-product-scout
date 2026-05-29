@@ -1,4 +1,4 @@
-﻿"""
+"""
 Streamlit 主程序入口 — 外贸 AI 选品助手（Global Product Scout）。
 
 提供"数据获取 → AI 分析 → 结果展示"一站式选品体验。
