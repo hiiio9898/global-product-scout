@@ -25,6 +25,15 @@ from bs4 import BeautifulSoup
 from .utils import USER_AGENTS, is_blocked, parse_price, parse_rating, parse_review_count
 
 
+# 地区域名映射
+_REGION_DOMAINS = {
+    "us": "amazon.com",
+    "uk": "amazon.co.uk",
+    "jp": "amazon.co.jp",
+    "de": "amazon.de",
+}
+
+
 # ============================================================
 # 搜索结果页解析（与 Best Sellers 页面结构不同）
 # ============================================================
@@ -195,13 +204,14 @@ def _parse_search_card(card, rank: int, keyword: str) -> Optional[dict]:
 # 真实抓取引擎
 # ============================================================
 
-def _scrape_amazon_search(keyword: str, max_results: int = 20) -> list[dict]:
+def _scrape_amazon_search(keyword: str, max_results: int = 20, region: str = "us") -> list[dict]:
     """
-    真实抓取 Amazon US 站搜索结果页。
+    真实抓取 Amazon 搜索结果页。
 
     Args:
         keyword:     搜索关键词
         max_results: 最多返回产品数
+        region:      地区代码（us/uk/jp/de）
 
     Returns:
         解析后的产品列表
@@ -211,7 +221,8 @@ def _scrape_amazon_search(keyword: str, max_results: int = 20) -> list[dict]:
         RuntimeError: 被反爬拦截
     """
     encoded_kw = keyword.replace(" ", "+")
-    url = f"https://www.amazon.com/s?k={encoded_kw}"
+    domain = _REGION_DOMAINS.get(region, "amazon.com")
+    url = f"https://www.{domain}/s?k={encoded_kw}"
 
     headers = {
         "User-Agent": random.choice(USER_AGENTS),
@@ -290,15 +301,14 @@ def _scrape_amazon_search(keyword: str, max_results: int = 20) -> list[dict]:
 # 公开 API
 # ============================================================
 
-def search_amazon(keyword: str, max_results: int = 20) -> dict:
+def search_amazon(keyword: str, max_results: int = 20, region: str = "us") -> dict:
     """
-    在 Amazon US 站搜索指定关键词，返回产品列表。
-
-    抓取失败时返回 success=False + 错误信息，不使用 Mock 数据。
+    在 Amazon 搜索指定关键词，返回产品列表。
 
     Args:
         keyword:     搜索关键词（英文，如 "portable blender"）
         max_results: 最多返回产品数，默认 20
+        region:      地区代码（us/uk/jp/de），默认 "us"
 
     Returns:
         {
@@ -326,7 +336,7 @@ def search_amazon(keyword: str, max_results: int = 20) -> dict:
     scrape_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     try:
-        products = _scrape_amazon_search(keyword, max_results)
+        products = _scrape_amazon_search(keyword, max_results, region=region)
         if products:
             return {
                 "success": True,

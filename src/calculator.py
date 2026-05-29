@@ -1,64 +1,94 @@
 """
-利润计算模块 — 可配置的跨境电商利润计算器。
+利润计算模块 — 可配置的跨境电商利润计算器（多平台工厂模式）。
 
-默认公式：净利 = 售价(USD) × 汇率 - 采购成本 - 头程运费 - 佣金 - 广告费
+架构：
+    - 利润计算函数注册表（_CALCULATOR_REGISTRY）
+    - @register_calculator("平台key") 装饰器注册各平台计算器
+    - get_calculator(platform_key) 获取对应计算器
+    - calculate_profit() 统一入口（向后兼容旧代码）
 
-各参数默认值存储在 src/config.py 的 get_profit_defaults() 中，
+各参数默认值存储在 src/platforms.py 的平台配置中，
 用户可在 Streamlit 侧边栏修改。
 """
 
+from typing import Callable
 
-def calculate_profit(
-    price_usd: float,
-    defaults: dict,
-    procurement_cny: float = 0.0,
-    shipping_cny: float = None,
-    commission_pct: float = None,
-    ad_pct: float = None,
-    exchange_rate: float = None,
-) -> dict:
+
+# ============================================================
+# 利润计算函数注册表
+# ============================================================
+
+_CALCULATOR_REGISTRY: dict[str, Callable] = {}
+
+
+def register_calculator(platform_key: str):
     """
-    计算单个产品的利润。
+    装饰器：注册平台利润计算函数。
+
+    使用方式：
+        @register_calculator("amazon")
+        def calculate_amazon_profit(price, defaults, procurement_cny=0.0, **kwargs):
+            ...
+    """
+    def decorator(func):
+        _CALCULATOR_REGISTRY[platform_key] = func
+        return func
+    return decorator
+
+
+def get_calculator(platform_key: str) -> Callable:
+    """
+    获取平台对应的利润计算函数。
 
     Args:
-        price_usd:          产品售价（美元）
-        defaults:           get_profit_defaults() 返回的默认参数字典
-        procurement_cny:    采购成本（人民币），0 表示未填写
-        shipping_cny:       头程运费（人民币），None 表示使用默认值
-        commission_pct:     佣金比例，None 表示使用默认值
-        ad_pct:             广告预算占比，None 表示使用默认值
-        exchange_rate:      汇率，None 表示使用默认值
+        platform_key: 平台标识，如 "amazon"
 
     Returns:
-        {
-            "price_usd": float,          # 原始售价
-            "price_cny": float,          # 售价（人民币）
-            "commission_cny": float,     # 佣金（人民币）
-            "ad_cost_cny": float,        # 广告费（人民币）
-            "shipping_cny": float,       # 头程运费（人民币）
-            "procurement_cny": float,    # 采购成本（人民币）
-            "total_cost_cny": float,     # 总成本（人民币）
-            "net_profit_cny": float,     # 净利（人民币）
-            "net_profit_usd": float,     # 净利（美元）
-            "margin_pct": float,         # 毛利率百分比
-            "is_profitable": bool,       # 是否盈利
-            "has_procurement": bool,     # 是否已填写采购成本
-        }
+        利润计算函数，不存在时返回 Amazon FBA 计算器
     """
-    # 使用默认值填充 None 参数
-    if exchange_rate is None:
-        exchange_rate = defaults.get("exchange_rate", 7.24)
-    if commission_pct is None:
-        commission_pct = defaults.get("commission_pct", 0.15)
-    if ad_pct is None:
-        ad_pct = defaults.get("ad_pct", 0.10)
-    if shipping_cny is None:
-        shipping_cny = defaults.get("shipping_cny", 15.0)
+    return _CALCULATOR_REGISTRY.get(platform_key, calculate_amazon_profit)
 
-    # 计算售价（人民币）
-    price_cny = price_usd * exchange_rate
 
-    # 计算各项费用（人民币）
+# ============================================================
+# Amazon FBA 利润计算器
+# ============================================================
+
+@register_calculator("amazon")
+def calculate_amazon_profit(
+    price: float,
+    defaults: dict,
+    procurement_cny: float = 0.0,
+    **kwargs,
+) -> dict:
+    """
+    Amazon FBA 利润计算。
+
+    公式：
+        售价(本地货币) × 汇率 = 售价(CNY)
+        佣金 = 售价(CNY) × commission_pct
+        广告 = 售价(CNY) × ad_pct
+        总成本 = 采购成本 + 头程运费 + 佣金 + 广告
+        净利 = 售价(CNY) - 总成本
+        毛利率 = 净利 / 售价(CNY)
+
+    Args:
+        price:             产品售价（本地货币，如 USD）
+        defaults:          利润默认参数字典
+        procurement_cny:   采购成本（人民币），0 表示未填写
+        **kwargs:          预留扩展
+
+    Returns:
+        标准利润结果字典
+    """
+    exchange_rate = defaults.get("exchange_rate", 7.24)
+    commission_pct = defaults.get("commission_pct", 0.15)
+    ad_pct = defaults.get("ad_pct", 0.10)
+    shipping_cny = defaults.get("shipping_cny", 15.0)
+
+    # 售价（人民币）
+    price_cny = price * exchange_rate
+
+    # 各项费用
     commission_cny = price_cny * commission_pct
     ad_cost_cny = price_cny * ad_pct
 
@@ -73,7 +103,7 @@ def calculate_profit(
     margin_pct = (net_profit_cny / price_cny * 100) if price_cny > 0 else 0.0
 
     return {
-        "price_usd": round(price_usd, 2),
+        "price_local": round(price, 2),
         "price_cny": round(price_cny, 2),
         "commission_cny": round(commission_cny, 2),
         "ad_cost_cny": round(ad_cost_cny, 2),
@@ -86,3 +116,40 @@ def calculate_profit(
         "is_profitable": net_profit_cny > 0,
         "has_procurement": procurement_cny > 0,
     }
+
+
+# ============================================================
+# 统一利润计算入口（向后兼容）
+# ============================================================
+
+def calculate_profit(
+    price_usd: float,
+    defaults: dict,
+    procurement_cny: float = 0.0,
+    platform: str = "amazon",
+    **kwargs,
+) -> dict:
+    """
+    统一利润计算入口 — 向后兼容旧代码调用方式。
+
+    根据 platform 选择对应的计算函数，返回标准结果字典。
+    旧代码只传 price_usd/defaults/procurement_cny 仍可正常工作。
+
+    Args:
+        price_usd:        产品售价（本地货币）
+        defaults:         利润默认参数字典
+        procurement_cny:  采购成本（人民币）
+        platform:         平台标识，默认 "amazon"
+        **kwargs:         传递给具体计算器的额外参数
+
+    Returns:
+        标准利润结果字典
+    """
+    calculator = get_calculator(platform)
+    result = calculator(price_usd, defaults, procurement_cny, **kwargs)
+
+    # 向后兼容：旧代码期望 price_usd 字段
+    if "price_usd" not in result:
+        result["price_usd"] = result.get("price_local", round(price_usd, 2))
+
+    return result

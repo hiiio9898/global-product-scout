@@ -39,7 +39,10 @@ CREATE TABLE IF NOT EXISTS products (
     analysis_json   TEXT,
     scrape_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     source          TEXT DEFAULT 'amazon_best_sellers',
-    procurement_cost REAL DEFAULT 0.0
+    procurement_cost REAL DEFAULT 0.0,
+    platform        TEXT DEFAULT 'amazon',
+    region          TEXT DEFAULT 'us',
+    currency        TEXT DEFAULT 'USD'
 );
 """
 
@@ -70,6 +73,9 @@ def init_db(db_path: Optional[str] = None) -> None:
         for col, default in [
             ("procurement_cost", "REAL DEFAULT 0.0"),
             ("asin", "TEXT DEFAULT ''"),
+            ("platform", "TEXT DEFAULT 'amazon'"),
+            ("region", "TEXT DEFAULT 'us'"),
+            ("currency", "TEXT DEFAULT 'USD'"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE products ADD COLUMN {col} {default}")
@@ -88,6 +94,9 @@ def save_products(
     products: list[dict],
     analysis_results: list[dict],
     source: str = "amazon_best_sellers",
+    platform: str = "amazon",
+    region: str = "us",
+    currency: str = "USD",
     db_path: Optional[str] = None,
 ) -> int:
     """
@@ -97,6 +106,9 @@ def save_products(
         products:         产品字典列表（来自 scraper）
         analysis_results: 分析结果字典列表（来自 analyzer），与 products 按索引一一对应
         source:           数据来源标识，如 'amazon_best_sellers'
+        platform:         平台标识，如 'amazon'
+        region:           地区代码，如 'us'
+        currency:         货币代码，如 'USD'
         db_path:          数据库路径，默认从配置读取
 
     Returns:
@@ -119,8 +131,8 @@ def save_products(
                 """
                 INSERT INTO products
                     (title, price, rating, num_reviews, rank, category,
-                     analysis_json, source, asin)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     analysis_json, source, asin, platform, region, currency)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     product.get("title", ""),
@@ -132,6 +144,9 @@ def save_products(
                     analysis_json,
                     source,
                     product.get("asin", ""),
+                    platform,
+                    region,
+                    currency,
                 ),
             )
         conn.commit()
@@ -237,6 +252,20 @@ def get_all_products(
 def _match_filters(product: dict, filters: dict) -> bool:
     """检查单个产品是否满足所有筛选条件。"""
     analysis = product.get("analysis", {})
+
+    # 平台筛选
+    platform_filter = filters.get("platform")
+    if platform_filter:
+        product_platform = product.get("platform", "amazon")
+        if product_platform != platform_filter:
+            return False
+
+    # 地区筛选
+    region_filter = filters.get("region")
+    if region_filter:
+        product_region = product.get("region", "us")
+        if product_region != region_filter:
+            return False
 
     # final_verdict 筛选
     verdicts = filters.get("verdicts")

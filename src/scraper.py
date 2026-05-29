@@ -38,6 +38,19 @@ _CACHE_DIR = os.path.join(
 )
 _CACHE_FILE = os.path.join(_CACHE_DIR, "amazon_best_sellers.json")
 
+# 地区域名映射
+_REGION_DOMAINS = {
+    "us": "amazon.com",
+    "uk": "amazon.co.uk",
+    "jp": "amazon.co.jp",
+    "de": "amazon.de",
+}
+
+
+def _get_cache_file(region: str = "us") -> str:
+    """返回按地区区分的缓存文件路径。"""
+    return os.path.join(_CACHE_DIR, f"amazon_best_sellers_{region}.json")
+
 # ============================================================
 # 非实体商品关键词黑名单（过滤数字订阅/服务类产品）
 # ============================================================
@@ -67,11 +80,15 @@ def _is_physical_product(title: str) -> bool:
 # 缓存读写
 # ============================================================
 
-def _load_cache() -> Optional[list[dict]]:
+def _load_cache(region: str = "us") -> Optional[list[dict]]:
     """读取本地缓存的 JSON 数据，文件不存在或损坏时返回 None。"""
+    cache_file = _get_cache_file(region)
+    # 兼容旧版缓存文件
+    if not os.path.exists(cache_file) and region == "us":
+        cache_file = _CACHE_FILE
     try:
-        if os.path.exists(_CACHE_FILE):
-            with open(_CACHE_FILE, "r", encoding="utf-8") as f:
+        if os.path.exists(cache_file):
+            with open(cache_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             if isinstance(data, list) and len(data) > 0:
                 return data
@@ -80,18 +97,22 @@ def _load_cache() -> Optional[list[dict]]:
     return None
 
 
-def _save_cache(products: list[dict]) -> None:
+def _save_cache(products: list[dict], region: str = "us") -> None:
     """将抓取结果保存为本地 JSON 缓存。"""
     os.makedirs(_CACHE_DIR, exist_ok=True)
-    with open(_CACHE_FILE, "w", encoding="utf-8") as f:
+    cache_file = _get_cache_file(region)
+    with open(cache_file, "w", encoding="utf-8") as f:
         json.dump(products, f, ensure_ascii=False, indent=2)
 
 
-def _get_cache_timestamp() -> Optional[str]:
+def _get_cache_timestamp(region: str = "us") -> Optional[str]:
     """获取缓存文件的最后修改时间，格式化为可读字符串。"""
+    cache_file = _get_cache_file(region)
+    if not os.path.exists(cache_file) and region == "us":
+        cache_file = _CACHE_FILE
     try:
-        if os.path.exists(_CACHE_FILE):
-            mtime = os.path.getmtime(_CACHE_FILE)
+        if os.path.exists(cache_file):
+            mtime = os.path.getmtime(cache_file)
             dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
             return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
     except OSError:
@@ -240,21 +261,27 @@ def _parse_product_card(card, rank: int) -> Optional[dict]:
 # 真实抓取引擎
 # ============================================================
 
-def _scrape_amazon_best_sellers() -> list[dict]:
+def _scrape_amazon_best_sellers(region: str = "us") -> list[dict]:
     """
-    真实抓取 Amazon Best Sellers 首页（US 站）。
+    真实抓取 Amazon Best Sellers 首页。
 
     使用 requests + BeautifulSoup，不加 Selenium。
     设置了真实浏览器 User-Agent、请求间隔 2 秒。
     多套 CSS 选择器兜底以适应页面结构变动。
+
+    Args:
+        region: 地区代码（us/uk/jp/de），决定目标域名
 
     Raises:
         requests.RequestException: 网络错误
         Exception: 解析异常（页面结构不匹配、验证码等）
     """
     cfg = get_config()
-    url = cfg["amazon_url"]
     delay = cfg["scrape_delay"]
+
+    # 根据 region 构建 URL
+    domain = _REGION_DOMAINS.get(region, "amazon.com")
+    url = f"https://www.{domain}/Best-Sellers/zgbs/"
 
     # 构建真实浏览器请求头
     headers = {
@@ -314,9 +341,12 @@ def _scrape_amazon_best_sellers() -> list[dict]:
 # 公开接口 — 仅真实抓取（调试模式）
 # ============================================================
 
-def fetch_amazon_best_sellers() -> tuple[list[dict], dict]:
+def fetch_amazon_best_sellers(region: str = "us") -> tuple[list[dict], dict]:
     """
     获取 Amazon Best Sellers 产品列表（两层降级策略）。
+
+    Args:
+        region: 地区代码（us/uk/jp/de），默认 "us"
 
     策略：
         1. 实时抓取 → 至少 3 个产品才算成功
@@ -329,9 +359,9 @@ def fetch_amazon_best_sellers() -> tuple[list[dict], dict]:
     """
     # ---------- 第一层：实时抓取 ----------
     try:
-        products = _scrape_amazon_best_sellers()
+        products = _scrape_amazon_best_sellers(region=region)
         if len(products) >= 3:
-            _save_cache(products)
+            _save_cache(products, region=region)
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             return products, {"source": "live", "timestamp": timestamp}
         else:
@@ -340,9 +370,9 @@ def fetch_amazon_best_sellers() -> tuple[list[dict], dict]:
         print(f"⚠️ 实时抓取失败：{e}")
 
     # ---------- 第二层：本地缓存 ----------
-    cached = _load_cache()
+    cached = _load_cache(region=region)
     if cached and len(cached) >= 3:
-        cache_ts = _get_cache_timestamp()
+        cache_ts = _get_cache_timestamp(region=region)
         print(f"📦 使用本地缓存（{len(cached)} 个产品，缓存时间：{cache_ts}）")
         return cached, {"source": "cache", "timestamp": cache_ts or "unknown"}
 

@@ -169,25 +169,48 @@ def get_config() -> dict:
 
 
 # ============================================================
-# 利润计算默认参数
+# 利润计算默认参数（多平台支持）
 # ============================================================
 
-def get_profit_defaults() -> dict:
+def get_profit_defaults(platform_key: str = None) -> dict:
     """
-    返回利润计算的默认参数。
+    返回利润计算的默认参数（支持多平台）。
 
-    用户可在侧边栏修改这些值，修改后存入 st.session_state。
-    计算器模块 calculator.py 使用这些参数进行利润计算。
+    优先从平台注册表读取各平台默认参数，
+    环境变量可覆盖（向后兼容）。
+
+    Args:
+        platform_key: 平台标识，如 "amazon"。
+                     None 时回退到环境变量（向后兼容旧代码）。
 
     Returns:
         {
-            "exchange_rate": float,      # 汇率 CNY/USD
-            "commission_pct": float,     # 亚马逊佣金比例（0-1）
-            "ad_pct": float,             # 广告预算占比（0-1）
+            "exchange_rate": float,      # 汇率
+            "commission_pct": float,     # 佣金比例（0-1）— Amazon
+            "ad_pct": float,             # 广告预算占比（0-1）— Amazon
             "shipping_cny": float,       # 头程运费（人民币/件）
-            "procurement_cny": float,    # 采购成本（人民币/件），默认 0（需用户填写）
+            "procurement_cny": float,    # 采购成本（人民币/件），默认 0
+            ... 其他平台特有参数
         }
     """
+    # 尝试从平台注册表读取
+    if platform_key:
+        try:
+            from .platforms import PLATFORMS
+            if platform_key in PLATFORMS:
+                pf = PLATFORMS[platform_key]
+                region = pf["regions"][pf["default_region"]]
+                profit_defaults = pf.get("profit_defaults", {})
+                result = {
+                    "exchange_rate": region["exchange_rate"],
+                    "procurement_cny": 0.0,
+                }
+                result.update(profit_defaults)
+                return result
+        except (ImportError, KeyError):
+            pass
+
+    # 回退：环境变量（向后兼容）
     return {
         "exchange_rate": float(_get_secret("PROFIT_EXCHANGE_RATE", "7.24")),
         "commission_pct": float(_get_secret("PROFIT_COMMISSION_PCT", "0.15")),

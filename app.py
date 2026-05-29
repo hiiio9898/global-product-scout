@@ -23,9 +23,18 @@ from src.config import get_config, get_llm_config, get_profit_defaults, LLM_PROV
 from src.scraper import fetch_amazon_best_sellers
 from src.scraper_search import search_amazon
 from src.analyzer import analyze_products, analyze_category_report
-from src.calculator import calculate_profit
+from src.calculator import calculate_profit, get_calculator
 from src.scraper_1688 import search_1688_hybrid
 from src.trends import get_trend_direction, get_trend_icon
+from src.platforms import (
+    PLATFORMS,
+    get_platform_info,
+    get_region_info,
+    get_platform_choices,
+    get_region_choices,
+    get_active_platform,
+    get_active_region,
+)
 from src.database import (
     init_db,
     save_products,
@@ -65,14 +74,51 @@ def render_sidebar(source_info: dict | None = None):
 
     st.sidebar.divider()
 
-    # 数据源选择器（仅实时选品页显示）
-    if "实时选品" in page:
-        st.sidebar.selectbox(
-            "选择数据源",
-            options=["Amazon Best Sellers"],
-            disabled=False,
-            help="当前支持 Amazon US 站 Best Sellers 首页实时抓取。",
+    # ---- 平台 + 地区联动选择器（仅实时/指定选品页显示） ----
+    if "实时选品" in page or "指定选品" in page:
+        st.sidebar.subheader("🛒 平台选择")
+
+        # 平台选择
+        platform_keys = get_platform_choices()
+        platform_names = {
+            k: f"{get_platform_info(k)['icon']} {get_platform_info(k)['name']}"
+            for k in platform_keys
+        }
+
+        # 从 session_state 恢复，默认 amazon
+        last_platform = st.session_state.get("active_platform", "amazon")
+        if last_platform not in platform_keys:
+            last_platform = "amazon"
+
+        selected_platform = st.sidebar.selectbox(
+            "🛒 选择平台",
+            options=platform_keys,
+            format_func=lambda k: platform_names[k],
+            index=platform_keys.index(last_platform),
+            key="selected_platform",
         )
+        st.session_state["active_platform"] = selected_platform
+
+        # 地区选择（联动平台）
+        region_choices = get_region_choices(selected_platform)
+        region_keys = [r[0] for r in region_choices]
+        region_names = {r[0]: r[1] for r in region_choices}
+
+        # 从 session_state 恢复，默认平台的 default_region
+        pf_info = get_platform_info(selected_platform)
+        default_region = pf_info.get("default_region", region_keys[0])
+        last_region = st.session_state.get("active_region", default_region)
+        if last_region not in region_keys:
+            last_region = default_region
+
+        selected_region = st.sidebar.selectbox(
+            "🌍 选择地区",
+            options=region_keys,
+            format_func=lambda k: region_names.get(k, k),
+            index=region_keys.index(last_region),
+            key="selected_region",
+        )
+        st.session_state["active_region"] = selected_region
 
         # 数据源状态指示
         if source_info:
@@ -141,30 +187,45 @@ def render_sidebar(source_info: dict | None = None):
             f"配置 `{provider_info['api_key_key']}` 即可启用 {provider_name} AI 分析。"
         )
 
-    # ---- 💰 利润参数（可配置） ----
+    # ---- 💰 利润参数（可配置，平台自适应） ----
     st.sidebar.divider()
     with st.sidebar.expander("💰 利润参数（可配置）", expanded=False):
-        profit_defaults = get_profit_defaults()
+        # 根据当前平台读取默认参数
+        active_pf = st.session_state.get("active_platform", "amazon")
+        pf_info = get_platform_info(active_pf)
+        active_region = st.session_state.get("active_region", pf_info.get("default_region", "us"))
+        region_info = get_region_info(active_pf, active_region)
+        profit_defaults = get_profit_defaults(active_pf)
 
+        # 汇率（按地区站点自动适配）
+        currency_label = region_info.get("currency", "USD")
         exchange_rate = st.number_input(
-            "汇率 (CNY/USD)", min_value=5.0, max_value=10.0,
+            f"汇率 (CNY/{currency_label})", min_value=0.01, max_value=20.0,
             value=float(profit_defaults["exchange_rate"]), step=0.01,
-            help="1 美元兑换多少人民币",
+            help=f"1 {currency_label} 兑换多少人民币",
         )
+        # 佣金比例（各平台标签不同）
+        commission_label = {
+            "amazon": "亚马逊佣金比例",
+        }.get(active_pf, "平台佣金比例")
         commission_pct = st.slider(
-            "亚马逊佣金比例", min_value=0.0, max_value=0.50,
-            value=float(profit_defaults["commission_pct"]), step=0.01,
+            commission_label, min_value=0.0, max_value=0.50,
+            value=float(profit_defaults.get("commission_pct", 0.15)), step=0.01,
             format="%.0f%%",
         )
+        # 广告预算（Amazon 特有，其他平台可隐藏或保留）
         ad_pct = st.slider(
             "广告预算占比", min_value=0.0, max_value=0.50,
-            value=float(profit_defaults["ad_pct"]), step=0.01,
+            value=float(profit_defaults.get("ad_pct", 0.10)), step=0.01,
             format="%.0f%%",
         )
+        # 头程运费
+        shipping_label = {
+            "amazon": "FBA 头程运费 (¥/件)",
+        }.get(active_pf, "国际运费 (¥/件)")
         shipping_cny = st.number_input(
-            "头程运费 (¥/件)", min_value=0.0, max_value=200.0,
-            value=float(profit_defaults["shipping_cny"]), step=1.0,
-            help="从国内发到亚马逊仓库的单件运费",
+            shipping_label, min_value=0.0, max_value=200.0,
+            value=float(profit_defaults.get("shipping_cny", 15.0)), step=1.0,
         )
 
     # 同步到 session_state 供计算器使用
@@ -284,11 +345,20 @@ def _render_dashboard_page():
 # ============================================================
 
 def _render_live_page(api_ok: bool):
-    """渲染实时选品页面（原有功能 + 分析后自动保存到数据库）。"""
+    """渲染实时选品页面（多平台版本 — 根据侧边栏选择的平台+地区自动适配）。"""
 
-    st.title("🔍 外贸 AI 选品助手")
+    # 获取当前平台配置
+    platform = st.session_state.get("active_platform", "amazon")
+    region = st.session_state.get("active_region", "us")
+    pf_info = get_platform_info(platform)
+    region_info = get_region_info(platform, region)
+    pf_name = f"{pf_info['icon']} {pf_info['name']}"
+    region_name = region_info["name"]
+    currency = region_info.get("currency", "USD")
+
+    st.title(f"🔍 外贸 AI 选品助手 — {pf_name} {region_name}")
     st.markdown(
-        "🚀 智能抓取 Amazon 热销产品数据，AI 深度分析竞争力与利润潜力，"
+        f"🚀 智能抓取 **{pf_name} {region_name}** 热销产品数据，AI 深度分析竞争力与利润潜力，"
         "帮你找到下一个爆款！"
     )
     st.divider()
@@ -307,11 +377,11 @@ def _render_live_page(api_ok: bool):
         )
     with col_live:
         btn_live = st.button(
-            "📡 实时抓取",
+            f"📡 实时抓取 {pf_name}",
             type="secondary",
             use_container_width=True,
             disabled=btn_disabled,
-            help="尝试从 Amazon Best Sellers 实时抓取最新数据（可能被反爬拦截）",
+            help=f"从 {pf_name} {region_name} 实时抓取最新热销数据",
         )
 
     if btn_json:
@@ -345,11 +415,16 @@ def _render_live_page(api_ok: bool):
     if btn_live:
         st.session_state.analyzing = True
         try:
-            with st.spinner("📡 正在实时抓取 Amazon Best Sellers..."):
-                products, source_info = fetch_amazon_best_sellers()
-                if source_info.get("source") != "live":
+            with st.spinner(f"📡 正在实时抓取 {pf_name} {region_name} 热销数据..."):
+                # 动态调用平台对应的抓取函数
+                import importlib
+                scraper_mod = importlib.import_module(pf_info["scraper_module"])
+                scraper_func = getattr(scraper_mod, pf_info["scraper_func"])
+                products, source_info = scraper_func(region=region)
+
+                if source_info.get("source") not in ("live", "cache"):
                     st.session_state.analyzing = False
-                    st.error("❌ 实时抓取失败（Amazon 可能拦截了请求）")
+                    st.error(f"❌ 实时抓取 {pf_name} 失败（网站可能拦截了请求）")
                     st.info(
                         "💡 建议使用「📄 分析 JSON 数据」按钮。\n\n"
                         "如需最新数据，请在本机执行 `python daily_scrape.py`，"
@@ -397,7 +472,10 @@ def _render_live_page(api_ok: bool):
             # 第三步：保存到数据库
             db_ok = True
             try:
-                saved_count = save_products(st.session_state.products, results)
+                saved_count = save_products(
+                    st.session_state.products, results,
+                    platform=platform, region=region, currency=currency,
+                )
                 st.caption(f"💾 已保存 {saved_count} 条分析记录到历史数据库")
             except Exception:
                 db_ok = False
@@ -569,6 +647,7 @@ def _render_live_page(api_ok: bool):
                     price_usd=product_price,
                     defaults=defaults,
                     procurement_cny=procurement,
+                    platform=st.session_state.get("active_platform", "amazon"),
                 )
 
                 with col_result:
@@ -931,6 +1010,7 @@ def _render_targeted_page(api_ok: bool):
                                     price_usd=float(matched_product.get("price", 0) or 0),
                                     defaults=defaults,
                                     procurement_cny=procurement,
+                                    platform=st.session_state.get("active_platform", "amazon"),
                                 )
                                 if profit_result["has_procurement"]:
                                     margin = profit_result["margin_pct"]
