@@ -181,6 +181,73 @@ def calculate_aliexpress_profit(
 
 
 # ============================================================
+# Shopee 利润计算器
+# ============================================================
+
+@register_calculator("shopee")
+def calculate_shopee_profit(
+    price: float,
+    defaults: dict,
+    procurement_cny: float = 0.0,
+    **kwargs,
+) -> dict:
+    """
+    Shopee 卖家利润计算。
+
+    公式：
+        售价(本地货币) × 汇率 = 售价(CNY)
+        佣金 = 售价(CNY) × commission_pct (6%)
+        服务费 = 售价(CNY) × service_fee_pct (2%)
+        汇率损耗 = 售价(CNY) × exchange_loss_pct (1%)
+        总成本 = 采购成本 + 国际运费 + 包装费 + 佣金 + 服务费 + 汇率损耗
+        净利 = 售价(CNY) - 总成本
+        毛利率 = 净利 / 售价(CNY)
+
+    Args:
+        price:             产品售价（本地货币，如 SGD/MYR/THB）
+        defaults:          利润默认参数字典
+        procurement_cny:   采购成本（人民币）
+        **kwargs:          预留扩展
+
+    Returns:
+        标准利润结果字典
+    """
+    exchange_rate = defaults.get("exchange_rate", 5.42)
+    commission_pct = defaults.get("commission_pct", 0.06)
+    service_fee_pct = defaults.get("service_fee_pct", 0.02)
+    shipping_cny = defaults.get("shipping_cny", 12.0)
+    packaging_cny = defaults.get("packaging_cny", 3.0)
+    exchange_loss_pct = defaults.get("exchange_loss_pct", 0.01)
+
+    price_cny = price * exchange_rate
+    commission_cny = price_cny * commission_pct
+    service_fee_cny = price_cny * service_fee_pct
+    exchange_loss_cny = price_cny * exchange_loss_pct
+    total_cost = (procurement_cny + shipping_cny + packaging_cny
+                  + commission_cny + service_fee_cny + exchange_loss_cny)
+    net_profit_cny = price_cny - total_cost
+    net_profit_usd = net_profit_cny / 7.24 if 7.24 > 0 else 0.0
+    margin_pct = (net_profit_cny / price_cny * 100) if price_cny > 0 else 0.0
+
+    return {
+        "price_local": round(price, 2),
+        "price_cny": round(price_cny, 2),
+        "commission_cny": round(commission_cny, 2),
+        "service_fee_cny": round(service_fee_cny, 2),
+        "exchange_loss_cny": round(exchange_loss_cny, 2),
+        "shipping_cny": round(shipping_cny, 2),
+        "packaging_cny": round(packaging_cny, 2),
+        "procurement_cny": round(procurement_cny, 2),
+        "total_cost_cny": round(total_cost, 2),
+        "net_profit_cny": round(net_profit_cny, 2),
+        "net_profit_usd": round(net_profit_usd, 2),
+        "margin_pct": round(margin_pct, 1),
+        "is_profitable": net_profit_cny > 0,
+        "has_procurement": procurement_cny > 0,
+    }
+
+
+# ============================================================
 # 统一利润计算入口（向后兼容）
 # ============================================================
 

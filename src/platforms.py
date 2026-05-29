@@ -65,8 +65,32 @@ PLATFORMS = {
             "packaging_cny": 2.0,
         },
     },
+    "shopee": {
+        "name": "Shopee",
+        "icon": "🟤",
+        "scraper_module": "src.scraper_shopee",
+        "scraper_func": "fetch_shopee_best_sellers",
+        "search_module": "src.scraper_shopee",
+        "search_func": "search_shopee",
+        "calculator": "calculate_shopee_profit",
+        "currency": "SGD",
+        "regions": {
+            "sg": {"name": "新加坡站", "domain": "shopee.sg", "currency": "SGD", "exchange_rate": 5.42},
+            "my": {"name": "马来西亚站", "domain": "shopee.com.my", "currency": "MYR", "exchange_rate": 1.58},
+            "th": {"name": "泰国站", "domain": "shopee.co.th", "currency": "THB", "exchange_rate": 0.20},
+            "vn": {"name": "越南站", "domain": "shopee.vn", "currency": "VND", "exchange_rate": 0.00029},
+            "ph": {"name": "菲律宾站", "domain": "shopee.ph", "currency": "PHP", "exchange_rate": 0.13},
+        },
+        "default_region": "sg",
+        "profit_defaults": {
+            "commission_pct": 0.06,
+            "service_fee_pct": 0.02,
+            "shipping_cny": 12.0,
+            "packaging_cny": 3.0,
+            "exchange_loss_pct": 0.01,
+        },
+    },
     # --- 以下平台在后续 Spec 中注册 ---
-    # "shopee":     { ... },   # Spec 10
     # "ebay":       { ... },   # Spec 11
 }
 
