@@ -252,14 +252,14 @@ src/config.py
 
 | 文件 | 问题 | 严重度 |
 |------|------|--------|
-| `src/scraper.py` | 仍从 `utils.py` 导入 `USER_AGENTS`，但 Scrapling 已内置 UA 管理，该导入可能冗余 | 低 |
-| `src/scraper_search.py` | 同上，导入 `USER_AGENTS` 但不再直接使用 | 低 |
-| `src/scraper_ebay.py` | 同上 | 低 |
-| `src/scraper_alibaba.py` | 同上 | 低 |
+| `src/scraper.py` | Scrapling 已内置 UA 管理，已清理冗余导入 | ✅ 已修复 |
+| `src/scraper_search.py` | 同上 | ✅ 已修复 |
+| `src/scraper_ebay.py` | 同上 | ✅ 已修复 |
+| `src/scraper_alibaba.py` | 同上 | ✅ 已修复 |
 | `src/utils.py` | `USER_AGENTS` 常量仍被多文件导入但 Scrapling 已替代其用途 | 低 |
 | `app.py:73` | Dashboard 图标显示为 `� Dashboard`（编码问题） | 中 |
 | `src/config.py` | `get_config()` 中 `amazon_url` 仍硬编码为 Amazon 专用 | 低 |
-| `daily_scrape.py` | 仅抓取 Amazon，未适配多平台 | 中 |
+| `daily_scrape.py` | 未适配多平台 | ✅ 已修复（支持 --platforms 参数，遍历 PLATFORMS 注册表） |
 | `requirements.txt` | `requests` 和 `beautifulsoup4` 已被移除但 Scrapling 内部仍依赖它们（通过 curl_cffi） | 无 |
 
 ### 5.6 Specs 文档缺失
@@ -268,8 +268,8 @@ src/config.py
 |------|------|------|
 | 9 | `docs/specs/9-aliexpress-platform.md` | ❌ 已删除（AliExpress 已移除） |
 | 10 | `docs/specs/10-shopee-platform.md` | ❌ 已删除（Shopee 已移除） |
-| — | `docs/specs/15-alibaba-platform.md` | ❌ 缺失（Alibaba 已实现但无 Spec） |
-| — | `docs/specs/16-daily-scrape-multi-platform.md` | ❌ 缺失（daily_scrape.py 多平台适配未规划） |
+| `docs/specs/15-alibaba-platform.md` | ✅ 已完成（补写） |
+| — | `docs/specs/16-daily-scrape-multi-platform.md` | ❌ 缺失（已直接实现，功能简单无需单独 Spec） |
 
 ---
 
@@ -322,7 +322,7 @@ src/config.py
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `app.py` | ~1700 | Streamlit 主程序（侧边栏 + 4 个页面路由） |
-| `daily_scrape.py` | ~100 | 独立定时抓取脚本（仅 Amazon） |
+| `daily_scrape.py` | ~160 | 独立定时抓取脚本（多平台，支持 --platforms 参数） |
 
 ### 测试文件（2 个）
 
@@ -372,18 +372,18 @@ src/config.py
 ## 9. 建议行动项
 
 ### 立即修复
-- [ ] 修复 `app.py:73` 的 `📊 Dashboard` 编码问题
-- [ ] 删除 `data/debug_amazon.html` 和 `data/debug_live.html`
-- [ ] 修复 `.gitignore` 中文注释编码
+- [x] 修复 `app.py:73` 的 `📊 Dashboard` 编码问题
+- [x] 删除 `data/debug_amazon.html` 和 `data/debug_live.html`
+- [x] 修复 `.gitignore` 中文注释编码
 
 ### 短期更新
-- [ ] 更新 `AGENTS.md` 目录结构和技术栈描述
-- [ ] 更新 `SKILL.md` 架构概览
-- [ ] 更新 `docs/CHANGELOG.md` 至当前版本
-- [ ] 更新 `docs/DEPLOY.md` 添加 Scrapling 和多平台说明
-- [ ] 删除或归档 `todo.md`
+- [x] 更新 `AGENTS.md` 目录结构和技术栈描述
+- [x] 更新 `SKILL.md` 架构概览
+- [x] 更新 `docs/CHANGELOG.md` 至当前版本
+- [x] 更新 `docs/DEPLOY.md` 添加 Scrapling 和多平台说明
+- [x] 删除或归档 `todo.md`
 
 ### 中期规划
-- [ ] `daily_scrape.py` 适配多平台抓取
-- [ ] 补写 Spec 15（Alibaba 平台正式 Spec）
-- [ ] 清理 scraper_*.py 中冗余的 `USER_AGENTS` 导入
+- [x] `daily_scrape.py` 适配多平台抓取
+- [x] 补写 Spec 15（Alibaba 平台正式 Spec）
+- [x] 清理 scraper_*.py 中冗余的 `USER_AGENTS` 导入

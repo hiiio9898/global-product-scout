@@ -1,15 +1,18 @@
 """
-每日定时抓取脚本 — 独立于 Streamlit 运行。
+每日定时抓取脚本 — 独立于 Streamlit 运行，支持多平台。
 
 工作流程：
-    1. 调用 src.scraper.fetch_amazon_best_sellers() 获取产品数据
-       （两层策略：实时抓取 → 本地缓存）
-    2. 调用 src.analyzer.analyze_products() 进行 AI 分析
-       （支持多模型供应商，通过 get_llm_config() 配置）
-    3. 调用 src.database.save_products() 保存到 SQLite
+    1. 遍历 PLATFORMS 注册表中所有平台（或通过 --platforms 指定）
+    2. 对每个平台动态加载抓取函数，按默认地区抓取产品
+    3. 调用 src.analyzer.analyze_products() 进行 AI 分析
+    4. 调用 src.database.save_products() 保存到 SQLite（含平台/地区/货币元数据）
+    5. 导出 products.json 供 Streamlit Cloud 使用
 
 用法：
-    python daily_scrape.py
+    python daily_scrape.py                        # 抓取所有平台
+    python daily_scrape.py --platforms amazon ebay # 仅抓取指定平台
+    python daily_scrape.py --list                  # 列出所有可用平台
+    python daily_scrape.py --skip-analysis         # 跳过 AI 分析（仅抓取）
 
 依赖：
     配置通过 .env 文件或环境变量读取（同 Streamlit 本地开发方式）。
@@ -18,22 +21,118 @@
 
 print("=== daily_scrape.py started ===")
 
+import importlib
 import json
 import sys
 import os
+import argparse
 from datetime import datetime, timezone
 
 # 将项目根目录加入 Python 路径，使 from src.xxx 能正常导入
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from src.platforms import PLATFORMS, get_platform_info, get_region_info
 from src.config import get_llm_config
-from src.scraper import fetch_amazon_best_sellers
 from src.analyzer import analyze_products
-from src.database import save_products, get_product_count
+from src.database import save_products, get_product_count, get_latest_products
 
+
+# ============================================================
+# 动态加载抓取函数
+# ============================================================
+
+def _load_scraper_func(module_path: str, func_name: str):
+    """
+    动态导入抓取模块并返回指定函数。
+
+    Args:
+        module_path: 模块路径，如 "src.scraper"
+        func_name:   函数名，如 "fetch_amazon_best_sellers"
+
+    Returns:
+        可调用的抓取函数
+    """
+    module = importlib.import_module(module_path)
+    func = getattr(module, func_name, None)
+    if func is None:
+        raise AttributeError(f"模块 {module_path} 中未找到函数 {func_name}")
+    return func
+
+
+# ============================================================
+# 单平台抓取
+# ============================================================
+
+def scrape_platform(platform_key: str, region_key: str = None) -> tuple[list[dict], dict]:
+    """
+    抓取指定平台的产品数据。
+
+    Args:
+        platform_key: 平台标识，如 "amazon"
+        region_key:   地区代码，如 "us"。为 None 时使用平台默认地区
+
+    Returns:
+        (products_list, source_info_dict)
+    """
+    platform = get_platform_info(platform_key)
+    if region_key is None:
+        region_key = platform.get("default_region", "us")
+
+    region = get_region_info(platform_key, region_key)
+    scraper_func = _load_scraper_func(platform["scraper_module"], platform["scraper_func"])
+
+    icon = platform.get("icon", "📦")
+    name = platform.get("name", platform_key)
+    print(f"\n{icon} 抓取 {name} ({region['name']})...")
+
+    try:
+        products, source_info = scraper_func(region=region_key)
+        src = source_info.get("source", "unknown")
+        ts = source_info.get("timestamp", "")
+        status = "实时抓取 ✅" if src == "live" else ("本地缓存 💾" if src == "cache" else "不可用 ❌")
+        print(f"  数据来源：{src} ({status})")
+        print(f"  获取产品：{len(products)} 个")
+        if ts:
+            print(f"  时间戳：{ts}")
+        return products, source_info
+    except Exception as e:
+        print(f"  ❌ 抓取失败：{e}")
+        return [], {"source": "error", "error": str(e)}
+
+
+# ============================================================
+# 主流程
+# ============================================================
 
 def main():
-    """主流程：抓取 → 分析 → 存库 → 输出统计。"""
+    """主流程：多平台抓取 → 分析 → 存库 → 导出 JSON。"""
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description="Global Product Scout 每日自动抓取")
+    parser.add_argument(
+        "--platforms", nargs="+", default=None,
+        help="指定要抓取的平台（如 amazon ebay alibaba），默认抓取全部"
+    )
+    parser.add_argument(
+        "--list", action="store_true",
+        help="列出所有可用平台后退出"
+    )
+    parser.add_argument(
+        "--skip-analysis", action="store_true",
+        help="跳过 AI 分析（仅抓取并保存原始数据）"
+    )
+    args = parser.parse_args()
+
+    # 列出可用平台
+    if args.list:
+        print("\n可用平台：")
+        for key, info in PLATFORMS.items():
+            icon = info.get("icon", "📦")
+            name = info.get("name", key)
+            regions = ", ".join(r["name"] for r in info["regions"].values())
+            mode = info.get("scrape_mode", "fetcher_first")
+            print(f"  {icon} {key:12s} — {name} ({regions}) [{mode}]")
+        return
+
     start_time = datetime.now(timezone.utc)
 
     print("=" * 60)
@@ -41,51 +140,85 @@ def main():
     print(f"  开始时间：{start_time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print("=" * 60)
 
-    # ---------- 第一步：抓取数据 ----------
-    print("\n📡 第 1 步：抓取 Amazon Best Sellers 数据...")
-    products, source_info = fetch_amazon_best_sellers()
-    src = source_info.get("source", "unknown")
-    ts = source_info.get("timestamp", "")
-    print(f"  数据来源：{src}")
-    print(f"  ├─ 来源说明："
-          f"{'实时抓取 ✅' if src == 'live' else ('本地缓存 💾' if src == 'cache' else '不可用 ❌')}")
-    print(f"  └─ 获取产品：{len(products)} 个")
-    if ts:
-        print(f"     时间戳：{ts}")
+    # 确定要抓取的平台列表
+    if args.platforms:
+        target_platforms = []
+        for p in args.platforms:
+            if p in PLATFORMS:
+                target_platforms.append(p)
+            else:
+                print(f"⚠️  未知平台 '{p}'，跳过。可用平台：{list(PLATFORMS.keys())}")
+        if not target_platforms:
+            print("❌ 没有有效的目标平台，终止执行。")
+            sys.exit(1)
+    else:
+        target_platforms = list(PLATFORMS.keys())
 
-    if not products:
-        print("❌ 未获取到任何产品，终止执行。")
-        sys.exit(1)
+    print(f"\n📋 目标平台：{', '.join(target_platforms)}")
 
-    # ---------- 第二步：AI 分析 ----------
-    llm_cfg = get_llm_config()
-    api_ok = bool(llm_cfg["api_key"])
-    provider = llm_cfg.get("provider", "unknown")
-    model = llm_cfg.get("model", "unknown")
-    print(f"\n🤖 第 2 步：AI 分析产品...")
-    print(f"  AI 模型：{provider}/{model}")
-    print(f"  API Key：{'已配置 ✅' if api_ok else '未配置 ⚠️'}")
-    results = analyze_products(products)
-    print(f"  分析完成：{len(results)} 个产品")
-    verdict_counts = {}
-    for r in results:
-        v = r.get("final_verdict", "unknown")
-        verdict_counts[v] = verdict_counts.get(v, 0) + 1
-    for v, count in sorted(verdict_counts.items()):
-        emoji = {"recommended": "🟢", "cautious": "🟡", "not_recommended": "🔴"}.get(v, "⚪")
-        print(f"  {emoji} {v}：{count} 个")
+    # AI 配置检查
+    if not args.skip_analysis:
+        llm_cfg = get_llm_config()
+        api_ok = bool(llm_cfg["api_key"])
+        provider = llm_cfg.get("provider", "unknown")
+        model = llm_cfg.get("model", "unknown")
+        print(f"\n🤖 AI 分析配置：{provider}/{model}")
+        print(f"  API Key：{'已配置 ✅' if api_ok else '未配置 ⚠️（将降级为模拟分析）'}")
 
-    # ---------- 第三步：保存到数据库 ----------
-    print(f"\n💾 第 3 步：保存到数据库...")
-    saved = save_products(products, results)
-    total = get_product_count()
-    print(f"  本次保存：{saved} 条")
-    print(f"  累计记录：{total} 条")
+    # ---------- 逐平台抓取 + 分析 + 保存 ----------
+    total_saved = 0
+    total_products = 0
+    platform_summary = []
 
-    # ---------- 第四步：导出 JSON（供 Streamlit Cloud 使用）----------
-    print(f"\n📄 第 4 步：导出 products.json...")
-    from src.database import get_latest_products
+    for platform_key in target_platforms:
+        platform = get_platform_info(platform_key)
+        icon = platform.get("icon", "📦")
+        name = platform.get("name", platform_key)
+        region_key = platform.get("default_region", "us")
+        region = get_region_info(platform_key, region_key)
+        currency = region.get("currency", "USD")
 
+        # 第一步：抓取
+        products, source_info = scrape_platform(platform_key, region_key)
+
+        if not products:
+            platform_summary.append(f"  {icon} {name}：0 个产品 ❌")
+            continue
+
+        total_products += len(products)
+
+        # 第二步：AI 分析
+        if args.skip_analysis:
+            results = [{}] * len(products)
+            print(f"  ⏭  跳过 AI 分析（--skip-analysis）")
+        else:
+            print(f"  🤖 AI 分析 {name} 产品...")
+            results = analyze_products(products)
+            print(f"  分析完成：{len(results)} 个产品")
+            verdict_counts = {}
+            for r in results:
+                v = r.get("final_verdict", "unknown")
+                verdict_counts[v] = verdict_counts.get(v, 0) + 1
+            for v, count in sorted(verdict_counts.items()):
+                emoji = {"recommended": "🟢", "cautious": "🟡", "not_recommended": "🔴"}.get(v, "⚪")
+                print(f"    {emoji} {v}：{count} 个")
+
+        # 第三步：保存到数据库
+        source_label = source_info.get("source", "unknown")
+        source_tag = f"{platform_key}_{source_label}"
+        saved = save_products(
+            products, results,
+            source=source_tag,
+            platform=platform_key,
+            region=region_key,
+            currency=currency,
+        )
+        total_saved += saved
+        platform_summary.append(f"  {icon} {name}：{saved} 个产品 ✅")
+        print(f"  💾 已保存 {saved} 条到数据库")
+
+    # ---------- 导出 JSON ----------
+    print(f"\n📄 导出 products.json...")
     latest_products = get_latest_products()
     if latest_products:
         json_path = os.path.join(os.path.dirname(__file__), "data", "products.json")
@@ -96,10 +229,18 @@ def main():
     else:
         print(f"  ⚠️  数据库中无产品记录，跳过导出")
 
-    # ---------- 完成 ----------
+    # ---------- 完成汇总 ----------
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    db_total = get_product_count()
+
     print("\n" + "=" * 60)
-    print(f"  ✅ 抓取完成，共保存 {saved} 条产品")
+    print("  ✅ 每日抓取完成")
+    print("  ─────────────────────────────────────")
+    for line in platform_summary:
+        print(line)
+    print("  ─────────────────────────────────────")
+    print(f"  本次保存：{total_saved} 条（共 {total_products} 个产品）")
+    print(f"  累计记录：{db_total} 条")
     print(f"  ⏱  总耗时：{elapsed:.1f} 秒")
     print("=" * 60)
 

@@ -26,7 +26,7 @@ from typing import Optional
 
 from .config import get_config
 from .scrapling_adapter import fetch_page
-from .utils import USER_AGENTS, is_blocked, parse_price, parse_rating, parse_review_count
+from .utils import is_blocked, parse_price, parse_rating, parse_review_count
 
 # ============================================================
 # 缓存路径常量

@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from .scrapling_adapter import fetch_page
-from .utils import USER_AGENTS, is_blocked, parse_price, parse_rating
+from .utils import is_blocked, parse_price, parse_rating
 
 # ============================================================
 # 缓存配置

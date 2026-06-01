@@ -18,10 +18,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.12'
+
+      - name: Install Chromium (Scrapling StealthyFetcher)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -38,6 +43,8 @@ jobs:
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           AMAZON_BEST_SELLERS_URL: ${{ secrets.AMAZON_BEST_SELLERS_URL }}
           SCRAPE_DELAY_SECONDS: '2'
+          SCRAPLING_BROWSER_TIMEOUT: '30000'
+          SCRAPLING_STRATEGY: 'fetcher_first'
           DATABASE_PATH: data/products.db
         run: python daily_scrape.py
 
