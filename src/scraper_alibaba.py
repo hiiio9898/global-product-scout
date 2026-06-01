@@ -26,7 +26,10 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from .scrapling_adapter import fetch_page
-from .utils import is_blocked, parse_price, parse_rating
+from .utils import (
+    is_blocked, parse_price, parse_rating,
+    load_json_cache, save_json_cache, get_cache_timestamp,
+)
 
 # ============================================================
 # 缓存配置
@@ -53,39 +56,17 @@ def _get_cache_file(prefix: str) -> str:
 
 def _load_cache(prefix: str) -> Optional[list[dict]]:
     """读取本地缓存的 JSON 数据。"""
-    cache_file = _get_cache_file(prefix)
-    try:
-        if os.path.exists(cache_file):
-            with open(cache_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, list) and len(data) > 0:
-                mtime = os.path.getmtime(cache_file)
-                if time.time() - mtime < _CACHE_TTL:
-                    return data
-    except (json.JSONDecodeError, OSError):
-        pass
-    return None
+    return load_json_cache(_get_cache_file(prefix), max_age_seconds=_CACHE_TTL)
 
 
 def _save_cache(products: list[dict], prefix: str) -> None:
     """将抓取结果保存为本地 JSON 缓存。"""
-    os.makedirs(_CACHE_DIR, exist_ok=True)
-    cache_file = _get_cache_file(prefix)
-    with open(cache_file, "w", encoding="utf-8") as f:
-        json.dump(products, f, ensure_ascii=False, indent=2)
+    save_json_cache(products, _get_cache_file(prefix))
 
 
 def _get_cache_timestamp(prefix: str) -> Optional[str]:
     """获取缓存文件的最后修改时间。"""
-    cache_file = _get_cache_file(prefix)
-    try:
-        if os.path.exists(cache_file):
-            mtime = os.path.getmtime(cache_file)
-            dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
-            return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-    except OSError:
-        pass
-    return None
+    return get_cache_timestamp(_get_cache_file(prefix))
 
 
 # ============================================================

@@ -26,7 +26,10 @@ from typing import Optional
 
 from .config import get_config
 from .scrapling_adapter import fetch_page
-from .utils import is_blocked, parse_price, parse_rating, parse_review_count
+from .utils import (
+    is_blocked, parse_price, parse_rating, parse_review_count,
+    load_json_cache, save_json_cache, get_cache_timestamp,
+)
 
 # ============================================================
 # 缓存路径常量
@@ -86,23 +89,12 @@ def _load_cache(region: str = "us") -> Optional[list[dict]]:
     # 兼容旧版缓存文件
     if not os.path.exists(cache_file) and region == "us":
         cache_file = _CACHE_FILE
-    try:
-        if os.path.exists(cache_file):
-            with open(cache_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, list) and len(data) > 0:
-                return data
-    except (json.JSONDecodeError, OSError):
-        pass
-    return None
+    return load_json_cache(cache_file)
 
 
 def _save_cache(products: list[dict], region: str = "us") -> None:
     """将抓取结果保存为本地 JSON 缓存。"""
-    os.makedirs(_CACHE_DIR, exist_ok=True)
-    cache_file = _get_cache_file(region)
-    with open(cache_file, "w", encoding="utf-8") as f:
-        json.dump(products, f, ensure_ascii=False, indent=2)
+    save_json_cache(products, _get_cache_file(region))
 
 
 def _get_cache_timestamp(region: str = "us") -> Optional[str]:
@@ -110,14 +102,7 @@ def _get_cache_timestamp(region: str = "us") -> Optional[str]:
     cache_file = _get_cache_file(region)
     if not os.path.exists(cache_file) and region == "us":
         cache_file = _CACHE_FILE
-    try:
-        if os.path.exists(cache_file):
-            mtime = os.path.getmtime(cache_file)
-            dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
-            return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-    except OSError:
-        pass
-    return None
+    return get_cache_timestamp(cache_file)
 
 
 # ============================================================

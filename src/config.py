@@ -64,7 +64,7 @@ def _get_secret(key: str, default: str = "") -> str:
             value = st.secrets.get(key)
             if value is not None:
                 return str(value)
-    except (ImportError, RuntimeError, Exception):
+    except Exception:
         pass
     # 回退：os.environ（.env 或系统环境变量）
     return os.getenv(key, default)
@@ -119,7 +119,7 @@ def get_llm_config() -> dict:
                     provider_info = LLM_PROVIDERS[provider]
                     api_key = _get_secret(provider_info["api_key_key"], "")
                     base_url = _get_secret(provider_info["base_url_key"], "")
-    except (ImportError, RuntimeError, Exception):
+    except Exception:
         pass
 
     # 4. 如果没有 session_state，读取 ACTIVATE_MODEL 环境变量

@@ -5,9 +5,13 @@
 - User-Agent 池
 - 反爬检测关键词和函数
 - 价格/评分/评论数解析
+- JSON 缓存读写（供各 scraper 模块共用）
 """
 
+import json
+import os
 import re
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -136,3 +140,56 @@ def format_number(num: int) -> str:
     if num >= 1_000:
         return f"{num / 1_000:.1f}k"
     return str(num)
+
+
+# ============================================================
+# JSON 缓存读写（供各 scraper 模块共用）
+# ============================================================
+
+def load_json_cache(
+    cache_file: str,
+    max_age_seconds: Optional[int] = None,
+) -> Optional[list[dict]]:
+    """
+    读取本地 JSON 缓存文件。
+
+    Args:
+        cache_file:       缓存文件完整路径
+        max_age_seconds:  最大有效期（秒），None 表示永不过期
+
+    Returns:
+        缓存的产品列表，无效/过期/不存在时返回 None
+    """
+    try:
+        if not os.path.exists(cache_file):
+            return None
+        if max_age_seconds is not None:
+            mtime = os.path.getmtime(cache_file)
+            if __import__("time").time() - mtime > max_age_seconds:
+                return None
+        with open(cache_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list) and len(data) > 0:
+            return data
+    except (json.JSONDecodeError, OSError):
+        pass
+    return None
+
+
+def save_json_cache(products: list[dict], cache_file: str) -> None:
+    """将产品数据保存为本地 JSON 缓存。"""
+    os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+    with open(cache_file, "w", encoding="utf-8") as f:
+        json.dump(products, f, ensure_ascii=False, indent=2)
+
+
+def get_cache_timestamp(cache_file: str) -> Optional[str]:
+    """获取缓存文件的最后修改时间，格式化为可读字符串。"""
+    try:
+        if os.path.exists(cache_file):
+            mtime = os.path.getmtime(cache_file)
+            dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
+            return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+    except OSError:
+        pass
+    return None

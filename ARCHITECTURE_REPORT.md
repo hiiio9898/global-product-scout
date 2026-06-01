@@ -256,8 +256,14 @@ src/config.py
 | `src/scraper_search.py` | 同上 | ✅ 已修复 |
 | `src/scraper_ebay.py` | 同上 | ✅ 已修复 |
 | `src/scraper_alibaba.py` | 同上 | ✅ 已修复 |
-| `src/utils.py` | `USER_AGENTS` 常量仍被多文件导入但 Scrapling 已替代其用途 | 低 |
-| `app.py:73` | Dashboard 图标显示为 `� Dashboard`（编码问题） | 中 |
+| `src/utils.py` | `USER_AGENTS` 常量仍被多文件导入但 Scrapling 已替代其用途 | ✅ 已修复 |
+| `app.py` | 指定选品页硬编码 `search_amazon()`，忽略侧边栏平台选择 | ✅ 已修复 |
+| `app.py` | 数据来源提示硬编码 "Amazon Best Sellers"，不适应多平台 | ✅ 已修复 |
+| `app.py` | 侧边栏利润参数不适应多平台（广告预算对 eBay/Alibaba 无意义） | ✅ 已修复 |
+| `app.py` | 版本号硬编码且不一致（v0.2.0 / v0.3.0），已提取 `APP_VERSION` 常量 | ✅ 已修复 |
+| `app.py` | `verdict_label_map` 和 `dims` 在多函数中重复定义，已提取为模块常量 | ✅ 已修复 |
+| `app.py` | 6 处 expander/selectbox 截断缺少 `help=` 参数（违反 Spec 0） | ✅ 已修复 |
+| `app.py` | 历史记录地区筛选器 UI 存在但无实际过滤效果 | ✅ 已修复 |
 | `src/config.py` | `get_config()` 中 `amazon_url` 仍硬编码为 Amazon 专用 | 低 |
 | `daily_scrape.py` | 未适配多平台 | ✅ 已修复（支持 --platforms 参数，遍历 PLATFORMS 注册表） |
 | `requirements.txt` | `requests` 和 `beautifulsoup4` 已被移除但 Scrapling 内部仍依赖它们（通过 curl_cffi） | 无 |
@@ -387,3 +393,13 @@ src/config.py
 - [x] `daily_scrape.py` 适配多平台抓取
 - [x] 补写 Spec 15（Alibaba 平台正式 Spec）
 - [x] 清理 scraper_*.py 中冗余的 `USER_AGENTS` 导入
+
+### UI 审查修复（2026-06-01）
+- [x] 修复 6 处 Spec 0 内容截断违规（expander/selectbox 添加 `help=`）
+- [x] 指定选品页改为动态平台加载（不再硬编码 `search_amazon()`）
+- [x] 数据来源提示改为动态平台名
+- [x] 侧边栏利润参数多平台适配（隐藏广告预算、平台专属标签）
+- [x] 版本号统一为 `APP_VERSION` 常量
+- [x] 提取 `VERDICT_LABEL_MAP` 和 `ANALYSIS_DIMS` 模块级常量
+- [x] 历史记录地区筛选器添加实际过滤逻辑
+- [x] 更新 `docs/specs/0-content-display-rule.md` 新增多平台 UI 规范

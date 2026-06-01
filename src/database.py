@@ -20,6 +20,7 @@ import csv
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 from typing import Optional
 
 from .config import get_config
@@ -47,6 +48,35 @@ CREATE TABLE IF NOT EXISTS products (
     currency        TEXT DEFAULT 'USD'
 );
 """
+
+
+# ============================================================
+# 数据库连接上下文管理器
+# ============================================================
+
+@contextmanager
+def _get_connection(db_path: Optional[str] = None):
+    """
+    SQLite 连接上下文管理器 — 自动提交/关闭，异常时回滚。
+
+    用法：
+        with _get_connection() as conn:
+            conn.execute(...)
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 # ============================================================
@@ -116,16 +146,8 @@ def save_products(
     Returns:
         本次保存的产品数量
     """
-    if db_path is None:
-        cfg = get_config()
-        db_path = cfg["database_path"]
-
-    init_db(db_path)
-
-    conn = sqlite3.connect(db_path)
-    try:
+    with _get_connection(db_path) as conn:
         for i, product in enumerate(products):
-            # 获取对应的分析结果（按索引匹配）
             analysis = analysis_results[i] if i < len(analysis_results) else {}
             analysis_json = json.dumps(analysis, ensure_ascii=False)
 
@@ -151,10 +173,7 @@ def save_products(
                     currency,
                 ),
             )
-        conn.commit()
         return len(products)
-    finally:
-        conn.close()
 
 
 # ============================================================
@@ -190,60 +209,65 @@ def get_all_products(
 
     init_db(db_path)
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row  # 返回类字典行
-    try:
-        rows = conn.execute(
-            "SELECT * FROM products ORDER BY scrape_time DESC"
-        ).fetchall()
+    # 构建 SQL WHERE 子句 — 将简单筛选下推到 SQL 层
+    conditions = []
+    params = []
 
-        # 转为普通字典列表，同时解析 analysis_json
+    platform_filter = filters.get("platform")
+    if platform_filter:
+        conditions.append("platform = ?")
+        params.append(platform_filter)
+
+    region_filter = filters.get("region")
+    if region_filter:
+        conditions.append("region = ?")
+        params.append(region_filter)
+
+    min_price = filters.get("min_price")
+    if min_price is not None:
+        conditions.append("CAST(price AS REAL) >= ?")
+        params.append(min_price)
+
+    max_price = filters.get("max_price")
+    if max_price is not None:
+        conditions.append("CAST(price AS REAL) <= ?")
+        params.append(max_price)
+
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+    # 排序
+    sort_by = filters.get("sort_by", "scrape_time")
+    sort_order = filters.get("sort_order", "DESC").upper()
+    allowed_sort = {"scrape_time", "price", "rank"}
+    if sort_by not in allowed_sort:
+        sort_by = "scrape_time"
+    order_clause = f"ORDER BY {sort_by} {sort_order}"
+
+    # 限制条数
+    limit = filters.get("limit")
+    limit_clause = f"LIMIT {int(limit)}" if limit and limit > 0 else ""
+
+    sql = f"SELECT * FROM products WHERE {where_clause} {order_clause} {limit_clause}"
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(sql, params).fetchall()
+
         results = []
         for row in rows:
             product = dict(row)
-            # 解析 JSON 分析结果
             try:
                 analysis = json.loads(product.get("analysis_json", "{}"))
             except (json.JSONDecodeError, TypeError):
                 analysis = {}
             product["analysis"] = analysis
 
-            # 应用 Python 层筛选（JSON 字段无法在 SQL 中直接筛选）
+            # JSON 内嵌字段只能在 Python 层筛选
             if not _match_filters(product, filters):
                 continue
 
             results.append(product)
-
-        # 排序
-        sort_by = filters.get("sort_by", "scrape_time")
-        sort_order = filters.get("sort_order", "DESC")
-        reverse = sort_order.upper() == "DESC"
-
-        if sort_by == "price":
-            results.sort(
-                key=lambda p: _safe_float(p.get("price", "0")),
-                reverse=reverse,
-            )
-        elif sort_by == "rank":
-            results.sort(
-                key=lambda p: p.get("rank", 9999),
-                reverse=not reverse,  # rank 越小越好
-            )
-        elif sort_by == "scrape_time":
-            results.sort(
-                key=lambda p: p.get("scrape_time", ""),
-                reverse=reverse,
-            )
-        else:
-            results.sort(
-                key=lambda p: p.get("scrape_time", ""),
-                reverse=True,
-            )
-
-        # 限制条数
-        limit = filters.get("limit")
-        if limit and limit > 0:
-            results = results[:limit]
 
         return results
 
@@ -252,22 +276,8 @@ def get_all_products(
 
 
 def _match_filters(product: dict, filters: dict) -> bool:
-    """检查单个产品是否满足所有筛选条件。"""
+    """检查单个产品是否满足 JSON 内嵌字段的筛选条件（SQL 无法处理的部分）。"""
     analysis = product.get("analysis", {})
-
-    # 平台筛选
-    platform_filter = filters.get("platform")
-    if platform_filter:
-        product_platform = product.get("platform", "amazon")
-        if product_platform != platform_filter:
-            return False
-
-    # 地区筛选
-    region_filter = filters.get("region")
-    if region_filter:
-        product_region = product.get("region", "us")
-        if product_region != region_filter:
-            return False
 
     # final_verdict 筛选
     verdicts = filters.get("verdicts")
@@ -283,15 +293,6 @@ def _match_filters(product: dict, filters: dict) -> bool:
         if isinstance(mc, dict):
             if mc.get("score", 0) < min_cap:
                 return False
-
-    # 价格区间
-    min_price = filters.get("min_price")
-    max_price = filters.get("max_price")
-    price = _safe_float(product.get("price", "0"))
-    if min_price is not None and price < min_price:
-        return False
-    if max_price is not None and price > max_price:
-        return False
 
     return True
 

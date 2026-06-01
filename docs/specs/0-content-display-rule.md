@@ -85,3 +85,100 @@ st.markdown(f"**{title}**")
 - [ ] 截断处是否提供了完整信息的查看方式（tooltip / expander / 悬浮提示）？
 - [ ] DataFrame 列是否使用 `column_config` 而非字符串截断？
 - [ ] st.metric 的 delta 是否完整展示？
+- [ ] `st.expander()` 标题截断时是否包含 `help=完整文本`？
+- [ ] `st.selectbox()` 选项截断时是否包含 `help=完整文本`？
+
+---
+
+## 4. 多平台 UI 规范
+
+### 4.1 禁止硬编码平台名称
+
+所有面向用户的文本必须动态读取当前平台信息，禁止硬编码 "Amazon" 等平台名。
+
+```python
+# ✗ 错误 — 硬编码平台名
+st.caption("数据来源：Amazon Best Sellers（实时抓取）")
+st.markdown("AI 将搜索 Amazon 并生成报告")
+
+# ✓ 正确 — 动态平台名
+pf_info = get_platform_info(st.session_state.get("active_platform", "amazon"))
+pf_name = f"{pf_info['icon']} {pf_info['name']}"
+st.caption(f"数据来源：{pf_name}（实时抓取）")
+st.markdown(f"AI 将搜索 {pf_name} 并生成报告")
+```
+
+### 4.2 平台自适应参数面板
+
+侧边栏利润参数应根据当前平台动态调整：
+
+```python
+# ✓ 正确 — Amazon 特有参数仅在 Amazon 平台显示
+if active_pf == "amazon":
+    ad_pct = st.slider("广告预算占比", ...)
+else:
+    ad_pct = 0.0  # 非 Amazon 平台无广告费
+
+# ✓ 正确 — 各平台使用对应术语
+commission_label = {
+    "amazon": "亚马逊佣金比例",
+    "ebay": "eBay 成交费比例",
+    "alibaba": "阿里巴巴佣金比例",
+}.get(active_pf, "平台佣金比例")
+```
+
+### 4.3 动态加载平台抓取/搜索函数
+
+禁止直接调用特定平台的抓取函数，必须通过平台注册表动态加载：
+
+```python
+# ✗ 错误 — 硬编码调用
+from src.scraper_search import search_amazon
+result = search_amazon(keyword)
+
+# ✓ 正确 — 动态加载
+import importlib
+pf_info = get_platform_info(platform_key)
+mod = importlib.import_module(pf_info["search_module"])
+func = getattr(mod, pf_info["search_func"])
+result = func(keyword, region=region)
+```
+
+---
+
+## 5. 版本号管理
+
+版本号必须定义为模块级常量 `APP_VERSION`，所有页脚统一引用：
+
+```python
+# ✓ 正确
+APP_VERSION = "v0.5.0"
+st.caption(f"Global Product Scout {APP_VERSION}")
+
+# ✗ 错误 — 硬编码版本号
+st.caption("Global Product Scout v0.2.0")
+```
+
+---
+
+## 6. 模块级常量提取
+
+以下常用映射/列表必须定义为模块级常量，禁止在函数内重复定义：
+
+```python
+# 推荐判定标签映射
+VERDICT_LABEL_MAP = {
+    "recommended": "🟢 推荐入手",
+    "cautious": "🟡 谨慎评估",
+    "not_recommended": "🔴 不推荐",
+}
+
+# AI 分析五维度
+ANALYSIS_DIMS = [
+    ("📊 市场容量", "market_capacity"),
+    ("⚔️ 竞争程度", "competition"),
+    ("💰 利润潜力", "profit_potential"),
+    ("🎓 新手友好", "beginner_friendly"),
+    ("🌡️ 季节风险", "seasonality_risk"),
+]
+```

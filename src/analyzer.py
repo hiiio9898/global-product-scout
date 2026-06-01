@@ -93,6 +93,58 @@ def _extract_json_from_reasoning(reasoning: str) -> str:
 # JSON 解析与容错
 # ============================================================
 
+def _strip_markdown_json(content: str) -> str:
+    """清理 markdown 代码块标记（```json ... ```），返回干净的文本。"""
+    cleaned = content.strip()
+    if cleaned.startswith("```"):
+        parts = cleaned.split("```")
+        if len(parts) >= 2:
+            cleaned = parts[1]
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:]
+            cleaned = cleaned.strip()
+    return cleaned
+
+
+def _extract_json_object(text: str) -> dict | None:
+    """尝试从文本中提取并解析第一个 JSON 对象，失败返回 None。"""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
+def _extract_json_array(text: str) -> list | None:
+    """尝试从文本中提取并解析 JSON 数组，失败返回 None。"""
+    try:
+        data = json.loads(text)
+        if isinstance(data, list):
+            return data
+        # 单个对象包装为列表
+        if isinstance(data, dict):
+            return [data]
+    except json.JSONDecodeError:
+        pass
+    start = text.find("[")
+    end = text.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        try:
+            data = json.loads(text[start:end + 1])
+            if isinstance(data, list):
+                return data
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def _parse_ai_response(content: str, product_title: str) -> dict:
     """
     解析 AI 返回的 JSON 字符串。
@@ -106,36 +158,11 @@ def _parse_ai_response(content: str, product_title: str) -> dict:
     Returns:
         成功时返回标准分析字典，失败时返回纯文本回退字典。
     """
-    # 清理 markdown 包裹
-    cleaned = content.strip()
-    if cleaned.startswith("```"):
-        parts = cleaned.split("```")
-        if len(parts) >= 2:
-            cleaned = parts[1]
-            if cleaned.startswith("json"):
-                cleaned = cleaned[4:]
-            cleaned = cleaned.strip()
-
-    # 尝试直接解析
-    try:
-        data = json.loads(cleaned)
-        if _validate_result(data):
-            data["title"] = product_title
-            return data
-    except json.JSONDecodeError:
-        pass
-
-    # 尝试提取 JSON 块
-    try:
-        start = cleaned.find("{")
-        end = cleaned.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            data = json.loads(cleaned[start:end + 1])
-            if _validate_result(data):
-                data["title"] = product_title
-                return data
-    except json.JSONDecodeError:
-        pass
+    cleaned = _strip_markdown_json(content)
+    data = _extract_json_object(cleaned)
+    if data and _validate_result(data):
+        data["title"] = product_title
+        return data
 
     # 回退：纯文本展示
     return {
@@ -224,31 +251,8 @@ def _parse_batch_response(content: str, batch_products: list[dict]) -> list[dict
     容错策略：与 _parse_ai_response 类似，但处理 JSON 数组。
     如果某个产品的解析结果无效，会回退为错误提示字典。
     """
-    cleaned = content.strip()
-    if cleaned.startswith("```"):
-        parts = cleaned.split("```")
-        if len(parts) >= 2:
-            cleaned = parts[1]
-            if cleaned.startswith("json"):
-                cleaned = cleaned[4:]
-            cleaned = cleaned.strip()
-
-    parsed_items = []
-    try:
-        data = json.loads(cleaned)
-        if isinstance(data, list):
-            parsed_items = data
-    except json.JSONDecodeError:
-        pass
-
-    # 如果是单个对象（非数组），包装为列表
-    if not parsed_items:
-        try:
-            data = json.loads(cleaned)
-            if isinstance(data, dict):
-                parsed_items = [data]
-        except json.JSONDecodeError:
-            pass
+    cleaned = _strip_markdown_json(content)
+    parsed_items = _extract_json_array(cleaned) or []
 
     # 按 title 匹配回产品
     title_map = {}
@@ -264,10 +268,14 @@ def _parse_batch_response(content: str, batch_products: list[dict]) -> list[dict
             matched["title"] = title
             results.append(matched)
         else:
-            # 回退为错误提示
+            # 回退：保留原始响应文本供调试
+            fallback_text = content if content else "(AI 返回内容为空)"
+            # 如果有部分匹配（title 不同但结构有效），也记录下来
+            if matched and not _validate_result(matched):
+                fallback_text = json.dumps(matched, ensure_ascii=False, indent=2)
             results.append({
                 "title": title,
-                "raw_text": "AI 未返回该产品的分析",
+                "raw_text": fallback_text,
                 "parse_error": True,
                 "final_verdict": "cautious",
                 "verdict_reason": "AI 返回结果中未匹配到该产品",
@@ -291,9 +299,15 @@ def _analyze_batch(batch: list[dict], client, llm_cfg: dict) -> list[dict]:
                 max_tokens=8000,
             )
             content = resp.choices[0].message.content or ""
+            # 思考模型（MiMo 等）可能将内容放在 reasoning_content 中
             if not content.strip() and hasattr(resp.choices[0].message, "reasoning_content"):
                 reasoning = resp.choices[0].message.reasoning_content or ""
-                content = _extract_json_from_reasoning(reasoning)
+                extracted = _extract_json_from_reasoning(reasoning)
+                if extracted:
+                    content = extracted
+                else:
+                    # reasoning 中也提取不出 JSON，直接用 reasoning 原文
+                    content = reasoning
             content = content.strip()
             batch_results = _parse_batch_response(content, batch)
             if batch_results:
@@ -499,42 +513,27 @@ def _parse_category_report_response(
 
     容错策略与 _parse_ai_response 类似。
     """
-    cleaned = content.strip()
-    if cleaned.startswith("```"):
-        parts = cleaned.split("```")
-        if len(parts) >= 2:
-            cleaned = parts[1]
-            if cleaned.startswith("json"):
-                cleaned = cleaned[4:]
-            cleaned = cleaned.strip()
+    cleaned = _strip_markdown_json(content)
+    data = _extract_json_object(cleaned)
 
-    # 尝试解析
-    try:
-        data = json.loads(cleaned)
-    except json.JSONDecodeError:
-        try:
-            start = cleaned.find("{")
-            end = cleaned.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                data = json.loads(cleaned[start:end + 1])
-            else:
-                raise json.JSONDecodeError("No JSON object found", cleaned, 0)
-        except json.JSONDecodeError:
-            return {
-                "success": False,
-                "category_overview": "",
-                "market_size": "",
-                "competition_level": "unknown",
-                "competition_detail": "",
-                "price_distribution": "",
-                "top3": [],
-                "entry_suggestion": "",
-                "differentiation": "",
-                "risk_factors": [],
-                "parse_error": True,
-                "raw_text": content,
-                "error": "AI 返回格式异常，无法解析品类报告",
-            }
+    # 解析失败的回退模板
+    _fallback = {
+        "success": False,
+        "category_overview": "",
+        "market_size": "",
+        "competition_level": "unknown",
+        "competition_detail": "",
+        "price_distribution": "",
+        "top3": [],
+        "entry_suggestion": "",
+        "differentiation": "",
+        "risk_factors": [],
+        "parse_error": True,
+        "raw_text": content,
+    }
+
+    if not data:
+        return {**_fallback, "error": "AI 返回格式异常，无法解析品类报告"}
 
     # 验证必要字段
     required = [
@@ -543,21 +542,7 @@ def _parse_category_report_response(
     ]
     for key in required:
         if key not in data:
-            return {
-                "success": False,
-                "category_overview": "",
-                "market_size": "",
-                "competition_level": "unknown",
-                "competition_detail": "",
-                "price_distribution": "",
-                "top3": [],
-                "entry_suggestion": "",
-                "differentiation": "",
-                "risk_factors": [],
-                "parse_error": True,
-                "raw_text": content,
-                "error": f"AI 返回缺少必要字段「{key}」，报告不完整",
-            }
+            return {**_fallback, "error": f"AI 返回缺少必要字段「{key}」，报告不完整"}
 
     if not isinstance(data.get("top3"), list):
         data["top3"] = []

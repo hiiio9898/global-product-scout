@@ -12,6 +12,7 @@ import sys
 import os
 import re
 import tempfile
+import importlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -53,11 +54,31 @@ from src.database import (
 # ============================================================
 
 st.set_page_config(
-    page_title="外贸 AI 选品助手",
+    page_title="Global Product Scout",
     page_icon="🔍",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ============================================================
+# 模块级常量
+# ============================================================
+
+APP_VERSION = "v0.5.0"
+
+VERDICT_LABEL_MAP = {
+    "recommended": "🟢 推荐入手",
+    "cautious": "🟡 谨慎评估",
+    "not_recommended": "🔴 不推荐",
+}
+
+ANALYSIS_DIMS = [
+    ("📊 市场容量", "market_capacity"),
+    ("⚔️ 竞争程度", "competition"),
+    ("💰 利润潜力", "profit_potential"),
+    ("🎓 新手友好", "beginner_friendly"),
+    ("🌡️ 季节风险", "seasonality_risk"),
+]
 
 # ============================================================
 # 侧边栏 — 配置区
@@ -71,7 +92,7 @@ def render_sidebar(source_info: dict | None = None):
     page = st.sidebar.radio(
         "📌 页面导航",
         options=["📊 Dashboard", "🔍 实时选品", "🎯 指定选品", "📚 历史记录"],
-        help="Dashboard：数据概览\n实时选品：抓取并分析当前 Amazon 热销产品\n指定选品：输入关键词深度分析特定品类\n历史记录：查看过去保存的分析结果",
+        help="Dashboard：数据概览（自动按平台筛选）\n实时选品：抓取并分析当前平台热销产品\n指定选品：输入关键词深度分析特定品类\n历史记录：查看过去保存的分析结果",
     )
 
     st.sidebar.divider()
@@ -209,21 +230,28 @@ def render_sidebar(source_info: dict | None = None):
         # 佣金比例（各平台标签不同）
         commission_label = {
             "amazon": "亚马逊佣金比例",
+            "ebay": "eBay 成交费比例",
+            "alibaba": "阿里巴巴佣金比例",
         }.get(active_pf, "平台佣金比例")
         commission_pct = st.slider(
             commission_label, min_value=0.0, max_value=0.50,
             value=float(profit_defaults.get("commission_pct", 0.15)), step=0.01,
             format="%.0f%%",
         )
-        # 广告预算（Amazon 特有，其他平台可隐藏或保留）
-        ad_pct = st.slider(
-            "广告预算占比", min_value=0.0, max_value=0.50,
-            value=float(profit_defaults.get("ad_pct", 0.10)), step=0.01,
-            format="%.0f%%",
-        )
-        # 头程运费
+        # 广告预算（Amazon 特有）
+        if active_pf == "amazon":
+            ad_pct = st.slider(
+                "广告预算占比", min_value=0.0, max_value=0.50,
+                value=float(profit_defaults.get("ad_pct", 0.10)), step=0.01,
+                format="%.0f%%",
+            )
+        else:
+            ad_pct = 0.0
+        # 运费
         shipping_label = {
             "amazon": "FBA 头程运费 (¥/件)",
+            "ebay": "国际运费 (¥/件)",
+            "alibaba": "国际运费 (¥/件)",
         }.get(active_pf, "国际运费 (¥/件)")
         shipping_cny = st.number_input(
             shipping_label, min_value=0.0, max_value=200.0,
@@ -358,7 +386,7 @@ def _render_live_page(api_ok: bool):
     region_name = region_info["name"]
     currency = region_info.get("currency", "USD")
 
-    st.title(f"🔍 外贸 AI 选品助手 — {pf_name} {region_name}")
+    st.title(f"🔍 Global Product Scout — {pf_name} {region_name}")
     st.markdown(
         f"🚀 智能抓取 **{pf_name} {region_name}** 热销产品数据，AI 深度分析竞争力与利润潜力，"
         "帮你找到下一个爆款！"
@@ -533,8 +561,11 @@ def _render_live_page(api_ok: bool):
         ts = src.get("timestamp", "")
         if source_type == "json":
             caption = f"数据来源：JSON 文件 | 抓取时间：{ts}"
-        elif source_type == "live":
-            caption = f"数据来源：Amazon Best Sellers（实时抓取）| 更新时间：{ts}"
+        else:
+            platform = st.session_state.get("active_platform", "amazon")
+            pf_info = get_platform_info(platform)
+            pf_name = f"{pf_info['icon']} {pf_info['name']}"
+            caption = f"数据来源：{pf_name}（实时抓取）| 更新时间：{ts}"
         st.caption(caption)
 
         df = pd.DataFrame(st.session_state.products)
@@ -560,11 +591,7 @@ def _render_live_page(api_ok: bool):
 
         for i, r in enumerate(st.session_state.results):
             verdict = r.get("final_verdict", "cautious")
-            verdict_label_map = {
-                "recommended": "🟢 推荐入手", "cautious": "🟡 谨慎评估",
-                "not_recommended": "🔴 不推荐",
-            }
-            verdict_label = verdict_label_map.get(verdict, "⚪ 未知")
+            verdict_label = VERDICT_LABEL_MAP.get(verdict, "⚪ 未知")
 
             is_raw = r.get("parse_error", False)
             title_text = r.get("title", f"产品 #{i+1}")
@@ -573,12 +600,22 @@ def _render_live_page(api_ok: bool):
                 if is_raw else f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}"
             )
 
-            with st.expander(expander_label, expanded=(i == 0)):
+            with st.expander(expander_label, expanded=(i == 0), help=title_text):
                 st.caption(f"📦 **完整标题：** {title_text}")
                 if is_raw:
-                    st.warning("⚠️ AI 返回格式异常，以下为原始文本：")
-                    st.text_area("原始响应", value=r.get("raw_text", ""), height=200,
-                                 disabled=True, key=f"raw_{i}")
+                    verdict_reason = r.get("verdict_reason", "")
+                    st.warning(f"⚠️ AI 返回格式异常 — {verdict_reason}")
+                    raw = r.get("raw_text", "")
+                    if raw:
+                        # 智能截断：过长的原始文本只显示前 2000 字符
+                        display_text = raw[:2000] + ("..." if len(raw) > 2000 else "")
+                        st.text_area(
+                            "原始响应（用于调试）",
+                            value=display_text, height=200,
+                            disabled=True, key=f"raw_{i}",
+                        )
+                    else:
+                        st.info("💡 原始响应为空，可能是 AI 供应商返回了空内容。请检查 API 配置或稍后重试。")
                     continue
 
                 verdict_reason = r.get("verdict_reason", "")
@@ -589,13 +626,7 @@ def _render_live_page(api_ok: bool):
                 else:
                     st.error(f"❌ **不推荐** — {verdict_reason}")
 
-                dims = [
-                    ("📊 市场容量", "market_capacity"),
-                    ("⚔️ 竞争程度", "competition"),
-                    ("💰 利润潜力", "profit_potential"),
-                    ("🎓 新手友好", "beginner_friendly"),
-                    ("🌡️ 季节风险", "seasonality_risk"),
-                ]
+                dims = ANALYSIS_DIMS
                 cols = st.columns(5)
                 for col, (label, key) in zip(cols, dims):
                     dim_data = r.get(key, {})
@@ -611,7 +642,7 @@ def _render_live_page(api_ok: bool):
                         )
 
                 with st.expander("📝 查看详细分析文本", expanded=False):
-                    for label, key in dims:
+                    for label, key in ANALYSIS_DIMS:
                         dim_data = r.get(key, {})
                         score_val = dim_data.get("score", 0) if isinstance(dim_data, dict) else 0
                         reason_val = dim_data.get("reason", "") if isinstance(dim_data, dict) else str(dim_data)
@@ -759,15 +790,18 @@ def _render_live_page(api_ok: bool):
             if source_type == "json":
                 st.markdown("### 📄 当前使用 JSON 文件数据")
                 st.markdown("数据来自 `data/products.json`，由每周抓取脚本生成。")
-            elif source_type == "live":
-                st.markdown("### 🎉 当前使用 Amazon 实时数据")
+            else:
+                platform = st.session_state.get("active_platform", "amazon")
+                pf_info = get_platform_info(platform)
+                pf_name = f"{pf_info['icon']} {pf_info['name']}"
+                st.markdown(f"### 🎉 当前使用 {pf_name} 实时数据")
                 st.markdown("分析结果已自动保存，可在「📚 历史记录」页面查看和导出。")
 
     # ---- 页脚 ----
     st.divider()
     st.caption(
         "⚠️ **免责声明：** 分析结果仅供参考，不构成投资建议。"
-        " | Global Product Scout v0.2.0"
+        f" | Global Product Scout {APP_VERSION}"
     )
 
 
@@ -786,9 +820,9 @@ def _render_targeted_page(api_ok: bool):
         4. 展示搜索结果列表 + 每个产品的五维度分析
         5. Top 3 产品提供 1688 比价 + 利润试算
     """
-    st.title("🎯 指定选品 — 关键词深度分析")
+    st.title("🎯 Targeted Search — Keyword Analysis")
     st.markdown(
-        "输入你想调研的产品关键词，AI 将搜索 Amazon 并生成品类综合报告 + Top 3 推荐。"
+        "输入你想调研的产品关键词，AI 将搜索热销平台并生成品类综合报告 + Top 3 推荐。"
     )
     st.divider()
 
@@ -838,8 +872,16 @@ def _render_targeted_page(api_ok: bool):
     if st.session_state.get("targeted_step") == "searching":
         kw = st.session_state.targeted_keyword
 
-        with st.status("📡 正在搜索 Amazon...", expanded=False) as status:
-            search_result = search_amazon(kw, max_results=20)
+        # 动态加载平台对应的搜索函数
+        platform = st.session_state.get("active_platform", "amazon")
+        region = st.session_state.get("active_region", "us")
+        pf_info = get_platform_info(platform)
+        pf_name = f"{pf_info['icon']} {pf_info['name']}"
+
+        with st.status(f"📡 正在搜索 {pf_name}...", expanded=False) as status:
+            search_mod = importlib.import_module(pf_info["search_module"])
+            search_func = getattr(search_mod, pf_info["search_func"])
+            search_result = search_func(kw, region=region, max_results=20)
 
             if search_result["success"]:
                 products = search_result["results"]
@@ -897,7 +939,11 @@ def _render_targeted_page(api_ok: bool):
 
         # 保存到数据库
         try:
-            save_products(products, analysis_results, source="amazon_search")
+            source_tag = f"{platform}_search"
+            save_products(
+                products, analysis_results,
+                source=source_tag, platform=platform, region=region,
+            )
         except Exception:
             pass  # 非阻塞
 
@@ -905,7 +951,8 @@ def _render_targeted_page(api_ok: bool):
         for p, r in zip(products, analysis_results):
             record = dict(p)
             record["analysis"] = r
-            record["source"] = "amazon_search"
+            record["source"] = source_tag
+            record["platform"] = platform
             record["scrape_time"] = st.session_state.get("targeted_scrape_time", "")
             st.session_state.history_data.append(record)
 
@@ -1065,14 +1112,10 @@ def _render_targeted_page(api_ok: bool):
 
             for i, r in enumerate(analysis):
                 verdict = r.get("final_verdict", "cautious")
-                verdict_label_map = {
-                    "recommended": "🟢 推荐入手", "cautious": "🟡 谨慎评估",
-                    "not_recommended": "🔴 不推荐",
-                }
-                verdict_label = verdict_label_map.get(verdict, "⚪ 未知")
+                verdict_label = VERDICT_LABEL_MAP.get(verdict, "⚪ 未知")
                 title_text = r.get("title", f"产品 #{i+1}")
 
-                with st.expander(f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}", expanded=False):
+                with st.expander(f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}", expanded=False, help=title_text):
                     st.caption(f"📦 **完整标题：** {title_text}")
                     verdict_reason = r.get("verdict_reason", "")
                     if verdict == "recommended":
@@ -1082,13 +1125,7 @@ def _render_targeted_page(api_ok: bool):
                     else:
                         st.error(f"❌ **不推荐** — {verdict_reason}")
 
-                    dims = [
-                        ("📊 市场容量", "market_capacity"),
-                        ("⚔️ 竞争程度", "competition"),
-                        ("💰 利润潜力", "profit_potential"),
-                        ("🎓 新手友好", "beginner_friendly"),
-                        ("🌡️ 季节风险", "seasonality_risk"),
-                    ]
+                    dims = ANALYSIS_DIMS
                     cols = st.columns(5)
                     for col, (label, key) in zip(cols, dims):
                         dim_data = r.get(key, {})
@@ -1333,7 +1370,7 @@ def _render_history_list(total_count: int):
     if total_count > 0:
         products = query_products(
             platforms=selected_platforms if len(selected_platforms) < len(platform_options) else None,
-            regions=None,  # 地区在 Python 层筛选（因为 region 格式不完全匹配）
+            regions=None,
             min_margin=None,
             keyword=None,
         )
@@ -1351,6 +1388,17 @@ def _render_history_list(total_count: int):
         filters["sort_order"] = sort_order
 
         products = [p for p in products if _match_filters_simple(p, filters)]
+
+        # 地区筛选（Python 层）
+        if selected_regions and len(selected_regions) < len(available_regions):
+            # 构建 (platform, region_display) 匹配集合
+            region_set = set(selected_regions)
+            products = [
+                p for p in products
+                if f"{PLATFORMS.get(p.get('platform', 'amazon'), {}).get('icon', '❓')} "
+                   f"{PLATFORMS.get(p.get('platform', 'amazon'), {}).get('regions', {}).get(p.get('region', 'us'), {}).get('name', '')}"
+                   in region_set
+            ]
     else:
         products = st.session_state.history_data
         if verdict_options:
@@ -1445,7 +1493,7 @@ def _render_history_list(total_count: int):
 
     # 页脚
     st.divider()
-    st.caption(" | Global Product Scout v0.3.0 | 数据来源：多平台历史分析记录 |")
+    st.caption(f" | Global Product Scout {APP_VERSION} | 数据来源：多平台历史分析记录 |")
 
 
 # ============================================================

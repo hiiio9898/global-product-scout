@@ -38,9 +38,7 @@ src/calculator.py       利润计算器（工厂模式，3 个平台）
 src/database.py         SQLite 数据库（多平台 Schema）
 src/trends.py           Google Trends 趋势查询
 src/utils.py            工具函数（UA 池、反爬检测、价格解析）
-```
-src/utils.py        工具函数
-daily_scrape.py     独立定时抓取脚本（CLI 运行，导出 products.json）
+daily_scrape.py         独立定时抓取脚本（CLI 运行，导出 products.json）
 ```
 
 ### 多模型 AI 分析架构
