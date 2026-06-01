@@ -70,7 +70,7 @@ def render_sidebar(source_info: dict | None = None):
     # ---- 页面导航 ----
     page = st.sidebar.radio(
         "📌 页面导航",
-        options=["� Dashboard", "🔍 实时选品", "🎯 指定选品", "📚 历史记录"],
+        options=["📊 Dashboard", "🔍 实时选品", "🎯 指定选品", "📚 历史记录"],
         help="Dashboard：数据概览\n实时选品：抓取并分析当前 Amazon 热销产品\n指定选品：输入关键词深度分析特定品类\n历史记录：查看过去保存的分析结果",
     )
 

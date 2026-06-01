@@ -6,7 +6,7 @@
 - 项目名称：Global Product Scout（全球产品侦察兵）
 - 目标用户：跨境电商卖家、外贸创业者
 - 核心功能：自动抓取多平台（亚马逊、速卖通等）热销/飙升产品数据，通过多模型 AI 分析产品潜力，提供选品建议。
-- 技术栈：Python 3.10+、Streamlit（前端）、OpenAI SDK 兼容 API（多模型 AI 分析）、Requests/BeautifulSoup（数据抓取）
+- 技术栈：Python 3.12、Streamlit（前端）、OpenAI SDK 兼容 API（多模型 AI 分析）、Scrapling（自适应抓取引擎）
 
 ## 2. 硬规则
 - 不执行 `git commit`、`git push` 或任何远端操作，除非用户明确要求。
@@ -35,11 +35,15 @@
 ├── src/
 │   ├── __init__.py
 │   ├── config.py           # 配置加载（st.secrets + .env 双源）
-│   ├── scraper.py          # Amazon Best Sellers 数据抓取模块
-│   ├── scraper_search.py   # Amazon 关键词搜索抓取模块（指定选品）
-│   ├── scraper_1688.py     # 1688 比价模块（混合策略）
+│   ├── platforms.py        # 平台注册表（PLATFORMS 字典）
+│   ├── scrapling_adapter.py # Scrapling 适配层（统一抓取接口）
+│   ├── scraper.py          # Amazon Best Sellers 抓取
+│   ├── scraper_search.py   # Amazon 关键词搜索
+│   ├── scraper_ebay.py     # eBay 抓取
+│   ├── scraper_alibaba.py  # 阿里巴巴国际站抓取
+│   ├── scraper_1688.py     # 1688 比价（AI 估算 + 真实抓取）
 │   ├── analyzer.py         # AI 分析模块（五维度评估 + 品类报告）
-│   ├── calculator.py       # 利润计算器
+│   ├── calculator.py       # 利润计算器（工厂模式，多平台）
 │   ├── trends.py           # Google Trends 趋势查询
 │   ├── database.py         # SQLite 数据库模块
 │   └── utils.py            # 工具函数
@@ -99,8 +103,9 @@ git push
 - 如使用异步或协程，确保与 Streamlit 兼容（Streamlit 默认同步）。
 
 ## 7. 数据源与合规
-- 示例数据源：Amazon Best Sellers（https://www.amazon.com/Best-Sellers/zgbs/）
-- 抓取策略：只抓取首页榜单，每天最多一次。用户可在界面选择站点（需后续扩展）。
+- 示例数据源：Amazon Best Sellers、eBay Trending、Alibaba 国际站
+- 抓取引擎：Scrapling（Fetcher + StealthyFetcher 自动降级）
+- 抓取策略：每个平台每天最多一次，设置合理延迟避免被封。
 - 必须设置 User-Agent 和 Request 间延迟（1-2 秒）。
 - 如果网站结构变动导致抓取失败，应向用户提示，并降级为展示旧数据或示例数据。
 
@@ -137,15 +142,9 @@ git push
 | 虚拟环境 | `.venv/`, `venv/` | 体积大、平台相关 |
 | 缓存 | `__pycache__/`, `*.pyc` | 编译产物 |
 | 数据 | `data/cache/*`, `data/products.db` | 本地抓取缓存和历史数据库 |
-| 数据 | `data/cache.json` | 本地抓取缓存（`.gitignore` 已配置） |
 | IDE | `.vscode/`, `.idea/` | 个人编辑器配置 |
 | 系统 | `.DS_Store`, `Thumbs.db` | 操作系统自动生成 |
-| 密钥 | `.streamlit/secrets.toml` | 含 API Key，已 `.gitignore` |
-| 虚拟环境 | `.venv/`, `venv/` | 体积大、平台相关 |
-| 缓存 | `__pycache__/`, `*.pyc` | 编译产物 |
-| 数据 | `data/cache/*`, `data/products.db` | 本地抓取缓存和历史数据库 |
-| IDE | `.vscode/`, `.idea/` | 个人编辑器配置 |
-| 系统 | `.DS_Store`, `Thumbs.db` | 操作系统自动生成 |
+| 抓取源码 | `Scrapling-main/` | 本地 editable 安装，不提交 |
 
 ### 🔐 密钥管理原则
 1. 所有密钥 **只存在于**：本地 `.env`、Streamlit Cloud Secrets、GitHub Actions Secrets

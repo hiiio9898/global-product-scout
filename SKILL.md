@@ -19,15 +19,26 @@
 
 ```
 app.py              Streamlit 主程序入口（侧边栏 + 页面路由 + Session State）
-├── render_sidebar()           侧边栏：导航、数据源状态、API 配置状态
+├── render_sidebar()           侧边栏：平台/地区选择、AI 模型、利润参数
+├── _render_dashboard_page()   Dashboard：数据概览 + TOP5 推荐
 ├── _render_live_page()        实时选品页：数据加载 → AI 分析 → 展示结果
-├── _render_history_page()     历史记录页：筛选、排序、导出 CSV
-└── _load_products()           两级数据策略：JSON → 实时抓取
+├── _render_targeted_page()    指定选品页：关键词搜索 → 品类报告
+└── _render_history_page()     历史记录页：多平台筛选、趋势、跨平台对比
 
-src/config.py       配置加载（st.secrets > .env 双源）
-src/scraper.py      Amazon Best Sellers 抓取（requests + BeautifulSoup + 货币换算）
-src/analyzer.py     AI 分析引擎（OpenAI SDK 兼容，批量分组 6 个/批）
-src/database.py     SQLite 数据库（建表、保存、查询、导出 CSV）
+src/config.py           配置加载（st.secrets > .env 双源）
+src/platforms.py        平台注册表（PLATFORMS 字典 + 工具函数）
+src/scrapling_adapter.py Scrapling 适配层（Fetcher→StealthyFetcher 自动降级）
+src/scraper.py          Amazon Best Sellers 抓取（Scrapling）
+src/scraper_search.py   Amazon 关键词搜索（Scrapling）
+src/scraper_ebay.py     eBay 抓取（Scrapling）
+src/scraper_alibaba.py  阿里巴巴国际站抓取（Scrapling StealthyFetcher）
+src/scraper_1688.py     1688 比价（StealthyFetcher 真实抓取 + AI 估算兜底）
+src/analyzer.py         AI 分析引擎（OpenAI SDK 兼容，批量分组 6 个/批）
+src/calculator.py       利润计算器（工厂模式，3 个平台）
+src/database.py         SQLite 数据库（多平台 Schema）
+src/trends.py           Google Trends 趋势查询
+src/utils.py            工具函数（UA 池、反爬检测、价格解析）
+```
 src/utils.py        工具函数
 daily_scrape.py     独立定时抓取脚本（CLI 运行，导出 products.json）
 ```
@@ -75,12 +86,13 @@ resp = client.chat.completions.create(model=cfg["llm_model"], ...)
 - 头程运费：¥15/件
 
 ### 数据抓取要点
-- 亚马逊 Best Sellers URL：`https://www.amazon.com/Best-Sellers/zgbs/`
-- 反爬策略：User-Agent 模拟真实浏览器、请求间隔 1-2 秒、使用 `requests.Session()`
+- 抓取引擎：Scrapling（Fetcher + StealthyFetcher 自动降级）
+- 适配层：`src/scrapling_adapter.py` 统一接口，所有平台共用
+- 反爬策略：Scrapling 内置 TLS 指纹模拟、UA 轮换、反检测浏览器
 - 价格货币自动换算：HKD/SGD/CNY 等 → USD（`_parse_price()` 内置汇率表）
 - 非实体商品过滤：`_is_physical_product()` 关键词黑名单（subscription/plan/digital code 等）
 - 排名使用全局序号（1-36），而非类目内 badge 排名
-- 如遇验证码或 503，抛出异常由 `app.py` 显示错误提示
+- 如遇验证码或 503，Scrapling 自动降级到 StealthyFetcher
 
 ### DeepSeek / 多模型 API 调用
 - 使用 OpenAI SDK 兼容模式：`base_url` 由配置决定
