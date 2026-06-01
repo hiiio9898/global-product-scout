@@ -31,6 +31,7 @@ PLATFORMS = {
         "search_module": "src.scraper_search",
         "search_func": "search_amazon",
         "calculator": "calculate_amazon_profit",
+        "scrape_mode": "fetcher_first",
         "currency": "USD",
         "regions": {
             "us": {"name": "美国站", "domain": "amazon.com", "currency": "USD", "exchange_rate": 7.24},
@@ -53,6 +54,7 @@ PLATFORMS = {
         "search_module": "src.scraper_ebay",
         "search_func": "search_ebay",
         "calculator": "calculate_ebay_profit",
+        "scrape_mode": "fetcher_first",
         "currency": "USD",
         "regions": {
             "us": {"name": "美国站", "domain": "ebay.com", "currency": "USD", "exchange_rate": 7.24},
@@ -76,6 +78,7 @@ PLATFORMS = {
         "search_module": "src.scraper_alibaba",
         "search_func": "search_alibaba",
         "calculator": "calculate_alibaba_profit",
+        "scrape_mode": "stealth_only",
         "currency": "USD",
         "regions": {
             "us": {"name": "国际站", "domain": "alibaba.com", "currency": "USD", "exchange_rate": 7.24},

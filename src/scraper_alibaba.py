@@ -25,9 +25,7 @@ import random
 from datetime import datetime, timezone
 from typing import Optional
 
-import requests
-from bs4 import BeautifulSoup
-
+from .scrapling_adapter import fetch_page
 from .utils import USER_AGENTS, is_blocked, parse_price, parse_rating
 
 # ============================================================
@@ -103,15 +101,15 @@ def _extract_title(card) -> str:
         "div[class*='title'] h2",
     ]
     for sel in selectors:
-        elem = card.select_one(sel)
+        elem = card.css(sel).first if card.css(sel) else None
         if elem:
-            text = elem.get_text(strip=True)
+            text = str(elem.text).strip()
             if text and len(text) > 5:
                 return text
     # 从链接文本提取
-    link = card.select_one("a[href*='/product-detail/']")
+    link = card.css("a[href*='/product-detail/']").first if card.css("a[href*='/product-detail/']") else None
     if link:
-        text = link.get_text(strip=True)
+        text = str(link.text).strip()
         if text and len(text) > 10:
             # 清理价格和MOQ信息
             text = re.sub(r'CN¥[\d,.]+.*', '', text).strip()
@@ -132,9 +130,9 @@ def _extract_price(card) -> Optional[float]:
         "span[class*='price']",
     ]
     for sel in selectors:
-        elem = card.select_one(sel)
+        elem = card.css(sel).first if card.css(sel) else None
         if elem:
-            text = elem.get_text(strip=True)
+            text = str(elem.text).strip()
             price = _parse_alibaba_price(text)
             if price and price > 0:
                 return price
@@ -166,7 +164,7 @@ def _parse_alibaba_price(text: str) -> Optional[float]:
 
 def _extract_moq(card) -> str:
     """提取最小起订量。"""
-    text = card.get_text(strip=True)
+    text = str(card.text).strip()
     match = re.search(r'Min\.\s*order:\s*([\d,]+)', text, re.I)
     if match:
         return match.group(1)
@@ -175,7 +173,7 @@ def _extract_moq(card) -> str:
 
 def _extract_rating(card) -> Optional[float]:
     """提取评分。格式: 4.2/5.0(58)"""
-    text = card.get_text(strip=True)
+    text = str(card.text).strip()
     match = re.search(r'(\d+\.?\d*)\s*/\s*5\.?\d*', text)
     if match:
         rating = float(match.group(1))
@@ -186,7 +184,7 @@ def _extract_rating(card) -> Optional[float]:
 
 def _extract_reviews(card) -> int:
     """提取评论数。格式: 4.2/5.0(58)"""
-    text = card.get_text(strip=True)
+    text = str(card.text).strip()
     match = re.search(r'\((\d+)\)', text)
     if match:
         try:
@@ -198,9 +196,9 @@ def _extract_reviews(card) -> int:
 
 def _extract_url(card) -> str:
     """提取产品链接。"""
-    link = card.select_one("a[href*='/product-detail/']")
+    link = card.css("a[href*='/product-detail/']").first if card.css("a[href*='/product-detail/']") else None
     if link:
-        href = link.get("href", "")
+        href = link.attrib.get("href", "")
         if href:
             if href.startswith("//"):
                 href = "https:" + href
@@ -212,9 +210,11 @@ def _extract_url(card) -> str:
 
 def _extract_image(card) -> str:
     """提取图片 URL。"""
-    img = card.select_one("img[src*='alicdn']") or card.select_one("img")
+    img = card.css("img[src*='alicdn']").first if card.css("img[src*='alicdn']") else None
+    if not img:
+        img = card.css("img").first if card.css("img") else None
     if img:
-        src = img.get("src", "") or img.get("data-src", "")
+        src = img.attrib.get("src", "") or img.attrib.get("data-src", "")
         if src:
             if src.startswith("//"):
                 src = "https:" + src
@@ -268,35 +268,18 @@ def _scrape_alibaba_search(keyword: str, max_results: int = 30) -> list[dict]:
     encoded_kw = keyword.replace(" ", "+")
     url = f"https://{_DOMAIN}/trade/search?SearchText={encoded_kw}&tab=all"
 
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": (
-            "text/html,application/xhtml+xml,application/xml;"
-            "q=0.9,image/avif,image/webp,*/*;q=0.8"
-        ),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-    }
-
-    session = requests.Session()
-    session.headers.update(headers)
-
     delay = random.uniform(1.5, 2.5)
     time.sleep(delay)
 
-    resp = session.get(url, timeout=30)
-    print(f"[scraper_alibaba] HTTP {resp.status_code} | URL: {url}")
-    resp.raise_for_status()
+    resp = fetch_page(url)
+    print(f"[scraper_alibaba] HTTP {resp.status} | URL: {url}")
 
-    if is_blocked(resp.text):
+    if is_blocked(str(resp.text)):
         raise RuntimeError("被阿里巴巴反爬拦截")
-
-    soup = BeautifulSoup(resp.text, "html.parser")
 
     cards = []
     for sel in _CARD_SELECTORS:
-        cards = soup.select(sel)
+        cards = resp.css(sel)
         if cards:
             break
 
@@ -393,16 +376,6 @@ def search_alibaba(keyword: str, region: str = "us", max_results: int = 30) -> d
                 "scrape_time": scrape_time,
                 "error": "未搜索到相关产品，请尝试更换关键词",
             }
-    except requests.RequestException as e:
-        return {
-            "success": False,
-            "keyword": keyword,
-            "results": [],
-            "total_found": 0,
-            "source": "none",
-            "scrape_time": scrape_time,
-            "error": f"网络请求失败: {e}",
-        }
     except RuntimeError as e:
         return {
             "success": False,

@@ -218,3 +218,30 @@ def get_profit_defaults(platform_key: str = None) -> dict:
         "shipping_cny": float(_get_secret("PROFIT_SHIPPING_CNY", "15.0")),
         "procurement_cny": 0.0,
     }
+
+
+# ============================================================
+# Scrapling 抓取引擎配置
+# ============================================================
+
+def get_scrapling_config() -> dict:
+    """
+    获取 Scrapling 抓取引擎配置。
+
+    Returns:
+        {
+            "proxy": str | None,        # 代理地址
+            "browser_timeout": int,     # 浏览器超时（毫秒）
+            "adaptive_db": str,         # 自适应存储数据库路径
+            "strategy": str,            # 抓取策略：fetcher_first / stealth_only / dynamic_only
+        }
+    """
+    return {
+        "proxy": _get_secret("SCRAPLING_PROXY", "") or None,
+        "browser_timeout": int(_get_secret("SCRAPLING_BROWSER_TIMEOUT", "30000")),
+        "adaptive_db": _get_secret(
+            "SCRAPLING_ADAPTIVE_DB",
+            os.path.join(_PROJECT_ROOT, "data", "adaptive_elements.db"),
+        ),
+        "strategy": _get_secret("SCRAPLING_STRATEGY", "fetcher_first"),
+    }

@@ -1,19 +1,158 @@
 """
-1688 比价模块 — AI 估算参考采购价。
+1688 比价模块 — 真实抓取 + AI 估算参考采购价。
 
-策略：使用 AI（OpenAI SDK 兼容）估算产品在 1688 上的合理批发价，
-失败时降级为本地规则估算。1688 为 JS 动态渲染，无法通过 requests 直接抓取。
+策略：
+    1. StealthyFetcher 真实浏览器抓取 1688 搜索结果（优先）
+    2. AI（OpenAI SDK 兼容）估算参考价（降级）
+    3. 本地规则估算（最终兜底）
+
+1688 为 JS 动态渲染网站，需使用 StealthyFetcher（Patchright 反检测浏览器）。
 
 用法：
     from src.scraper_1688 import estimate_1688_price, search_1688_hybrid
     result = search_1688_hybrid("water bottle", 15.99)
 """
 
+from __future__ import annotations
+
 import json
 import re
+import time
+import random
 from typing import Optional
 
 from openai import OpenAI
+
+
+# ============================================================
+# 真实抓取 — 使用 Scrapling StealthyFetcher
+# ============================================================
+
+def _scrape_1688_search(keyword: str, max_results: int = 10) -> list[dict]:
+    """
+    使用 StealthyFetcher 真实抓取 1688 搜索结果。
+
+    1688 是 JS 动态渲染网站，必须用 StealthyFetcher（Patchright 浏览器）。
+
+    Args:
+        keyword:     搜索关键词
+        max_results: 最多返回产品数
+
+    Returns:
+        产品列表，每项包含 title, price, moq, url
+    """
+    from .scrapling_adapter import fetch_page
+
+    encoded_kw = keyword.replace(" ", "+")
+    url = f"https://s.1688.com/selloffer/offer_search.htm?keywords={encoded_kw}"
+
+    delay = random.uniform(2.0, 4.0)
+    time.sleep(delay)
+
+    try:
+        # 1688 需要 StealthyFetcher（JS 渲染）
+        resp = fetch_page(url, stealth=True, wait_seconds=8)
+
+        # 产品卡片选择器（1688 页面结构）
+        card_selectors = [
+            "div.sm-offer-item",
+            "div[data-offer-id]",
+            "div.offer-item",
+            "div[class*='offer-card']",
+            "div[class*='item-card']",
+        ]
+
+        cards = []
+        for sel in card_selectors:
+            cards = resp.css(sel)
+            if cards:
+                break
+
+        if not cards:
+            print(f"[scraper_1688] 未找到产品卡片")
+            return []
+
+        print(f"[scraper_1688] 找到 {len(cards)} 个产品卡片")
+
+        products = []
+        for i, card in enumerate(cards[:max_results], 1):
+            product = _parse_1688_card(card, i)
+            if product:
+                products.append(product)
+
+        return products
+
+    except Exception as e:
+        print(f"[scraper_1688] 真实抓取失败: {e}")
+        return []
+
+
+def _parse_1688_card(card, rank: int) -> Optional[dict]:
+    """解析 1688 产品卡片。"""
+    # 标题
+    title_selectors = [
+        "a[class*='title']",
+        "div[class*='title']",
+        "h4",
+        "a[href*='detail']",
+    ]
+    title = ""
+    for sel in title_selectors:
+        elem = card.css(sel).first if card.css(sel) else None
+        if elem:
+            text = str(elem.text).strip()
+            if text and len(text) > 5:
+                title = text
+                break
+
+    if not title:
+        return None
+
+    # 价格
+    price_selectors = [
+        "span[class*='price']",
+        "div[class*='price']",
+        "em[class*='price']",
+    ]
+    price = 0.0
+    for sel in price_selectors:
+        elem = card.css(sel).first if card.css(sel) else None
+        if elem:
+            text = str(elem.text).strip()
+            match = re.search(r'[\d,.]+', text)
+            if match:
+                try:
+                    price = float(match.group(0).replace(",", ""))
+                    break
+                except ValueError:
+                    pass
+
+    # MOQ
+    moq = ""
+    card_text = str(card.text)
+    moq_match = re.search(r'(\d+)\s*(?:件|个|只|起批|起订)', card_text)
+    if moq_match:
+        moq = moq_match.group(0)
+
+    # URL
+    url = ""
+    link = card.css("a[href*='detail']").first if card.css("a[href*='detail']") else None
+    if not link:
+        link = card.css("a[href]").first if card.css("a[href]") else None
+    if link:
+        href = link.attrib.get("href", "")
+        if href:
+            if href.startswith("//"):
+                href = "https:" + href
+            url = href
+
+    return {
+        "title": title,
+        "price": price,
+        "moq": moq,
+        "rank": rank,
+        "url": url,
+    }
 
 # ============================================================
 # AI 估算参考价 — 使用 LLM 给出合理采购价区间
@@ -217,10 +356,12 @@ def _local_estimate(title: str, price_usd: float) -> dict:
 
 def search_1688_hybrid(title: str, price_usd: float = 0.0) -> dict:
     """
-    获取 1688 参考采购价（AI 估算）。
+    获取 1688 参考采购价（真实抓取优先 + AI 估算兜底）。
 
-    1688 为 JS 动态渲染网站，无法通过 requests 直接抓取，
-    因此使用 AI 估算 + 本地规则降级策略。
+    策略：
+    1. StealthyFetcher 真实浏览器抓取 1688 搜索结果
+    2. AI 估算参考价
+    3. 本地规则估算（最终兜底）
 
     Args:
         title:     产品标题
@@ -229,6 +370,35 @@ def search_1688_hybrid(title: str, price_usd: float = 0.0) -> dict:
     Returns:
         标准格式的结果字典
     """
-    # AI 估算（快速返回）
+    # 第一层：真实抓取 1688
+    try:
+        keyword = title.split(" - ")[0].split(",")[0][:30].strip()
+        products = _scrape_1688_search(keyword, max_results=5)
+        if products:
+            return {
+                "success": True,
+                "keyword": keyword,
+                "source": "1688_real",
+                "confidence": "high",
+                "results": [
+                    {
+                        "title": p["title"][:60],
+                        "price": p["price"],
+                        "price_max": p["price"] * 1.2,
+                        "moq": p.get("moq", ""),
+                    }
+                    for p in products
+                ],
+                "price_range": {
+                    "min": min(p["price"] for p in products if p["price"] > 0) if products else 0,
+                    "max": max(p["price"] for p in products if p["price"] > 0) if products else 0,
+                },
+                "ai_estimate": None,
+                "error": None,
+            }
+    except Exception as e:
+        print(f"[scraper_1688] 真实抓取降级: {e}")
+
+    # 第二层：AI 估算
     ai_result = estimate_1688_price(title, price_usd)
     return ai_result

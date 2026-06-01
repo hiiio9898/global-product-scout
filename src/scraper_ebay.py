@@ -25,9 +25,7 @@ import random
 from datetime import datetime, timezone
 from typing import Optional
 
-import requests
-from bs4 import BeautifulSoup
-
+from .scrapling_adapter import fetch_page
 from .utils import USER_AGENTS, is_blocked, parse_price, parse_rating
 
 # ============================================================
@@ -108,7 +106,7 @@ def _get_cache_timestamp(prefix: str, region: str) -> Optional[str]:
 def _extract_title(card) -> str:
     """从产品卡片中提取标题。"""
     selectors = [
-        "h3",                                  # 新版 trending article 内的 h3
+        "h3",
         "div.s-item__title span",
         "div.s-item__title",
         "h3.s-item__title",
@@ -118,23 +116,17 @@ def _extract_title(card) -> str:
         "[class*='title']",
     ]
     for sel in selectors:
-        elem = card.select_one(sel)
+        elem = card.css(sel).first if card.css(sel) else None
         if elem:
-            text = elem.get_text(strip=True)
-            # 跳过 "Shop on eBay" 等占位文本
+            text = str(elem.text).strip()
             if text and len(text) > 5 and "shop on ebay" not in text.lower():
                 return text
     return ""
 
 
 def _extract_price(card) -> Optional[float]:
-    """
-    从产品卡片中提取价格。
-    eBay 价格格式："$12.99", "$12.99 to $29.99", "￥58,917.00"
-    """
-    # 先尝试获取所有含价格的文本节点
-    all_text = card.get_text(strip=True)
-    # 尝试从整个卡片文本中提取第一个价格
+    """从产品卡片中提取价格。"""
+    all_text = str(card.text).strip()
     price = _extract_first_price_from_text(all_text)
     if price and price > 0:
         return price
@@ -146,9 +138,9 @@ def _extract_price(card) -> Optional[float]:
         "span[class*='price']",
     ]
     for sel in selectors:
-        elem = card.select_one(sel)
+        elem = card.css(sel).first if card.css(sel) else None
         if elem:
-            text = elem.get_text(strip=True)
+            text = str(elem.text).strip()
             price = _clean_price(text)
             if price and price > 0:
                 return price
@@ -213,19 +205,16 @@ def _clean_price(price_str: str) -> Optional[float]:
 
 
 def _extract_shipping(card) -> float:
-    """
-    提取运费。
-    eBay 运费格式："Free shipping" → 0, "+$5.99 shipping" → 5.99
-    """
+    """提取运费。"""
     selectors = [
         "span.s-item__shipping",
         "span.s-item__freeXDays",
         "span[class*='shipping']",
     ]
     for sel in selectors:
-        elem = card.select_one(sel)
+        elem = card.css(sel).first if card.css(sel) else None
         if elem:
-            text = elem.get_text(strip=True).lower()
+            text = str(elem.text).strip().lower()
             if "free" in text:
                 return 0.0
             nums = re.findall(r"[\d,.]+", text)
@@ -245,9 +234,9 @@ def _extract_rating(card) -> float:
         "span[class*='rating']",
     ]
     for sel in selectors:
-        elem = card.select_one(sel)
+        elem = card.css(sel).first if card.css(sel) else None
         if elem:
-            text = elem.get_text(strip=True)
+            text = str(elem.text).strip()
             rating = parse_rating(text)
             if rating and rating > 0:
                 return rating
@@ -262,9 +251,9 @@ def _extract_reviews(card) -> int:
         "span[class*='sold']",
     ]
     for sel in selectors:
-        elem = card.select_one(sel)
+        elem = card.css(sel).first if card.css(sel) else None
         if elem:
-            text = elem.get_text(strip=True)
+            text = str(elem.text).strip()
             nums = re.findall(r"[\d,]+", text)
             if nums:
                 try:
@@ -283,11 +272,10 @@ def _extract_url(card) -> str:
         "a[href*='ebay']",
     ]
     for sel in selectors:
-        elem = card.select_one(sel)
+        elem = card.css(sel).first if card.css(sel) else None
         if elem:
-            href = elem.get("href", "")
+            href = elem.attrib.get("href", "")
             if href:
-                # 清理 eBay 追踪参数
                 if "?" in href:
                     href = href.split("?")[0]
                 if "ebay" in href or href.startswith("/"):
@@ -297,9 +285,9 @@ def _extract_url(card) -> str:
 
 def _extract_image(card) -> str:
     """提取图片 URL。"""
-    img = card.select_one("img")
+    img = card.css("img").first if card.css("img") else None
     if img:
-        src = img.get("src", "") or img.get("data-src", "")
+        src = img.attrib.get("src", "") or img.attrib.get("data-src", "")
         if src:
             if src.startswith("//"):
                 src = "https:" + src
@@ -336,62 +324,41 @@ def _parse_product_card(card, rank: int) -> Optional[dict]:
 
 def _scrape_ebay_best_sellers(region: str = "us") -> list[dict]:
     """
-    真实抓取 eBay Trending / Best Sellers 热销产品。
+    真实抓取 eBay Trending / Best Sellers 热销产品（使用 Scrapling）。
 
     Args:
         region: 地区代码（us/uk/de）
     """
     domain = _REGION_DOMAINS.get(region, "ebay.com")
-    lang = _REGION_LANG.get(region, "en-US")
 
-    # 优先尝试 Trending 页面
     urls_to_try = [
         f"https://www.{domain}/trending",
         f"https://www.{domain}/b/Best-Sellers/bn_7001234567",
     ]
-
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": (
-            "text/html,application/xhtml+xml,application/xml;"
-            "q=0.9,image/avif,image/webp,*/*;q=0.8"
-        ),
-        "Accept-Language": f"{lang},en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-    }
-
-    session = requests.Session()
-    session.headers.update(headers)
 
     for url in urls_to_try:
         try:
             delay = random.uniform(1.5, 2.5)
             time.sleep(delay)
 
-            resp = session.get(url, timeout=30)
-            print(f"[scraper_ebay] HTTP {resp.status_code} | URL: {url}")
-            resp.raise_for_status()
+            resp = fetch_page(url)
+            print(f"[scraper_ebay] HTTP {resp.status} | URL: {url}")
 
-            if is_blocked(resp.text):
-                print(f"[scraper_ebay] 被拦截，尝试下一个 URL")
+            if is_blocked(str(resp.text)):
+                print("[scraper_ebay] 被拦截，尝试下一个 URL")
                 continue
 
-            soup = BeautifulSoup(resp.text, "html.parser")
-
-            # 多套选择器兜底（article 标签是新版 eBay trending 页面的主要结构）
             card_selectors = [
-                "article",                              # 新版 trending 页面
-                "ul.srp-results li.s-item",             # 搜索结果页
-                "div.ebayui-dne-itemtcard",             # 旧版 Trending 页
-                "div.s-item__wrapper",                   # 通用卡片
-                "li.s-item",                             # 简化选择器
+                "article",
+                "ul.srp-results li.s-item",
+                "div.ebayui-dne-itemtcard",
+                "div.s-item__wrapper",
+                "li.s-item",
             ]
 
             cards = []
             for sel in card_selectors:
-                cards = soup.select(sel)
+                cards = resp.css(sel)
                 if cards:
                     break
 
@@ -406,22 +373,19 @@ def _scrape_ebay_best_sellers(region: str = "us") -> list[dict]:
                     return products
 
         except Exception as e:
-            print(f"[scraper_ebay] URL {url} 失败：{e}")
+            print(f"[scraper_ebay] URL {url} 失败: {e}")
             continue
 
-    # 如果 Trending 和 Best Sellers 都失败，尝试搜索排序
+    # 降级：搜索排序
     try:
         url = f"https://www.{domain}/sch/i.html?_nkw=best+sellers&_sop=12"
         delay = random.uniform(1.5, 2.5)
         time.sleep(delay)
 
-        resp = session.get(url, timeout=30)
-        resp.raise_for_status()
+        resp = fetch_page(url)
 
-        if not is_blocked(resp.text):
-            soup = BeautifulSoup(resp.text, "html.parser")
-            cards = soup.select("ul.srp-results li.s-item") or soup.select("li.s-item")
-
+        if not is_blocked(str(resp.text)):
+            cards = resp.css("ul.srp-results li.s-item") or resp.css("li.s-item") or []
             if cards:
                 products = []
                 for i, card in enumerate(cards[:50], 1):
@@ -431,7 +395,7 @@ def _scrape_ebay_best_sellers(region: str = "us") -> list[dict]:
                 if products:
                     return products
     except Exception as e:
-        print(f"[scraper_ebay] 搜索排序也失败：{e}")
+        print(f"[scraper_ebay] 搜索排序也失败: {e}")
 
     return []
 
@@ -441,48 +405,21 @@ def _scrape_ebay_best_sellers(region: str = "us") -> list[dict]:
 # ============================================================
 
 def _scrape_ebay_search(keyword: str, region: str = "us", max_results: int = 20) -> list[dict]:
-    """
-    真实抓取 eBay 搜索结果。
-
-    Args:
-        keyword:     搜索关键词
-        region:      地区代码
-        max_results: 最多返回产品数
-    """
+    """真实抓取 eBay 搜索结果（使用 Scrapling）。"""
     domain = _REGION_DOMAINS.get(region, "ebay.com")
-    lang = _REGION_LANG.get(region, "en-US")
     encoded_kw = keyword.replace(" ", "+")
-
-    # 按销量排序
     url = f"https://www.{domain}/sch/i.html?_nkw={encoded_kw}&_sop=12"
-
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": (
-            "text/html,application/xhtml+xml,application/xml;"
-            "q=0.9,image/avif,image/webp,*/*;q=0.8"
-        ),
-        "Accept-Language": f"{lang},en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-    }
-
-    session = requests.Session()
-    session.headers.update(headers)
 
     delay = random.uniform(1.5, 2.5)
     time.sleep(delay)
 
-    resp = session.get(url, timeout=30)
-    print(f"[scraper_ebay] HTTP {resp.status_code} | URL: {url}")
-    resp.raise_for_status()
+    resp = fetch_page(url)
+    print(f"[scraper_ebay] HTTP {resp.status} | URL: {url}")
 
-    if is_blocked(resp.text):
+    if is_blocked(str(resp.text)):
         raise RuntimeError("被 eBay 反爬拦截")
 
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    cards = soup.select("ul.srp-results li.s-item") or soup.select("li.s-item")
+    cards = resp.css("ul.srp-results li.s-item") or resp.css("li.s-item") or []
 
     print(f"[scraper_ebay] 找到 {len(cards)} 个搜索结果")
 
@@ -509,7 +446,7 @@ def fetch_ebay_best_sellers(region: str = "us") -> tuple[list[dict], dict]:
     Returns:
         (products, source_info) 元组
     """
-    # ---------- 第一层：实时抓取 ----------
+    # ---------- 第一层：实时抓取（Scrapling 自动 Fetcher→StealthyFetcher 降级） ----------
     try:
         products = _scrape_ebay_best_sellers(region=region)
         if len(products) >= 3:
@@ -521,46 +458,7 @@ def fetch_ebay_best_sellers(region: str = "us") -> tuple[list[dict], dict]:
     except Exception as e:
         print(f"[!] eBay 实时抓取失败: {e}")
 
-    # ---------- 第二层：Selenium 降级 ----------
-    try:
-        print("[scraper_ebay] requests 方式失败，尝试 Selenium 降级...")
-        from .selenium_helper import fetch_page_soup
-        domain = _REGION_DOMAINS.get(region, "ebay.com")
-        urls_to_try = [
-            f"https://www.{domain}/trending",
-            f"https://www.{domain}/sch/i.html?_nkw=best+sellers&_sop=12",
-        ]
-        card_selectors = [
-            "ul.srp-results li.s-item",
-            "div.ebayui-dne-itemtcard",
-            "div.s-item__wrapper",
-            "li.s-item",
-        ]
-        for url in urls_to_try:
-            selenium_soup = fetch_page_soup(url, wait_seconds=8)
-            if selenium_soup:
-                if is_blocked(str(selenium_soup)):
-                    print(f"[scraper_ebay] Selenium 也被拦截：{url}")
-                    continue
-                cards = []
-                for sel in card_selectors:
-                    cards = selenium_soup.select(sel)
-                    if cards:
-                        break
-                if cards:
-                    products = []
-                    for i, card in enumerate(cards[:50], 1):
-                        product = _parse_product_card(card, i)
-                        if product:
-                            products.append(product)
-                    if len(products) >= 3:
-                        _save_cache(products, "best_sellers", region)
-                        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-                        return products, {"source": "live", "timestamp": timestamp}
-    except Exception as e:
-        print(f"[!] eBay Selenium 降级也失败: {e}")
-
-    # ---------- 第三层：本地缓存 ----------
+    # ---------- 第二层：本地缓存 ----------
     cached = _load_cache("best_sellers", region)
     if cached and len(cached) >= 3:
         cache_ts = _get_cache_timestamp("best_sellers", region)
@@ -624,16 +522,7 @@ def search_ebay(keyword: str, region: str = "us", max_results: int = 20) -> dict
                 "scrape_time": scrape_time,
                 "error": "未搜索到相关产品，请尝试更换关键词",
             }
-    except requests.RequestException as e:
-        return {
-            "success": False,
-            "keyword": keyword,
-            "results": [],
-            "total_found": 0,
-            "source": "none",
-            "scrape_time": scrape_time,
-            "error": f"网络请求失败：{e}",
-        }
+
     except RuntimeError as e:
         return {
             "success": False,

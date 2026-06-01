@@ -21,9 +21,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-import requests
-from bs4 import BeautifulSoup
-
+from .scrapling_adapter import fetch_page
 from .utils import USER_AGENTS, is_blocked, parse_price, parse_rating, parse_review_count
 
 
@@ -50,19 +48,18 @@ def _extract_search_title(card) -> str:
           └─ h2 a                          ← 备选（直接取链接文本）
     """
     selectors = [
-        'h2 a span',                           # 标准搜索结果标题
-        'h2 a',                                # 备选：链接本身
-        'a.a-link-normal span.a-size-base-plus',  # 通用中等标题
-        'span[data-component-type="s-product-image"] img',  # 图片 alt
+        'h2 a span',
+        'h2 a',
+        'a.a-link-normal span.a-size-base-plus',
+        'span[data-component-type="s-product-image"] img',
     ]
     for sel in selectors:
-        elem = card.select_one(sel)
+        elem = card.css(sel).first if card.css(sel) else None
         if elem:
-            # 特殊处理 img alt
-            if elem.name == 'img':
-                text = elem.get('alt', '').strip()
+            if elem.tag == 'img':
+                text = elem.attrib.get('alt', '').strip()
             else:
-                text = elem.get_text(strip=True)
+                text = str(elem.text).strip()
             if text and len(text) > 3:
                 return text
     return ""
@@ -77,15 +74,15 @@ def _extract_search_price(card) -> Optional[float]:
         span.a-price[data-a-size="xl"]   ← 大号价格
     """
     selectors = [
-        'span.a-price span.a-offscreen',       # 最可靠：隐藏文本
-        '.a-price .a-offscreen',               # 变体
-        'span.a-price:not([data-a-size]) span',  # 无尺寸属性的价格
-        'span._cDEzb_p13n-sc-price_3mJ9Z',     # 动态类名
+        'span.a-price span.a-offscreen',
+        '.a-price .a-offscreen',
+        'span.a-price:not([data-a-size]) span',
+        'span._cDEzb_p13n-sc-price_3mJ9Z',
     ]
     for sel in selectors:
-        elem = card.select_one(sel)
+        elem = card.css(sel).first if card.css(sel) else None
         if elem:
-            text = elem.get_text(strip=True)
+            text = str(elem.text).strip()
             price = parse_price(text)
             if price and price > 0:
                 return price
@@ -100,13 +97,13 @@ def _extract_search_rating(card) -> Optional[float]:
         'span.a-icon-alt',
     ]
     for sel in selectors:
-        elem = card.select_one(sel)
+        elem = card.css(sel).first if card.css(sel) else None
         if elem:
-            rating = parse_rating(elem.get_text(strip=True))
+            rating = parse_rating(str(elem.text).strip())
             if rating and 1.0 <= rating <= 5.0:
                 return rating
     # 全文正则兜底
-    card_text = card.get_text()
+    card_text = str(card.text)
     m = re.search(r'(\d+\.?\d*)\s*(?:out\s+of\s+5|stars?)', card_text, re.I)
     if m:
         val = float(m.group(1))
@@ -124,15 +121,15 @@ def _extract_search_reviews(card) -> int:
         'span.a-size-small',
     ]
     for sel in selectors:
-        for elem in card.select(sel):
-            text = elem.get_text(strip=True)
+        for elem in card.css(sel):
+            text = str(elem.text).strip()
             if any(kw in text.lower() for kw in ('rating', 'stars', 'out of')):
                 continue
             count = parse_review_count(text)
             if count > 0:
                 return count
     # 全文正则兜底
-    card_text = card.get_text()
+    card_text = str(card.text)
     m = re.search(r'([\d,]+)\s*(?:ratings?|reviews?)', card_text, re.I)
     if m:
         try:
@@ -145,19 +142,21 @@ def _extract_search_reviews(card) -> int:
 def _extract_search_url(card) -> str:
     """从搜索结果卡片中提取产品详情页 URL。"""
     # 优先取标题链接
-    link = card.select_one('h2 a')
-    if link and link.get('href'):
-        href = link['href']
-        if href.startswith('/'):
-            return f"https://www.amazon.com{href}"
-        return href
+    link = card.css('h2 a').first if card.css('h2 a') else None
+    if link:
+        href = link.attrib.get('href', '')
+        if href:
+            if href.startswith('/'):
+                return f"https://www.amazon.com{href}"
+            return href
     # 备选：取图片链接
-    img_link = card.select_one('a.a-link-normal[href*="/dp/"]')
-    if img_link and img_link.get('href'):
-        href = img_link['href']
-        if href.startswith('/'):
-            return f"https://www.amazon.com{href}"
-        return href
+    img_link = card.css('a.a-link-normal[href*="/dp/"]').first if card.css('a.a-link-normal[href*="/dp/"]') else None
+    if img_link:
+        href = img_link.attrib.get('href', '')
+        if href:
+            if href.startswith('/'):
+                return f"https://www.amazon.com{href}"
+            return href
     return ""
 
 
@@ -182,7 +181,7 @@ def _parse_search_card(card, rank: int, keyword: str) -> Optional[dict]:
         return None
 
     url = _extract_search_url(card)
-    asin = card.get("data-asin", "").strip()
+    asin = card.attrib.get("data-asin", "").strip() if hasattr(card, 'attrib') else ""
     if not asin and url:
         asin = _extract_asin_from_url(url)
 
@@ -226,54 +225,31 @@ def _scrape_amazon_search(keyword: str, max_results: int = 20, region: str = "us
     domain = _REGION_DOMAINS.get(region, "amazon.com")
     url = f"https://www.{domain}/s?k={encoded_kw}"
 
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": (
-            "text/html,application/xhtml+xml,application/xml;"
-            "q=0.9,image/avif,image/webp,*/*;q=0.8"
-        ),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Cache-Control": "max-age=0",
-    }
-
-    session = requests.Session()
-    session.headers.update(headers)
-
     # 随机延迟 2-4 秒
     delay = random.uniform(2.0, 4.0)
     time.sleep(delay)
 
-    resp = session.get(url, timeout=30)
-    print(f"[scraper_search] HTTP {resp.status_code} | URL: {url}")
-    resp.raise_for_status()
+    resp = fetch_page(url)
+    print(f"[scraper_search] HTTP {resp.status} | URL: {url}")
 
     # 检测拦截
-    if is_blocked(resp.text):
+    if is_blocked(str(resp.text)):
         raise RuntimeError("被 Amazon 反爬拦截，收到验证码或登录页面")
-
-    soup = BeautifulSoup(resp.text, "html.parser")
 
     # 搜索结果页产品卡片选择器
     card_selectors = [
-        'div[data-component-type="s-search-result"]',   # 标准搜索结果
-        'div[data-asin][data-component-type]',           # 带 ASIN 的通用卡片
-        '.s-result-item[data-asin]',                     # 旧版搜索结果
+        'div[data-component-type="s-search-result"]',
+        'div[data-asin][data-component-type]',
+        '.s-result-item[data-asin]',
     ]
 
     cards = []
     for sel in card_selectors:
-        cards = soup.select(sel)
+        cards = resp.css(sel)
         if cards:
             break
 
     if not cards:
-        # 可能页面结构变动或关键词无结果
         print(f"[scraper_search] 未找到产品卡片，尝试的选择器: {card_selectors}")
         return []
 
@@ -281,12 +257,12 @@ def _scrape_amazon_search(keyword: str, max_results: int = 20, region: str = "us
     products = []
     rank = 1
     for card in cards:
-        # 跳过广告卡片（通常没有 data-asin 或标记为广告）
-        if not card.get("data-asin"):
+        asin_val = card.attrib.get("data-asin", "") if hasattr(card, 'attrib') else ""
+        if not asin_val:
             continue
         # 跳过 "Sponsored" 广告
-        sponsored = card.select_one('span.puis-label-popover-default')
-        if sponsored and 'Sponsored' in sponsored.get_text():
+        sponsored = card.css('span.puis-label-popover-default').first if card.css('span.puis-label-popover-default') else None
+        if sponsored and 'Sponsored' in str(sponsored.text):
             continue
 
         product = _parse_search_card(card, rank, keyword)
@@ -359,16 +335,7 @@ def search_amazon(keyword: str, max_results: int = 20, region: str = "us") -> di
                 "scrape_time": scrape_time,
                 "error": "未搜索到相关产品，请尝试更换关键词",
             }
-    except requests.RequestException as e:
-        return {
-            "success": False,
-            "keyword": keyword,
-            "results": [],
-            "total_found": 0,
-            "source": "none",
-            "scrape_time": scrape_time,
-            "error": f"网络请求失败：{e}",
-        }
+
     except RuntimeError as e:
         return {
             "success": False,
