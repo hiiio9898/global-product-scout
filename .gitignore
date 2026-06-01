@@ -54,3 +54,7 @@ todo.md
 
 # Scrapling source (local editable install)
 Scrapling-main/
+
+# VS Code Copilot Skills (external, installed via npx skills)
+.agents/
+skills-lock.json
