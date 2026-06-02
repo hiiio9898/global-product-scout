@@ -48,6 +48,7 @@ from src.database import (
     query_products,
     get_platform_summary,
 )
+from datetime import datetime, timezone
 
 # ============================================================
 # 页面配置
@@ -64,7 +65,7 @@ st.set_page_config(
 # 模块级常量
 # ============================================================
 
-APP_VERSION = "v0.5.0"
+APP_VERSION = "v0.6.0"
 
 VERDICT_LABEL_MAP = {
     "recommended": "🟢 推荐入手",
@@ -275,6 +276,101 @@ def render_sidebar(source_info: dict | None = None):
 
 
 # ============================================================
+# UX 辅助函数（Spec 16）
+# ============================================================
+
+def _get_data_freshness(latest_time_str: str) -> tuple[str, str]:
+    """
+    判断数据新鲜度。
+
+    Returns:
+        (状态, 提示文本) — 状态取值 "ok"/"warn"/"error"/"unknown"
+    """
+    if not latest_time_str:
+        return "error", "无数据"
+    try:
+        # 兼容多种时间格式
+        ts = str(latest_time_str).replace("Z", "+00:00")
+        if "+" not in ts and ts.endswith("UTC"):
+            ts = ts.replace(" UTC", "+00:00")
+        latest = datetime.fromisoformat(ts)
+        if latest.tzinfo is None:
+            latest = latest.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        days = (now - latest).days
+        if days <= 3:
+            return "ok", f"✅ 数据更新于 {days} 天前"
+        elif days <= 7:
+            return "warn", f"⚠️ 数据已 {days} 天未更新，建议运行 daily_scrape.py"
+        else:
+            return "error", f"🔴 数据已 {days} 天未更新，产品排名可能已变化"
+    except (ValueError, TypeError):
+        return "unknown", "时间格式异常"
+
+
+def _render_analysis_summary_table(products: list, results: list):
+    """渲染分析结果速览表 — 在展开式卡片上方提供一览视图。"""
+    summary_data = []
+    for i, (p, r) in enumerate(zip(products, results)):
+        verdict = r.get("final_verdict", "cautious")
+        is_raw = r.get("parse_error", False)
+        row = {
+            "#": i + 1,
+            "产品": (p.get("title", "") or "")[:50],
+            "判定": "⚠️ 异常" if is_raw else VERDICT_LABEL_MAP.get(verdict, "⚪"),
+            "价格": f"${float(p.get('price', 0) or 0):.2f}",
+        }
+        for label, key in ANALYSIS_DIMS:
+            dim = r.get(key, {})
+            row[label] = f"{dim.get('score', '-')}/10" if isinstance(dim, dict) else "-"
+        summary_data.append(row)
+
+    df = pd.DataFrame(summary_data)
+    # 按判定排序：推荐 > 谨慎 > 不推荐 > 异常
+    verdict_order = {"🟢 推荐入手": 0, "🟡 谨慎评估": 1, "🔴 不推荐": 2, "⚠️ 异常": 3}
+    df["_sort"] = df["判定"].map(verdict_order).fillna(9)
+    df = df.sort_values("_sort").drop(columns=["_sort"]).reset_index(drop=True)
+    df.index = df.index + 1  # 从 1 开始编号
+
+    st.dataframe(
+        df, width="stretch", hide_index=False,
+        column_config={
+            "#": st.column_config.NumberColumn(width="small"),
+            "产品": st.column_config.TextColumn(width="large"),
+            "判定": st.column_config.TextColumn(width="small"),
+            "价格": st.column_config.TextColumn(width="small"),
+        },
+    )
+
+
+def _render_1688_result(result_1688: dict):
+    """渲染 1688 比价结果（供多处复用）。"""
+    if result_1688["success"]:
+        pr = result_1688["price_range"]
+        source = result_1688.get("source", "unknown")
+        source_label = {
+            "1688_real": "📦 1688 真实价格",
+            "ai_estimate": "🤖 AI 估算参考价",
+            "local_estimate": "📊 本地规则估算",
+        }.get(source, "📦 参考价")
+        st.success(f"{source_label}：¥{pr['min']:.2f} ~ ¥{pr['max']:.2f}")
+        for item in result_1688["results"]:
+            title_1688 = item.get('title', '')
+            price = item.get('price', 0)
+            moq = item.get('moq', '')
+            price_max = item.get('price_max', None)
+            if price_max:
+                st.caption(f"  • {title_1688} — ¥{price:.2f} ~ ¥{price_max:.2f} | {moq}")
+            else:
+                st.caption(f"  • {title_1688} — ¥{price:.2f} {moq}")
+        if source == "1688_real" and result_1688.get("ai_estimate"):
+            ai_pr = result_1688["ai_estimate"]
+            st.caption(f"💡 AI 估算参考：¥{ai_pr['min']:.2f} ~ ¥{ai_pr['max']:.2f}")
+    else:
+        st.warning(f"⚠️ {result_1688.get('error', '比价失败')}")
+
+
+# ============================================================
 # ==================== Dashboard 首页 ============================
 # ============================================================
 
@@ -300,6 +396,27 @@ def _render_dashboard_page():
     recommended = [p for p in all_products if p.get("analysis", {}).get("final_verdict") == "recommended"]
     rec_count = len(recommended)
 
+    # Dashboard 平台筛选（Spec 16 P2）
+    platform_set = {p.get("platform", "amazon") for p in all_products}
+    if len(platform_set) > 1:
+        platform_options = sorted(platform_set)
+        platform_names = {
+            k: f"{PLATFORMS.get(k, {}).get('icon', '❓')} {PLATFORMS.get(k, {}).get('name', k)}"
+            for k in platform_options
+        }
+        selected_dash_platforms = st.multiselect(
+            "🛒 筛选平台",
+            options=platform_options,
+            default=platform_options,
+            format_func=lambda k: platform_names.get(k, k),
+            key="dashboard_platforms",
+        )
+        if len(selected_dash_platforms) < len(platform_options):
+            all_products = [p for p in all_products if p.get("platform", "amazon") in selected_dash_platforms]
+            recommended = [p for p in all_products if p.get("analysis", {}).get("final_verdict") == "recommended"]
+            total = len(all_products)
+            rec_count = len(recommended)
+
     def _avg_score(key):
         scores = []
         for p in all_products:
@@ -318,10 +435,18 @@ def _render_dashboard_page():
     c3.metric("📊 平均容量分", f"{avg_capacity:.1f}/10")
     c4.metric("💰 平均利润分", f"{avg_profit:.1f}/10")
 
-    # 最近抓取时间
+    # 最近抓取时间 + 数据新鲜度
     latest_time = all_products[0].get("scrape_time", "")
     if latest_time:
-        st.caption(f"最近抓取：{latest_time}")
+        freshness_status, freshness_text = _get_data_freshness(latest_time)
+        if freshness_status == "ok":
+            st.caption(freshness_text)
+        elif freshness_status == "warn":
+            st.warning(freshness_text)
+        elif freshness_status == "error":
+            st.error(freshness_text)
+        else:
+            st.caption(f"最近抓取：{latest_time}")
 
     st.divider()
 
@@ -589,6 +714,29 @@ def _render_live_page(api_ok: bool):
         st.subheader("🤖 AI 选品分析结果")
         st.caption("五维度量化评估：市场容量 · 竞争程度 · 利润潜力 · 新手友好度 · 季节性风险")
 
+        # 速览表（Spec 16 P0）
+        with st.expander("📊 分析结果速览表（点击展开）", expanded=True):
+            _render_analysis_summary_table(st.session_state.products, st.session_state.results)
+
+        # 批量采购成本（Spec 16 P1）
+        with st.expander("💰 批量设置采购成本（可选）", expanded=False):
+            col_bulk, col_apply = st.columns([3, 1])
+            with col_bulk:
+                bulk_cost = st.number_input(
+                    "统一采购成本 (¥/件)",
+                    min_value=0.0, max_value=1000.0, value=0.0, step=1.0,
+                    key="bulk_procurement",
+                    help="输入后点击「应用」，将覆盖所有产品的采购成本",
+                )
+            with col_apply:
+                st.write("")
+                st.write("")
+                if st.button("✅ 应用到全部", width="stretch", disabled=bulk_cost <= 0):
+                    for idx in range(len(st.session_state.products)):
+                        st.session_state[f"procurement_{idx}"] = bulk_cost
+                    st.success(f"✅ 已将 ¥{bulk_cost:.0f}/件 应用到 {len(st.session_state.products)} 个产品")
+                    st.rerun()
+
         for i, r in enumerate(st.session_state.results):
             verdict = r.get("final_verdict", "cautious")
             verdict_label = VERDICT_LABEL_MAP.get(verdict, "⚪ 未知")
@@ -734,38 +882,20 @@ def _render_live_page(api_ok: bool):
                         st.caption("👆 请输入采购成本以计算利润")
 
                 # ---- 🔍 1688 比价（混合策略：AI 估算 + 真实抓取） ----
+                _1688_cache_key = f"price_1688_{product_title}"
+                cached_1688 = st.session_state.get(_1688_cache_key)
+
                 if st.button("🔍 查看1688参考价", key=f"1688_{i}", width="stretch"):
                     search_keyword = product_title[:30]
-                    # 获取美元售价（product_price 已在上方提取）
                     price_usd = float(product_price) if product_price else 0.0
                     with st.spinner(f"正在获取参考价：{search_keyword}..."):
                         result_1688 = search_1688_hybrid(product_title, price_usd)
-                    if result_1688["success"]:
-                        pr = result_1688["price_range"]
-                        source = result_1688.get("source", "unknown")
-                        source_label = {
-                            "1688_real": "📦 1688 真实价格",
-                            "ai_estimate": "🤖 AI 估算参考价",
-                            "local_estimate": "📊 本地规则估算",
-                        }.get(source, "📦 参考价")
-                        st.success(
-                            f"{source_label}：¥{pr['min']:.2f} ~ ¥{pr['max']:.2f}"
-                        )
-                        for item in result_1688["results"]:
-                            title_1688 = item.get('title', '')
-                            price = item.get('price', 0)
-                            moq = item.get('moq', '')
-                            price_max = item.get('price_max', None)
-                            if price_max:
-                                st.caption(f"  • {title_1688} — ¥{price:.2f} ~ ¥{price_max:.2f} | {moq}")
-                            else:
-                                st.caption(f"  • {title_1688} — ¥{price:.2f} {moq}")
-                        # 如果是真实价格 + 有 AI 估算，显示对比
-                        if source == "1688_real" and result_1688.get("ai_estimate"):
-                            ai_pr = result_1688["ai_estimate"]
-                            st.caption(f"💡 AI 估算参考：¥{ai_pr['min']:.2f} ~ ¥{ai_pr['max']:.2f}")
-                    else:
-                        st.warning(f"⚠️ {result_1688['error']}")
+                    st.session_state[_1688_cache_key] = result_1688
+                    cached_1688 = result_1688
+
+                # 显示 1688 结果（新查询或缓存）
+                if cached_1688:
+                    _render_1688_result(cached_1688)
 
     # ---- 空闲状态 ----
     elif st.session_state.step == "idle":
@@ -1089,7 +1219,27 @@ def _render_targeted_page(api_ok: bool):
         st.divider()
         st.subheader("📋 搜索结果列表")
 
-        df = pd.DataFrame(products)
+        # 排序选项（Spec 16 P1）
+        col_sort, _ = st.columns([1, 3])
+        with col_sort:
+            sort_option = st.selectbox(
+                "排序方式",
+                options=["默认（搜索排名）", "价格从低到高", "价格从高到低", "评分从高到低", "评论数从多到少"],
+                key="targeted_sort",
+            )
+
+        # 排序逻辑
+        sorted_products = list(products)
+        if sort_option == "价格从低到高":
+            sorted_products.sort(key=lambda p: float(p.get("price", 0) or 0))
+        elif sort_option == "价格从高到低":
+            sorted_products.sort(key=lambda p: float(p.get("price", 0) or 0), reverse=True)
+        elif sort_option == "评分从高到低":
+            sorted_products.sort(key=lambda p: float(p.get("rating", 0) or 0), reverse=True)
+        elif sort_option == "评论数从多到少":
+            sorted_products.sort(key=lambda p: int(p.get("num_reviews", 0) or 0), reverse=True)
+
+        df = pd.DataFrame(sorted_products)
         df_display = df.rename(columns={
             "rank": "排名", "title": "产品名称", "price": "价格 (USD)",
             "rating": "评分 ⭐", "num_reviews": "评论数", "category": "类目",
@@ -1109,6 +1259,10 @@ def _render_targeted_page(api_ok: bool):
         if analysis:
             st.divider()
             st.subheader("🤖 AI 五维度详细分析")
+
+            # 速览表（Spec 16 P0）
+            with st.expander("📊 分析结果速览表（点击展开）", expanded=True):
+                _render_analysis_summary_table(products, analysis)
 
             for i, r in enumerate(analysis):
                 verdict = r.get("final_verdict", "cautious")
@@ -1590,6 +1744,15 @@ def _render_cross_platform_tab():
     if not all_products:
         st.info("📭 暂无数据，请先运行分析。")
         return
+
+    # 检测是否只有一个平台数据（Spec 16 P2）
+    platform_set = {p.get("platform", "amazon") for p in all_products}
+    if len(platform_set) < 2:
+        st.warning(
+            f"💡 当前仅有 **{len(platform_set)} 个平台** 的数据，跨平台对比效果有限。\n\n"
+            "请先在「🔍 实时选品」页面抓取其他平台的数据，"
+            "或运行 `python daily_scrape.py` 一次性抓取所有平台。"
+        )
 
     # 按平台分组统计
     platform_stats = {}
