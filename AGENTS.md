@@ -5,7 +5,7 @@
 ## 1. 项目定位
 - 项目名称：Global Product Scout（全球产品侦察兵）
 - 目标用户：跨境电商卖家、外贸创业者
-- 核心功能：自动抓取多平台（亚马逊、速卖通等）热销/飙升产品数据，通过多模型 AI 分析产品潜力，提供选品建议。
+- 核心功能：自动抓取多平台（Amazon、eBay、阿里巴巴国际站）热销产品数据，通过多模型 AI 分析产品潜力，提供选品建议。
 - 技术栈：Python 3.12、Streamlit（前端）、OpenAI SDK 兼容 API（多模型 AI 分析）、Scrapling（自适应抓取引擎）
 
 ## 2. 硬规则
@@ -51,7 +51,8 @@
 │   └── test_basic.py
 ├── docs/
 │   ├── CHANGELOG.md
-│   └── DEPLOY.md           # 部署备忘录
+│   ├── DEPLOY.md           # 部署备忘录
+│   └── specs/              # 功能规格文档（16 份）
 └── data/                   # 本地数据（不提交）
     ├── cache/
     └── products.db

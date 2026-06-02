@@ -1,7 +1,7 @@
 # ARCHITECTURE_REPORT.md
 
 > Global Product Scout — 项目架构全面梳理报告
-> 生成时间：2026-06-01 | 基于 commit `8af8d40`
+> 生成时间：2026-06-01 | 基于 commit `8af8d40`（已更新至 v0.6.0）
 
 ---
 
@@ -21,7 +21,7 @@
 
 ```
 handpicked/
-├── app.py                      # Streamlit 主程序入口（~1700 行）
+├── app.py                      # Streamlit 主程序入口（~2100 行）
 ├── daily_scrape.py             # 独立定时抓取脚本（CLI）
 ├── requirements.txt            # Python 依赖
 ├── packages.txt                # 系统级依赖（Streamlit Cloud Chrome）
@@ -275,7 +275,7 @@ src/config.py
 | 9 | `docs/specs/9-aliexpress-platform.md` | ❌ 已删除（AliExpress 已移除） |
 | 10 | `docs/specs/10-shopee-platform.md` | ❌ 已删除（Shopee 已移除） |
 | `docs/specs/15-alibaba-platform.md` | ✅ 已完成（补写） |
-| — | `docs/specs/16-daily-scrape-multi-platform.md` | ❌ 缺失（已直接实现，功能简单无需单独 Spec） |
+| `docs/specs/16-ux-optimization.md` | ✅ 已完成 |
 
 ---
 
@@ -319,7 +319,7 @@ src/config.py
 | `src/scraper_1688.py` | ~350 | 1688 比价（AI 估算 + StealthyFetcher 真实抓取） |
 | `src/analyzer.py` | ~300 | AI 五维度分析引擎 |
 | `src/calculator.py` | ~350 | 利润计算器（工厂模式，3 个平台） |
-| `src/database.py` | ~350 | SQLite 数据库（多平台 Schema） |
+| `src/database.py` | ~450 | SQLite 数据库（多平台 Schema + 收藏表） |
 | `src/trends.py` | ~100 | Google Trends 趋势查询 |
 | `src/utils.py` | ~120 | 工具函数（UA 池、反爬检测、价格解析） |
 
@@ -327,7 +327,7 @@ src/config.py
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `app.py` | ~1700 | Streamlit 主程序（侧边栏 + 4 个页面路由） |
+| `app.py` | ~2100 | Streamlit 主程序（侧边栏 + 4 个页面路由 + UX 增强） |
 | `daily_scrape.py` | ~160 | 独立定时抓取脚本（多平台，支持 --platforms 参数） |
 
 ### 测试文件（2 个）
@@ -371,7 +371,8 @@ src/config.py
 3. **利润计算器工厂模式** — `@register_calculator` 装饰器注册，`get_calculator()` 获取，解耦干净
 4. **三层 1688 降级** — 真实抓取 → AI 估算 → 本地规则，确保比价功能始终可用
 5. **双源配置** — `.env` 本地 + `st.secrets` 云端，代码无感知切换
-6. **28 项集成测试** — 覆盖平台注册、利润计算、数据库、模块导入
+7. **28 项集成测试** — 覆盖平台注册、利润计算、数据库、模块导入
+8. **UX 体验优化** — 速览表、雷达图、收藏、对比、分页、数据过期提醒（Spec 16）
 
 ---
 

@@ -1,5 +1,37 @@
 # 变更日志
 
+## [v0.6.0] - 2026-06-02 — UX 体验优化（Spec 16）
+- 新功能：**产品收藏/标记** — favorites 表 + CRUD 方法 + 实时/指定选品页 ⭐ 按钮 + 已收藏 Tab
+- 新功能：**五维度雷达图** — Plotly 雷达图，每个分析卡片内直观展示产品优劣
+- 新功能：**产品对比功能** — 历史记录页多选行 → 并排对比表格（最多 5 个产品）
+- 新功能：**历史记录分页** — >50 条时自动分页（每页 50 条）
+- 新功能：**分析结果速览表** — 实时选品 + 指定选品页，分析完成后展示紧凑汇总表
+- 新功能：**数据过期提醒** — Dashboard 根据抓取时间显示 ok/warn/error 状态（3天/7天阈值）
+- 新功能：**1688 比价结果持久化** — 存入 session_state，切换页面后自动恢复
+- 新功能：**批量设置采购成本** — 实时选品页新增「批量设置采购成本」expander
+- 新功能：**搜索结果排序** — 指定选品页新增排序选择器（价格/评分/评论数）
+- 新功能：**Dashboard 平台筛选** — 多平台数据时显示筛选 multiselect
+- 新功能：**跨平台对比空状态** — 仅一个平台数据时显示引导提示
+- 新增：`src/database.py` 新增 favorites 表 + `add_favorite`/`remove_favorite`/`is_favorite`/`get_favorites` 方法
+- 新增：`requirements.txt` 添加 `plotly>=5.0.0`
+- 更新：`docs/specs/16-ux-optimization.md` UX 改进规格文档
+- 版本：`v0.5.0` → `v0.6.0`
+
+## [v0.5.0] - 2026-06-02 — UI 审查修复 + AI 解析增强
+- 修复：指定选品页标题从英文恢复为中文
+- 修复：Streamlit 1.57.0 弃用 `use_container_width` → `width="stretch"`（13 处）
+- 修复：6 处 expander/selectbox 截断添加 `help=` 参数（Spec 0 合规）
+- 修复：指定选品页改为动态平台加载（不再硬编码 `search_amazon()`）
+- 修复：数据来源提示改为动态平台名
+- 修复：侧边栏利润参数多平台适配（广告预算仅 Amazon 显示）
+- 修复：佣金/运费标签新增 eBay/Alibaba 专属文案
+- 修复：版本号统一为 `APP_VERSION` 常量（v0.5.0）
+- 修复：提取 `VERDICT_LABEL_MAP` 和 `ANALYSIS_DIMS` 模块级常量
+- 修复：历史记录地区筛选器添加实际过滤逻辑
+- 增强：AI 解析异常时保留原始响应文本，增加诊断信息
+- 更新：`docs/specs/0-content-display-rule.md` 新增多平台 UI 规范
+- 版本：`v0.4.0` → `v0.5.0`
+
 ## [v0.4.0] - 2026-06-01 — Scrapling 抓取引擎集成
 - **重大升级**：抓取层从 requests+BeautifulSoup 迁移到 Scrapling 自适应引擎
 - 新增：`src/scrapling_adapter.py` 统一抓取适配层（Fetcher→StealthyFetcher 自动降级）
