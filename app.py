@@ -1162,6 +1162,9 @@ def _render_targeted_page(api_ok: bool):
     if st.session_state.get("targeted_step") == "analyzing":
         products = st.session_state.targeted_results
         kw = st.session_state.targeted_keyword
+        platform = st.session_state.get("active_platform", "amazon")
+        region = st.session_state.get("active_region", "us")
+        pf_info = get_platform_info(platform)
 
         # 并行：五维度分析 + 品类报告
         with st.status("🤖 AI 正在深度分析...", expanded=False) as status:
