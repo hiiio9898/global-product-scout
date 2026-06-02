@@ -47,6 +47,10 @@ from src.database import (
     get_trend_data,
     query_products,
     get_platform_summary,
+    add_favorite,
+    remove_favorite,
+    is_favorite,
+    get_favorites,
 )
 from datetime import datetime, timezone
 
@@ -368,6 +372,109 @@ def _render_1688_result(result_1688: dict):
             st.caption(f"💡 AI 估算参考：¥{ai_pr['min']:.2f} ~ ¥{ai_pr['max']:.2f}")
     else:
         st.warning(f"⚠️ {result_1688.get('error', '比价失败')}")
+
+
+def _render_radar_chart(dim_data: dict, title: str = ""):
+    """渲染五维度雷达图（Plotly）。"""
+    import plotly.graph_objects as go
+
+    labels = [label for label, _ in ANALYSIS_DIMS]
+    values = []
+    for _, key in ANALYSIS_DIMS:
+        dim = dim_data.get(key, {})
+        values.append(dim.get("score", 0) if isinstance(dim, dict) else 0)
+
+    # 闭合雷达图
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=values + [values[0]],
+        theta=labels + [labels[0]],
+        fill='toself',
+        name=title or "产品",
+        fillcolor='rgba(76, 175, 80, 0.2)',
+        line=dict(color='#4CAF50', width=2),
+    ))
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 10], tickfont=dict(size=10)),
+            angularaxis=dict(tickfont=dict(size=11)),
+        ),
+        showlegend=False,
+        height=280,
+        margin=dict(l=60, r=60, t=20, b=20),
+    )
+    st.plotly_chart(fig, width="stretch", key=f"radar_{title}_{hash(str(values))}")
+
+
+def _render_favorite_button(
+    title: str, platform: str, price: str = "", rating: str = "",
+    num_reviews: str = "0", analysis_json: str = "{}", key_prefix: str = ""
+):
+    """渲染收藏/取消收藏按钮。返回当前收藏状态。"""
+    fav_key = f"{title}_{platform}"
+    cached = st.session_state.get(f"_fav_{fav_key}")
+    if cached is None:
+        cached = is_favorite(title, platform)
+        st.session_state[f"_fav_{fav_key}"] = cached
+
+    if cached:
+        if st.button("⭐ 已收藏", key=f"{key_prefix}unfav_{hash(title)}", width="content"):
+            remove_favorite(title, platform)
+            st.session_state[f"_fav_{fav_key}"] = False
+            st.rerun()
+    else:
+        if st.button("☆ 收藏", key=f"{key_prefix}fav_{hash(title)}", width="content"):
+            add_favorite(title, platform, price, rating, num_reviews, analysis_json)
+            st.session_state[f"_fav_{fav_key}"] = True
+            st.rerun()
+
+    return cached
+
+
+def _render_comparison_view(products: list, indices: list[int]):
+    """渲染产品对比视图。"""
+    if len(indices) < 2:
+        st.warning("请至少选择 2 个产品进行对比。")
+        return
+
+    selected = [products[i] for i in indices[:5]]  # 最多 5 个
+
+    st.subheader("⚖️ 产品对比")
+
+    # 构建对比表格
+    rows = []
+
+    # 基本信息
+    rows.append(["产品标题"] + [(p.get("title", "") or "")[:40] for p in selected])
+    rows.append(["价格"] + [f"${float(p.get('price', 0) or 0):.2f}" for p in selected])
+    rows.append(["评分"] + [f"{p.get('rating', 'N/A')}" for p in selected])
+    rows.append(["评论数"] + [f"{p.get('num_reviews', '0')}" for p in selected])
+
+    # 五维度
+    for label, key in ANALYSIS_DIMS:
+        scores = []
+        for p in selected:
+            dim = p.get("analysis", {}).get(key, {})
+            scores.append(f"{dim.get('score', '-')}/10" if isinstance(dim, dict) else "-")
+        rows.append([label] + scores)
+
+    # 判定
+    verdicts = []
+    for p in selected:
+        v = p.get("analysis", {}).get("final_verdict", "")
+        verdicts.append(VERDICT_LABEL_MAP.get(v, "⚪"))
+    rows.append(["综合判定"] + verdicts)
+
+    # 判定理由
+    rows.append(["判定理由"] + [
+        (p.get("analysis", {}).get("verdict_reason", "") or "")[:50] for p in selected
+    ])
+
+    # 转为 DataFrame
+    col_names = [f"产品 {i+1}" for i in range(len(selected))]
+    df = pd.DataFrame(rows, columns=["维度"] + col_names)
+
+    st.dataframe(df, width="stretch", hide_index=True)
 
 
 # ============================================================
@@ -788,6 +895,18 @@ def _render_live_page(api_ok: bool):
                             delta_color=dc,
                             help=reason_val,
                         )
+
+                # 雷达图（Spec 16 P3）
+                _render_radar_chart(r, title_text[:30])
+
+                # 收藏按钮（Spec 16 P3）
+                pf = st.session_state.get("active_platform", "amazon")
+                analysis_json = json.dumps(r, ensure_ascii=False)
+                _render_favorite_button(
+                    title_text, pf,
+                    price=str(product_price), rating=str(st.session_state.products[i].get("rating", "")),
+                    analysis_json=analysis_json, key_prefix=f"live_{i}_",
+                )
 
                 with st.expander("📝 查看详细分析文本", expanded=False):
                     for label, key in ANALYSIS_DIMS:
@@ -1346,8 +1465,8 @@ def _render_history_page():
         )
 
     # ---- Tabs ----
-    tab_list, tab_trend, tab_compare = st.tabs([
-        "📚 历史记录", "📈 产品趋势", "⚖️ 跨平台对比"
+    tab_list, tab_trend, tab_compare, tab_fav = st.tabs([
+        "📚 历史记录", "📈 产品趋势", "⚖️ 跨平台对比", "⭐ 已收藏"
     ])
 
     with tab_list:
@@ -1358,6 +1477,9 @@ def _render_history_page():
 
     with tab_compare:
         _render_cross_platform_tab()
+
+    with tab_fav:
+        _render_favorites_tab()
 
 
 def _render_trend_page():
@@ -1585,10 +1707,30 @@ def _render_history_list(total_count: int):
     c3.metric("🔴 不推荐", nrc)
     c4.metric("📦 总计", len(products))
 
-    # ---- 数据表格 ----
+    # ---- 数据表格（含分页和对比） ----
     st.subheader("📋 历史产品列表")
+
+    # 分页（Spec 16 P3）
+    PAGE_SIZE = 50
+    total_items = len(products)
+    if total_items > PAGE_SIZE:
+        total_pages = (total_items + PAGE_SIZE - 1) // PAGE_SIZE
+        col_page, col_info = st.columns([1, 3])
+        with col_page:
+            page_num = st.number_input(
+                "页码", min_value=1, max_value=total_pages, value=1, step=1,
+                key="history_page",
+            )
+        with col_info:
+            st.caption(f"共 {total_items} 条记录，{total_pages} 页（每页 {PAGE_SIZE} 条）")
+        start = (page_num - 1) * PAGE_SIZE
+        end = start + PAGE_SIZE
+        page_products = products[start:end]
+    else:
+        page_products = products
+
     table_data = []
-    for p in products:
+    for p in page_products:
         analysis = p.get("analysis", {})
         table_data.append({
             "标题": p.get("title", "") or "",
@@ -1605,13 +1747,28 @@ def _render_history_list(total_count: int):
             "分析时间": p.get("scrape_time", ""),
         })
 
-    st.dataframe(
-        pd.DataFrame(table_data), width="stretch", hide_index=True,
+    df_display = pd.DataFrame(table_data)
+    selection = st.dataframe(
+        df_display, width="stretch", hide_index=True,
         column_config={
             "判定": st.column_config.TextColumn(width="small"),
             "分析时间": st.column_config.TextColumn(width="medium"),
         },
+        selection_mode="multi-row",
+        on_select="rerun",
     )
+
+    # 产品对比按钮（Spec 16 P3）
+    if selection and hasattr(selection, 'selection') and selection.selection.rows:
+        selected_rows = selection.selection.rows
+        if len(selected_rows) >= 2:
+            # 映射回全局索引
+            if total_items > PAGE_SIZE:
+                global_indices = [start + idx for idx in selected_rows if start + idx < total_items]
+            else:
+                global_indices = selected_rows
+            if st.button(f"⚖️ 对比选中的 {len(global_indices)} 个产品", width="stretch"):
+                _render_comparison_view(products, global_indices)
 
     # ---- 查看单条详情 ----
     with st.expander("🔍 点击展开查看某条记录的完整分析 JSON", expanded=False):
@@ -1822,6 +1979,62 @@ def _render_cross_platform_tab():
         st.dataframe(
             pd.DataFrame(table_data), width="stretch", hide_index=True,
         )
+
+
+# ============================================================
+# 已收藏 Tab（Spec 16 P3）
+# ============================================================
+
+def _render_favorites_tab():
+    """渲染已收藏产品 Tab。"""
+    st.subheader("⭐ 已收藏产品")
+
+    favorites = get_favorites()
+    if not favorites:
+        st.info("📭 暂无收藏产品。\n\n在「🔍 实时选品」或「🎯 指定选品」页面分析产品后，点击 ☆ 收藏按钮即可标记感兴趣的产品。")
+        return
+
+    st.caption(f"共 {len(favorites)} 个收藏产品")
+
+    for i, fav in enumerate(favorites):
+        title = fav.get("title", "")
+        platform = fav.get("platform", "amazon")
+        pf_info = PLATFORMS.get(platform, {})
+        pf_icon = pf_info.get("icon", "❓")
+        pf_name = pf_info.get("name", platform)
+        price = fav.get("price", "")
+        rating = fav.get("rating", "")
+        analysis = fav.get("analysis", {})
+        verdict = analysis.get("final_verdict", "")
+        verdict_label = VERDICT_LABEL_MAP.get(verdict, "⚪")
+
+        with st.container(border=True):
+            col_info, col_action = st.columns([5, 1])
+            with col_info:
+                st.markdown(f"{pf_icon} **{verdict_label}** {title}")
+                st.caption(f"💰 ${price} | ⭐ {rating} | 平台：{pf_name}")
+            with col_action:
+                if st.button("🗑️ 取消收藏", key=f"del_fav_{i}", width="stretch"):
+                    remove_favorite(title, platform)
+                    # 清除缓存
+                    cache_key = f"_fav_{title}_{platform}"
+                    if cache_key in st.session_state:
+                        del st.session_state[cache_key]
+                    st.rerun()
+
+            # 展开查看分析详情
+            if analysis and not analysis.get("parse_error"):
+                with st.expander(f"📊 查看分析详情 — {title[:40]}", expanded=False, help=title):
+                    verdict_reason = analysis.get("verdict_reason", "")
+                    if verdict_reason:
+                        st.caption(f"💡 {verdict_reason}")
+
+                    cols = st.columns(5)
+                    for col, (label, key) in zip(cols, ANALYSIS_DIMS):
+                        dim = analysis.get(key, {})
+                        score = dim.get("score", "-") if isinstance(dim, dict) else "-"
+                        with col:
+                            st.metric(label, f"{score}/10")
 
 
 # ============================================================

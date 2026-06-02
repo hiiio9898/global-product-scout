@@ -1,7 +1,7 @@
 # Spec 16：UX 体验优化
 
-**版本**：v1.0
-**状态**：📋 待实施
+**版本**：v2.0
+**状态**：🔄 实施中（P0-P2 已完成，P3 待实现）
 **创建日期**：2026-06-02
 **前置依赖**：Spec 12（历史记录增强）、Spec 15（Alibaba 平台）
 
@@ -43,6 +43,7 @@
 |------|---------|------|
 | `app.py` | **修改** | 所有 UX 改进均在 app.py 中实现 |
 | `src/database.py` | **修改** | 新增收藏相关方法 |
+| `requirements.txt` | **修改** | 新增 plotly（雷达图） |
 | `ARCHITECTURE_REPORT.md` | **修改** | 更新行动项 |
 
 ### 2.2 不改动的文件
@@ -53,247 +54,200 @@
 
 ---
 
-## 3. Phase 1 — P0 关键体验
+## 3. Phase 1 — P0 关键体验 ✅ 已完成
 
-### 3.1 分析结果速览表
+### 3.1 分析结果速览表 ✅
+- 位置：实时选品页 + 指定选品页，AI 分析卡片上方
+- 功能：紧凑汇总表（产品/判定/价格/五维度），按判定排序
 
-**位置**：实时选品页、指定选品页 — AI 分析卡片上方
+### 3.2 指定选品结果持久化 ✅
+- 当前实现已使用 session_state 持久化，切换页面后结果不丢失
 
-**功能**：分析完成后，在展开式卡片上方展示一个紧凑的汇总表，包含：
-- 产品标题（截断 40 字 + tooltip）
-- 综合判定（🟢/🟡/🔴）
-- 五维度分数（每个 `N/10`）
-- 价格
+### 3.3 数据过期提醒 ✅
+- Dashboard 根据抓取时间显示 ok/warn/error 状态（3天/7天阈值）
 
-**交互**：
-- 点击表格行 → 自动滚动到对应的 expander
-- 表格默认按判定排序（推荐 > 谨慎 > 不推荐）
+---
 
-```python
-def _render_analysis_summary_table(products, results):
-    """渲染分析结果速览表。"""
-    summary_data = []
-    for i, (p, r) in enumerate(zip(products, results)):
-        row = {
-            "#": i + 1,
-            "产品": (p.get("title", "") or "")[:40],
-            "判定": VERDICT_LABEL_MAP.get(r.get("final_verdict", ""), "⚪"),
-            "价格": f"${float(p.get('price', 0) or 0):.2f}",
-        }
-        for label, key in ANALYSIS_DIMS:
-            dim = r.get(key, {})
-            row[label] = f"{dim.get('score', '-')}/10" if isinstance(dim, dict) else "-"
-        summary_data.append(row)
+## 4. Phase 2 — P1 重要功能 ✅ 已完成
 
-    df = pd.DataFrame(summary_data)
-    st.dataframe(
-        df, width="stretch", hide_index=True,
-        column_config={
-            "#": st.column_config.NumberColumn(width="small"),
-            "产品": st.column_config.TextColumn(width="large"),
-            "判定": st.column_config.TextColumn(width="small"),
-        },
-    )
-```
+### 4.1 1688 比价结果持久化 ✅
+- 存入 session_state，切换页面后自动恢复
 
-### 3.2 指定选品结果持久化
+### 4.2 批量设置采购成本 ✅
+- 实时选品页新增「批量设置采购成本」expander
 
-**问题**：`targeted_step` 在 `st.rerun()` 后能保持，但用户切换到其他页面再切回来时，`targeted_step` 仍为 `"done"`，结果应该还在。
+### 4.3 搜索结果排序 ✅
+- 指定选品页新增排序选择器（价格/评分/评论数）
 
-**实际情况**：当前代码已经用 `st.session_state` 持久化了结果，问题在于 `_render_targeted_page` 被重新调用时会检查 `targeted_step`，结果应该能保持。
+### 4.4 Dashboard 平台筛选 ✅
+- 多平台数据时显示筛选 multiselect
 
-**经检查**：当前实现已使用 session_state 持久化，切换页面后结果不丢失。此需求**无需改动**。
+### 4.5 跨平台对比空状态 ✅
+- 仅一个平台数据时显示引导提示
 
-### 3.3 数据过期提醒
+---
 
-**位置**：Dashboard 页面 — 指标卡片下方
+## 5. Phase 3 — P3 剩余功能 📋 待实现
 
-**规则**：
-- 数据 ≤ 3 天：无警告
-- 数据 3-7 天：黄色提示「⚠️ 数据已 X 天未更新」
-- 数据 > 7 天：红色警告「🔴 数据已过期，请运行 daily_scrape.py 更新」
+### 5.1 产品收藏功能
 
-```python
-from datetime import datetime, timezone
-
-def _get_data_freshness(latest_time_str: str) -> tuple[str, str]:
-    """返回 (状态, 提示文本)。"""
-    if not latest_time_str:
-        return "error", "无数据"
-    try:
-        latest = datetime.fromisoformat(latest_time_str.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
-        days = (now - latest).days
-        if days <= 3:
-            return "ok", f"数据更新于 {days} 天前"
-        elif days <= 7:
-            return "warn", f"⚠️ 数据已 {days} 天未更新，建议运行 daily_scrape.py"
-        else:
-            return "error", f"🔴 数据已 {days} 天未更新，产品排名可能已变化"
-    except (ValueError, TypeError):
-        return "unknown", "时间格式异常"
-```
-
-### 3.4 产品收藏功能
-
-**数据库变更**：`src/database.py` 新增 `favorites` 表和相关方法
+**数据库变更**：`src/database.py` 新增 `favorites` 表
 
 ```sql
 CREATE TABLE IF NOT EXISTS favorites (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    platform TEXT DEFAULT 'amazon',
-    price TEXT,
-    rating TEXT,
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    title         TEXT NOT NULL,
+    platform      TEXT DEFAULT 'amazon',
+    price         TEXT,
+    rating        TEXT,
+    num_reviews   TEXT DEFAULT '0',
     analysis_json TEXT,
-    notes TEXT DEFAULT '',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    notes         TEXT DEFAULT '',
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(title, platform)
 );
 ```
 
-**新增方法**：
-- `add_favorite(title, platform, price, rating, analysis_json, notes)` → bool
-- `remove_favorite(title, platform)` → bool
-- `get_favorites(platform=None)` → list[dict]
-- `is_favorite(title, platform)` → bool
+**新增数据库方法**（`src/database.py`）：
 
-**UI 变更**：
-- 实时选品页：每个分析卡片标题旁加 ⭐ 按钮
-- 指定选品页：同上
-- 历史记录页：新增「⭐ 已收藏」Tab
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `add_favorite` | `(title, platform, price, rating, num_reviews, analysis_json, notes="") → bool` | 添加收藏（UPSERT） |
+| `remove_favorite` | `(title, platform) → bool` | 取消收藏 |
+| `is_favorite` | `(title, platform) → bool` | 检查是否已收藏 |
+| `get_favorites` | `(platform=None) → list[dict]` | 获取收藏列表 |
 
----
+**UI 变更**（`app.py`）：
 
-## 4. Phase 2 — P1 重要功能
+1. **实时选品页 / 指定选品页**：每个分析 expander 标题旁加 ⭐ 按钮
+   - 未收藏：`st.button("⭐ 收藏", key=f"fav_{i}")`
+   - 已收藏：`st.button("⭐ 已收藏", key=f"unfav_{i}")`
+   - 点击后调用 `add_favorite` / `remove_favorite`
 
-### 4.1 1688 比价结果持久化
+2. **历史记录页**：Tabs 新增「⭐ 已收藏」Tab
+   - 展示收藏产品列表
+   - 每行有「取消收藏」按钮
+   - 支持查看收藏产品的完整分析
 
-**实现**：将 1688 比价结果存入 `st.session_state`，以产品标题为 key。
+### 5.2 五维度雷达图
 
-```python
-# 存储
-key = f"price_1688_{product_title}"
-st.session_state[key] = result_1688
+**技术方案**：使用 Plotly 绘制雷达图（需安装 `plotly`）
 
-# 恢复
-cached = st.session_state.get(f"price_1688_{product_title}")
-if cached:
-    _display_1688_result(cached)
-```
+> 备选方案：Streamlit 原生 `st.bar_chart` 绘制水平条形图（无需额外依赖）
 
-### 4.2 批量设置采购成本
-
-**位置**：实时选品页 — AI 分析卡片区域顶部
-
-**功能**：在分析结果上方加一个 expander「💰 批量设置采购成本」：
-- 输入框：统一采购成本 (¥/件)
-- 按钮：「应用到所有产品」
-- 点击后更新所有产品的 `procurement` number_input 值
-
-### 4.3 五维度雷达图
-
-**位置**：每个分析卡片内 — 五维度 metric 下方
-
-**实现**：使用 `st.altair_chart` 或 `st.plotly_chart` 绘制五维度雷达图。
+**实现**（`app.py` 辅助函数）：
 
 ```python
-import altair as alt
+import plotly.graph_objects as go
 
-def _render_radar_chart(dim_data: dict):
+def _render_radar_chart(dim_data: dict, title: str = ""):
     """渲染五维度雷达图。"""
-    chart_data = []
-    for label, key in ANALYSIS_DIMS:
+    labels = [label for label, _ in ANALYSIS_DIMS]
+    values = []
+    for _, key in ANALYSIS_DIMS:
         dim = dim_data.get(key, {})
-        score = dim.get("score", 0) if isinstance(dim, dict) else 0
-        chart_data.append({"维度": label, "分数": score})
+        values.append(dim.get("score", 0) if isinstance(dim, dict) else 0)
 
-    df = pd.DataFrame(chart_data)
-    # 使用极坐标雷达图
-    chart = alt.Chart(df).mark_arc(innerRadius=50).encode(
-        theta=alt.Theta("维度:N", sort=None),
-        radius=alt.Radius("分数:Q", scale=alt.Scale(domain=[0, 10])),
-        color=alt.value("#4CAF50"),
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=values + [values[0]],  # 闭合
+        theta=labels + [labels[0]],
+        fill='toself',
+        name=title,
+    ))
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 10])),
+        showlegend=False,
+        height=300,
+        margin=dict(l=60, r=60, t=30, b=30),
     )
-    st.altair_chart(chart, width="stretch")
+    st.plotly_chart(fig, width="stretch")
 ```
 
-> ⚠️ Altair 的雷达图支持有限，可能需要使用 `plotly` 替代。实现时评估可行性。
+**位置**：每个分析 expander 内，五维度 metric 下方
 
-### 4.4 产品对比功能
+**依赖变更**：`requirements.txt` 新增 `plotly>=5.0.0`
+
+### 5.3 产品对比功能
 
 **位置**：历史记录页 — 历史记录 Tab
 
-**交互**：
-1. 历史产品列表的每一行加复选框
-2. 选中 2-3 个产品后，底部出现「⚖️ 对比选中产品」按钮
-3. 点击后弹出对比视图（st.dialog 或新 expander）
+**交互流程**：
+1. 历史产品表格改为可选择的 DataFrame（使用 `st.dataframe` 的 `selection_mode="multi-row"`）
+2. 用户选中 2-3 个产品
+3. 底部显示「⚖️ 对比选中产品」按钮
+4. 点击后弹出对比视图
 
-**对比表格**：
-| 维度 | 产品 A | 产品 B | 产品 C |
-|------|--------|--------|--------|
-| 价格 | $17.90 | $26.50 | $12.97 |
-| 市场容量 | 10/10 | 7/10 | 7/10 |
-| 竞争程度 | 8/10 | 5/10 | 6/10 |
-| ... | ... | ... | ... |
-| 净利 | ¥25.30 | ¥38.50 | ¥15.20 |
-| 判定 | 🟢 推荐 | 🟢 推荐 | 🟡 谨慎 |
+**对比视图内容**：
+- 并排展示每个产品的：标题、价格、评分、五维度分数、判定、利润率
+- 用颜色高亮最优项（绿色 = 最佳，红色 = 最差）
 
-### 4.5 搜索结果排序
-
-**位置**：指定选品页 — 搜索结果表格上方
-
-**实现**：在 dataframe 上方加排序选择器：
+**实现方案**：
+- 使用 `st.dataframe` 的 `on_select="rerun"` 获取选中行
+- 构建对比 DataFrame，每列一个产品
 
 ```python
-sort_by = st.selectbox(
-    "排序方式",
-    options=["默认（搜索排名）", "价格从低到高", "价格从高到低", "评分从高到低", "评论数从多到少"],
+# 对比视图
+selected_rows = st.dataframe(
+    df_display, width="stretch", hide_index=True,
+    selection_mode="multi-row",
+    on_select="rerun",
 )
+if selected_rows and len(selected_rows.selection.rows) >= 2:
+    selected_indices = selected_rows.selection.rows
+    if st.button("⚖️ 对比选中产品"):
+        _render_comparison_view(products, selected_indices)
 ```
 
----
+### 5.4 历史记录分页
 
-## 5. Phase 3 — P2 锦上添花
+**位置**：历史记录页 — 历史记录 Tab
 
-### 5.1 Dashboard 平台筛选
+**规则**：当产品数 > 50 时启用分页
 
-在 Dashboard 指标卡片下方加平台筛选 multiselect，允许用户只看特定平台的数据。
+**实现**：
+```python
+PAGE_SIZE = 50
+if len(products) > PAGE_SIZE:
+    total_pages = (len(products) + PAGE_SIZE - 1) // PAGE_SIZE
+    col_page, col_info = st.columns([1, 3])
+    with col_page:
+        page_num = st.number_input(
+            "页码", min_value=1, max_value=total_pages, value=1, step=1,
+        )
+    with col_info:
+        st.caption(f"共 {len(products)} 条记录，{total_pages} 页")
 
-### 5.2 跨平台对比空状态优化
-
-当只有一个平台有数据时，跨平台对比 Tab 显示引导提示而非空表格。
-
-### 5.3 历史记录分页
-
-当产品数 > 100 时，历史记录表格加分页（每页 50 条）。
+    start = (page_num - 1) * PAGE_SIZE
+    end = start + PAGE_SIZE
+    page_products = products[start:end]
+else:
+    page_products = products
+```
 
 ---
 
 ## 6. 实现顺序
 
-| 步骤 | 功能 | 优先级 | 预估改动量 |
-|------|------|--------|-----------|
-| 1 | 分析结果速览表 | P0 | ~60 行 |
-| 2 | 数据过期提醒 | P0 | ~30 行 |
-| 3 | 1688 比价结果持久化 | P1 | ~40 行 |
-| 4 | 批量设置采购成本 | P1 | ~40 行 |
-| 5 | 产品收藏功能 | P1 | ~120 行（DB + UI） |
-| 6 | 搜索结果排序 | P1 | ~30 行 |
-| 7 | 五维度雷达图 | P2 | ~50 行 |
-| 8 | 产品对比功能 | P2 | ~100 行 |
-| 9 | Dashboard 平台筛选 | P2 | ~30 行 |
-| 10 | 跨平台对比空状态 | P2 | ~15 行 |
+| 步骤 | 功能 | 文件 | 预估改动量 |
+|------|------|------|-----------|
+| 1 | 安装 plotly | requirements.txt | 1 行 |
+| 2 | 数据库收藏表 + 方法 | src/database.py | ~80 行 |
+| 3 | 五维度雷达图 | app.py | ~40 行 |
+| 4 | 产品收藏 UI（实时/指定选品页） | app.py | ~50 行 |
+| 5 | 产品对比功能 | app.py | ~80 行 |
+| 6 | 历史记录分页 | app.py | ~20 行 |
+| 7 | 已收藏 Tab | app.py | ~40 行 |
+| 8 | 测试验证 | tests/ | — |
 
-**总计**：~515 行新增代码
+**总计**：~310 行新增代码
 
 ---
 
 ## 7. 测试策略
 
-- 速览表：验证数据正确渲染、排序逻辑
-- 数据过期：验证 3 天/7 天阈值判断
-- 收藏功能：验证 CRUD 操作、唯一约束
-- 雷达图：验证数据绑定正确
-- 排序：验证各排序方式的顺序正确性
+- 收藏 CRUD：验证添加、删除、查询、唯一约束
+- 雷达图：验证数据绑定正确（无 import 错误）
+- 对比：验证选中 2-3 个产品后对比视图正确渲染
+- 分页：验证 >50 条时分页逻辑正确
 - 全部通过现有 56 项测试无回归

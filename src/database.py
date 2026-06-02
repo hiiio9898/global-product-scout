@@ -695,3 +695,156 @@ def get_platform_summary(db_path: Optional[str] = None) -> dict:
         return summary
     finally:
         conn.close()
+
+
+# ============================================================
+# 产品收藏功能（Spec 16）
+# ============================================================
+
+_CREATE_FAVORITES_SQL = """
+CREATE TABLE IF NOT EXISTS favorites (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    title         TEXT NOT NULL,
+    platform      TEXT DEFAULT 'amazon',
+    price         TEXT,
+    rating        TEXT,
+    num_reviews   TEXT DEFAULT '0',
+    analysis_json TEXT,
+    notes         TEXT DEFAULT '',
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(title, platform)
+);
+"""
+
+
+def _init_favorites_table(db_path: str) -> None:
+    """确保 favorites 表存在（幂等）。"""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(_CREATE_FAVORITES_SQL)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def add_favorite(
+    title: str,
+    platform: str = "amazon",
+    price: str = "",
+    rating: str = "",
+    num_reviews: str = "0",
+    analysis_json: str = "{}",
+    notes: str = "",
+    db_path: Optional[str] = None,
+) -> bool:
+    """
+    添加产品到收藏（UPSERT：已存在则更新）。
+
+    Returns:
+        True 如果操作成功
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+    _init_favorites_table(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO favorites (title, platform, price, rating, num_reviews, analysis_json, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(title, platform) DO UPDATE SET
+                price=excluded.price, rating=excluded.rating,
+                num_reviews=excluded.num_reviews, analysis_json=excluded.analysis_json,
+                notes=excluded.notes
+            """,
+            (title, platform, price, rating, num_reviews, analysis_json, notes),
+        )
+        conn.commit()
+        return True
+    except sqlite3.Error:
+        return False
+    finally:
+        conn.close()
+
+
+def remove_favorite(
+    title: str,
+    platform: str = "amazon",
+    db_path: Optional[str] = None,
+) -> bool:
+    """取消收藏。返回 True 如果删除成功。"""
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+    _init_favorites_table(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.execute(
+            "DELETE FROM favorites WHERE title = ? AND platform = ?",
+            (title, platform),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def is_favorite(
+    title: str,
+    platform: str = "amazon",
+    db_path: Optional[str] = None,
+) -> bool:
+    """检查产品是否已收藏。"""
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+    _init_favorites_table(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM favorites WHERE title = ? AND platform = ?",
+            (title, platform),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def get_favorites(
+    platform: Optional[str] = None,
+    db_path: Optional[str] = None,
+) -> list[dict]:
+    """获取收藏列表。可选按平台筛选。"""
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+    _init_favorites_table(db_path)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        if platform:
+            rows = conn.execute(
+                "SELECT * FROM favorites WHERE platform = ? ORDER BY created_at DESC",
+                (platform,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM favorites ORDER BY created_at DESC"
+            ).fetchall()
+
+        results = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["analysis"] = json.loads(item.get("analysis_json", "{}"))
+            except (json.JSONDecodeError, TypeError):
+                item["analysis"] = {}
+            results.append(item)
+        return results
+    finally:
+        conn.close()

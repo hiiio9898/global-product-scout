@@ -10,3 +10,4 @@ pytest
 flake8
 pandas
 pytrends>=4.9.2
+plotly>=5.0.0
