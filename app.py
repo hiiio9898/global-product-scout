@@ -855,7 +855,7 @@ def _render_live_page(api_ok: bool):
                 if is_raw else f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}"
             )
 
-            with st.expander(expander_label, expanded=(i == 0), help=title_text):
+            with st.expander(expander_label, expanded=(i == 0)):
                 st.caption(f"📦 **完整标题：** {title_text}")
                 if is_raw:
                     verdict_reason = r.get("verdict_reason", "")
@@ -902,9 +902,10 @@ def _render_live_page(api_ok: bool):
                 # 收藏按钮（Spec 16 P3）
                 pf = st.session_state.get("active_platform", "amazon")
                 analysis_json = json.dumps(r, ensure_ascii=False)
+                _product_price = st.session_state.products[i].get("price", 0) or 0
                 _render_favorite_button(
                     title_text, pf,
-                    price=str(product_price), rating=str(st.session_state.products[i].get("rating", "")),
+                    price=str(_product_price), rating=str(st.session_state.products[i].get("rating", "")),
                     analysis_json=analysis_json, key_prefix=f"live_{i}_",
                 )
 
@@ -1388,7 +1389,7 @@ def _render_targeted_page(api_ok: bool):
                 verdict_label = VERDICT_LABEL_MAP.get(verdict, "⚪ 未知")
                 title_text = r.get("title", f"产品 #{i+1}")
 
-                with st.expander(f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}", expanded=False, help=title_text):
+                with st.expander(f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}", expanded=False):
                     st.caption(f"📦 **完整标题：** {title_text}")
                     verdict_reason = r.get("verdict_reason", "")
                     if verdict == "recommended":
@@ -2024,7 +2025,7 @@ def _render_favorites_tab():
 
             # 展开查看分析详情
             if analysis and not analysis.get("parse_error"):
-                with st.expander(f"📊 查看分析详情 — {title[:40]}", expanded=False, help=title):
+                with st.expander(f"📊 查看分析详情 — {title[:40]}", expanded=False):
                     verdict_reason = analysis.get("verdict_reason", "")
                     if verdict_reason:
                         st.caption(f"💡 {verdict_reason}")
