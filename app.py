@@ -401,7 +401,7 @@ def _render_live_page(api_ok: bool):
         btn_json = st.button(
             "📄 分析 JSON 数据",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=btn_disabled,
             help="读取 data/products.json 中已抓取的产品数据进行 AI 分析",
         )
@@ -409,7 +409,7 @@ def _render_live_page(api_ok: bool):
         btn_live = st.button(
             f"📡 实时抓取 {pf_name}",
             type="secondary",
-            use_container_width=True,
+            width="stretch",
             disabled=btn_disabled,
             help=f"从 {pf_name} {region_name} 实时抓取最新热销数据",
         )
@@ -576,7 +576,7 @@ def _render_live_page(api_ok: bool):
         display_columns = ["排名", "产品名称", "价格 (USD)", "评分 ⭐", "评论数", "类目"]
         available_cols = [c for c in display_columns if c in df_display.columns]
         st.dataframe(
-            df_display[available_cols], use_container_width=True, hide_index=True,
+            df_display[available_cols], width="stretch", hide_index=True,
             column_config={
                 "排名": st.column_config.NumberColumn(format="%d"),
                 "价格 (USD)": st.column_config.NumberColumn(format="$%.2f"),
@@ -650,7 +650,7 @@ def _render_live_page(api_ok: bool):
                         st.text(reason_val)
 
                 # ---- 📈 Google Trends 趋势 ----
-                if st.button("📈 查询 Google Trends 趋势", key=f"trend_{i}", use_container_width=True):
+                if st.button("📈 查询 Google Trends 趋势", key=f"trend_{i}", width="stretch"):
                     trend_keyword = title_text.split(" - ")[0].split(",")[0][:30].strip()
                     with st.spinner(f"正在查询趋势：{trend_keyword}..."):
                         trend = get_trend_direction(trend_keyword)
@@ -734,7 +734,7 @@ def _render_live_page(api_ok: bool):
                         st.caption("👆 请输入采购成本以计算利润")
 
                 # ---- 🔍 1688 比价（混合策略：AI 估算 + 真实抓取） ----
-                if st.button("🔍 查看1688参考价", key=f"1688_{i}", use_container_width=True):
+                if st.button("🔍 查看1688参考价", key=f"1688_{i}", width="stretch"):
                     search_keyword = product_title[:30]
                     # 获取美元售价（product_price 已在上方提取）
                     price_usd = float(product_price) if product_price else 0.0
@@ -820,7 +820,7 @@ def _render_targeted_page(api_ok: bool):
         4. 展示搜索结果列表 + 每个产品的五维度分析
         5. Top 3 产品提供 1688 比价 + 利润试算
     """
-    st.title("🎯 Targeted Search — Keyword Analysis")
+    st.title("🎯 指定选品 — 关键词深度分析")
     st.markdown(
         "输入你想调研的产品关键词，AI 将搜索热销平台并生成品类综合报告 + Top 3 推荐。"
     )
@@ -842,7 +842,7 @@ def _render_targeted_page(api_ok: bool):
             search_clicked = st.button(
                 "🚀 搜索分析",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
                 disabled=not keyword.strip(),
             )
 
@@ -1044,7 +1044,7 @@ def _render_targeted_page(api_ok: bool):
                             st.caption(f"💰 ${price:.2f} | ⭐ {matched_product.get('rating', 0)} | 💬 {matched_product.get('num_reviews', 0):,}")
 
                             # 1688 比价按钮
-                            if st.button("🔍 1688 比价", key=f"targeted_1688_{i}", use_container_width=True):
+                            if st.button("🔍 1688 比价", key=f"targeted_1688_{i}", width="stretch"):
                                 price_usd = float(price) if price else 0.0
                                 with st.spinner("正在获取参考价..."):
                                     result_1688 = search_1688_hybrid(title, price_usd)
@@ -1061,7 +1061,7 @@ def _render_targeted_page(api_ok: bool):
                                     st.warning(result_1688.get("error", "比价失败"))
 
                             # 利润试算按钮
-                            if st.button("💰 利润试算", key=f"targeted_profit_{i}", use_container_width=True):
+                            if st.button("💰 利润试算", key=f"targeted_profit_{i}", width="stretch"):
                                 st.session_state[f"show_profit_targeted_{i}"] = True
 
                         # 利润试算展开
@@ -1097,7 +1097,7 @@ def _render_targeted_page(api_ok: bool):
         display_columns = ["排名", "产品名称", "价格 (USD)", "评分 ⭐", "评论数"]
         available_cols = [c for c in display_columns if c in df_display.columns]
         st.dataframe(
-            df_display[available_cols], use_container_width=True, hide_index=True,
+            df_display[available_cols], width="stretch", hide_index=True,
             column_config={
                 "排名": st.column_config.NumberColumn(format="%d"),
                 "价格 (USD)": st.column_config.NumberColumn(format="$%.2f"),
@@ -1142,7 +1142,7 @@ def _render_targeted_page(api_ok: bool):
 
         # ---- 重新搜索按钮 ----
         st.divider()
-        if st.button("🔄 重新搜索", use_container_width=True):
+        if st.button("🔄 重新搜索", width="stretch"):
             st.session_state.targeted_step = "idle"
             st.session_state.targeted_results = None
             st.session_state.targeted_category = None
@@ -1452,7 +1452,7 @@ def _render_history_list(total_count: int):
         })
 
     st.dataframe(
-        pd.DataFrame(table_data), use_container_width=True, hide_index=True,
+        pd.DataFrame(table_data), width="stretch", hide_index=True,
         column_config={
             "判定": st.column_config.TextColumn(width="small"),
             "分析时间": st.column_config.TextColumn(width="medium"),
@@ -1627,7 +1627,7 @@ def _render_cross_platform_tab():
     if comparison_data:
         df = pd.DataFrame(comparison_data)
         st.dataframe(
-            df, use_container_width=True, hide_index=True,
+            df, width="stretch", hide_index=True,
             column_config={
                 "平均售价(USD)": st.column_config.NumberColumn(format="$%.2f"),
                 "平均毛利率%": st.column_config.NumberColumn(format="%.1f%%"),
@@ -1657,7 +1657,7 @@ def _render_cross_platform_tab():
 
     if table_data:
         st.dataframe(
-            pd.DataFrame(table_data), use_container_width=True, hide_index=True,
+            pd.DataFrame(table_data), width="stretch", hide_index=True,
         )
 
 
