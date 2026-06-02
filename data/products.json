@@ -1,38 +1,47 @@
 [
   {
-    "title": "Seagate IronWolf Pro ST18000NE000 18TB 7200RPM SATA 6Gb/s 3.5\" NAS Hard Drive",
-    "price": 499.99,
+    "title": "WD Ultrastar DC HC530 14TB SATA 6G 3.5\" 7200RPM Enterprise HDD - WUH721414ALE604",
+    "price": 339.99,
     "rating": 0.0,
     "num_reviews": 0,
-    "rank": 4,
+    "rank": 2,
     "category": "trending",
-    "scrape_time": "2026-06-01 11:52:07"
+    "scrape_time": "2026-06-02 10:50:48"
   },
   {
-    "title": "Samsung Galaxy S24 Ultra SM-S928U 256GB Unlocked Very Good Condition",
-    "price": 573.59,
+    "title": "Bose QuietComfort Ultra Noise Cancelling Headphones, Certified Refurbished",
+    "price": 188.0,
     "rating": 0.0,
     "num_reviews": 0,
-    "rank": 7,
+    "rank": 3,
     "category": "trending",
-    "scrape_time": "2026-06-01 11:52:07"
+    "scrape_time": "2026-06-02 10:50:48"
   },
   {
-    "title": "FIRMAN W03386F 3650W Remote Start Inverter Generator - Refurbished",
-    "price": 499.99,
+    "title": "-Set of 2- Commander Decks Edge of Eternities EOE MTG",
+    "price": 64.98,
     "rating": 0.0,
     "num_reviews": 0,
-    "rank": 11,
+    "rank": 12,
     "category": "trending",
-    "scrape_time": "2026-06-01 11:52:07"
+    "scrape_time": "2026-06-02 10:50:48"
   },
   {
-    "title": "Vince Camuto Virtu 4 Piece Gift Set Men 3.4 oz EDT,  3oz After Shave, Shower Gel",
-    "price": 39.95,
+    "title": "Samsung Q990F 11.1.4ch Q Series Soundbar Wireless Dolby Atmos",
+    "price": 879.74,
     "rating": 0.0,
     "num_reviews": 0,
     "rank": 13,
     "category": "trending",
-    "scrape_time": "2026-06-01 11:52:07"
+    "scrape_time": "2026-06-02 10:50:48"
+  },
+  {
+    "title": "Apple iPhone 16 Pro Max 256GB Unlocked - Excellent -- 90%+ Battery",
+    "price": 813.95,
+    "rating": 0.0,
+    "num_reviews": 0,
+    "rank": 15,
+    "category": "trending",
+    "scrape_time": "2026-06-02 10:50:48"
   }
 ]
