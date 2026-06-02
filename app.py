@@ -691,25 +691,12 @@ def _render_live_page(api_ok: bool):
                     st.warning(f"原因: {error_detail}")
 
                     platform = st.session_state.get("active_platform", "amazon")
-                    if platform in ("amazon", "ebay"):
-                        st.info(
-                            "💡 请检查网络连接后重试，"
-                            "或使用「📄 分析 JSON 数据」按钮。"
-                        )
-                    elif platform == "alibaba":
-                        st.info(
-                            "💡 阿里巴巴国际站抓取可能受限。\n\n"
-                            "**推荐方案：**\n"
-                            "1. 使用「📄 分析 JSON 数据」分析已有的阿里巴巴数据\n"
-                            "2. 使用「🎯 指定选品」通过 AI 搜索产品信息\n"
-                            "3. 手动在 alibaba.com 选品后，使用利润计算器评估利润"
-                        )
-                    else:
-                        st.info(
-                            "💡 建议使用「📄 分析 JSON 数据」按钮。\n\n"
-                            "如需最新数据，请在本机执行 `python daily_scrape.py`，"
-                            "然后将 `data/products.json` 提交并推送到 GitHub。"
-                        )
+                    st.info(
+                        "💡 **推荐方案：**\n"
+                        "1. 使用「📄 分析 JSON 数据」分析已有的产品数据\n"
+                        "2. 使用「🎯 指定选品」通过关键词搜索产品\n"
+                        "3. 在本机运行 `python daily_scrape.py` 更新数据后重新部署"
+                    )
                 else:
                     st.session_state.products = products
                     st.session_state.source_info = source_info
@@ -781,6 +768,16 @@ def _render_live_page(api_ok: bool):
                 llm_info = get_llm_config()
                 st.success(f"✅ 分析完成！{llm_info['provider_name']} AI 已为你深度评估每个产品的选品潜力。")
 
+            # 生成品类综合报告（实时选品页）
+            try:
+                category_report = analyze_category_report(
+                    f"{pf_name} {region_name} 热销产品",
+                    st.session_state.products,
+                )
+                st.session_state.live_category = category_report
+            except Exception:
+                st.session_state.live_category = None
+
             st.session_state.analyzing = False
             st.rerun()
 
@@ -818,6 +815,26 @@ def _render_live_page(api_ok: bool):
 
     # ---- AI 分析卡片 ----
     if st.session_state.step == "analyzed" and st.session_state.results:
+        # 品类综合报告（实时选品页）
+        live_cat = st.session_state.get("live_category")
+        if live_cat and not live_cat.get("error"):
+            st.subheader("📊 品类综合报告")
+            st.markdown(f"**📝 市场概况：** {live_cat.get('category_overview', '')}")
+            col_r1, col_r2, col_r3 = st.columns(3)
+            with col_r1:
+                st.metric("📈 市场规模", live_cat.get("market_size", "N/A"))
+            with col_r2:
+                comp = live_cat.get("competition_level", "unknown")
+                comp_label = {"low": "🟢 低竞争", "medium": "🟡 中等竞争", "high": "🔴 高竞争"}.get(comp, "⚪ 未知")
+                st.metric("⚔️ 竞争程度", comp_label)
+            with col_r3:
+                st.metric("💰 价格分布", live_cat.get("price_distribution", "N/A"))
+            if live_cat.get("entry_suggestion"):
+                st.info(f"💡 **入场建议：** {live_cat['entry_suggestion']}")
+            if live_cat.get("differentiation"):
+                st.info(f"🎯 **差异化方向：** {live_cat['differentiation']}")
+            st.divider()
+
         st.subheader("🤖 AI 选品分析结果")
         st.caption("五维度量化评估：市场容量 · 竞争程度 · 利润潜力 · 新手友好度 · 季节性风险")
 
@@ -1109,6 +1126,9 @@ def _render_targeted_page(api_ok: bool):
                 help="过滤高于此价格的产品（0 = 不限）",
             )
 
+        # 搜索前提示
+        st.caption("⏱️ 预估耗时：搜索 ~10 秒 + AI 分析 ~30-60 秒（取决于产品数量）")
+
     # ---- 搜索触发 ----
     if search_clicked and keyword.strip():
         st.session_state.targeted_keyword = keyword.strip()
@@ -1116,6 +1136,9 @@ def _render_targeted_page(api_ok: bool):
         st.session_state.targeted_results = None
         st.session_state.targeted_category = None
         st.session_state.targeted_analysis = None
+        # 保存价格筛选参数
+        st.session_state.targeted_min_price = filter_min_price
+        st.session_state.targeted_max_price = filter_max_price
         st.rerun()
 
     # ---- 搜索执行 ----
@@ -1137,6 +1160,25 @@ def _render_targeted_page(api_ok: bool):
                 products = search_result["results"]
                 source = search_result["source"]
 
+                # 价格筛选（搜索后过滤）
+                min_p = st.session_state.get("targeted_min_price", 0.0)
+                max_p = st.session_state.get("targeted_max_price", 0.0)
+                if min_p > 0 or max_p > 0:
+                    filtered = []
+                    for p in products:
+                        try:
+                            price = float(p.get("price", 0) or 0)
+                        except (ValueError, TypeError):
+                            price = 0.0
+                        if min_p > 0 and price < min_p:
+                            continue
+                        if max_p > 0 and price > max_p:
+                            continue
+                        filtered.append(p)
+                    if len(filtered) < len(products):
+                        st.caption(f"💰 价格筛选：{len(products)} → {len(filtered)} 个产品（${min_p:.0f}-${max_p:.0f}）")
+                    products = filtered
+
                 st.session_state.targeted_results = products
                 st.session_state.targeted_source = source
                 st.session_state.targeted_scrape_time = search_result.get("scrape_time", "")
@@ -1150,7 +1192,13 @@ def _render_targeted_page(api_ok: bool):
                 st.session_state.targeted_step = "idle"
                 status.update(label="❌ 搜索失败", state="error")
                 st.error(f"❌ 搜索失败：{search_result.get('error', '未知错误')}")
-                st.info("💡 **建议：**\n- 检查网络连接\n- 更换关键词重试\n- 确保关键词为英文")
+                st.info(
+                    "💡 **建议：**\n"
+                    "- 检查网络连接\n"
+                    "- 更换关键词重试（英文效果最佳）\n"
+                    "- 尝试切换其他平台（如 eBay、Alibaba）\n"
+                    "- Cloud 环境 IP 可能被反爬拦截，可使用「📄 分析 JSON 数据」替代"
+                )
                 return
 
         # 搜索成功 → 开始 AI 分析
