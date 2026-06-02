@@ -1919,15 +1919,22 @@ def _render_stats_dashboard(products: list[dict], selected_platforms: list[str])
             m = analysis.get("margin_pct")
             if m is not None:
                 margins.append(m)
-        avg_margin = sum(margins) / len(margins) if margins else 0
-        st.metric("平均毛利率", f"{avg_margin:.1f}%")
+        if margins:
+            avg_margin = sum(margins) / len(margins)
+            st.metric("平均毛利率", f"{avg_margin:.1f}%")
+        else:
+            st.metric("平均毛利率", "N/A", help="输入采购成本后才能计算毛利率")
 
     with col4:
         profitable = sum(
             1 for p in products
             if p.get("analysis", {}).get("is_profitable", False)
         )
-        pct = (profitable / len(products) * 100) if products else 0
+        if profitable > 0:
+            pct = (profitable / len(products) * 100) if products else 0
+            st.metric("盈利产品占比", f"{pct:.0f}%")
+        else:
+            st.metric("盈利产品占比", "N/A", help="输入采购成本后才能计算盈利情况")
         st.metric("盈利产品占比", f"{pct:.0f}%")
 
     # 各平台产品数量柱状图
