@@ -1615,7 +1615,7 @@ def _render_market_scanner_page(api_ok: bool):
             options=platform_keys,
             default=platform_keys[:2],
             format_func=lambda k: platform_names[k],
-            key="scan_platforms",
+            key="scan_platforms_select",
         )
 
         # 地区选择
@@ -1636,7 +1636,7 @@ def _render_market_scanner_page(api_ok: bool):
             options=region_options,
             default=region_options[:4],
             format_func=lambda k: region_labels.get(k, k.upper()),
-            key="scan_regions",
+            key="scan_regions_select",
         )
 
         # 预估耗时
