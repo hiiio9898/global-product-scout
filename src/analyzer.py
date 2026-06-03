@@ -328,6 +328,7 @@ def _analyze_batch(batch: list[dict], client, llm_cfg: dict) -> list[dict]:
 def analyze_products(
     products: list[dict],
     progress_callback: callable = None,
+    on_complete_callback: callable = None,
 ) -> list[dict]:
     """
     批量分析产品 — 五维度量化评估。
@@ -341,6 +342,8 @@ def analyze_products(
     Args:
         products: 产品字典列表
         progress_callback: 可选进度回调函数，接收 (已完成数, 总数)
+        on_complete_callback: 可选完成回调函数，每批完成后调用，
+                              接收 (当前已分析数, 总数, 本批结果列表)
 
     Returns:
         list[dict]: 每个产品的分析结果
@@ -379,6 +382,8 @@ def analyze_products(
 
         if progress_callback:
             progress_callback(min(len(results), total), total)
+        if on_complete_callback:
+            on_complete_callback(min(len(results), total), total, batch_results)
 
     return results
 
