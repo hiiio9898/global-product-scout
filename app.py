@@ -2011,7 +2011,6 @@ def _render_stats_dashboard(products: list[dict], selected_platforms: list[str])
             st.metric("盈利产品占比", f"{pct:.0f}%")
         else:
             st.metric("盈利产品占比", "N/A", help="输入采购成本后才能计算盈利情况")
-        st.metric("盈利产品占比", f"{pct:.0f}%")
 
     # 各平台产品数量柱状图
     if platform_counts:
