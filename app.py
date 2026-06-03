@@ -27,6 +27,7 @@ from src.analyzer import analyze_products, analyze_category_report
 from src.calculator import calculate_profit, get_calculator
 from src.scraper_1688 import search_1688_hybrid
 from src.trends import get_trend_direction, get_trend_icon
+from src.utils import deduplicate_products
 from src.platforms import (
     PLATFORMS,
     get_platform_info,
@@ -1241,6 +1242,12 @@ def _render_targeted_page(api_ok: bool):
                     if len(filtered) < len(products):
                         st.caption(f"💰 价格筛选：{len(products)} → {len(filtered)} 个产品（${min_p:.0f}-${max_p:.0f}）")
                     products = filtered
+
+                # 去重：按 ASIN 保留评分最高的变体
+                original_count = len(products)
+                products = deduplicate_products(products)
+                if len(products) < original_count:
+                    st.caption(f"🔄 去重：{original_count} → {len(products)} 个产品（按 ASIN 去除重复变体）")
 
                 st.session_state.targeted_results = products
                 st.session_state.targeted_source = source

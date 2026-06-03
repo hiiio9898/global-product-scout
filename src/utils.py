@@ -193,3 +193,36 @@ def get_cache_timestamp(cache_file: str) -> Optional[str]:
     except OSError:
         pass
     return None
+
+
+def deduplicate_products(products: list[dict]) -> list[dict]:
+    """
+    按 ASIN 去重，保留评分最高的变体。
+
+    同一产品可能因不同变体（颜色/尺寸）在搜索结果中出现多次，
+    去重后仅保留评分最高的变体，节省 AI 分析配额。
+
+    Args:
+        products: 产品字典列表（需包含 asin 和 rating 字段）
+
+    Returns:
+        去重后的产品列表
+    """
+    seen = {}  # asin → (product, rating)
+    no_asin = []
+
+    for p in products:
+        asin = (p.get("asin") or "").strip()
+        if not asin:
+            no_asin.append(p)
+            continue
+        try:
+            rating = float(p.get("rating", 0) or 0)
+        except (ValueError, TypeError):
+            rating = 0.0
+        if asin not in seen or rating > seen[asin][1]:
+            seen[asin] = (p, rating)
+
+    result = [v[0] for v in seen.values()]
+    result.extend(no_asin)
+    return result
