@@ -530,6 +530,143 @@ def get_product_count(db_path: Optional[str] = None) -> int:
         conn.close()
 
 
+def get_platform_stats(platform: str, days: int = 30, db_path: Optional[str] = None) -> dict:
+    """
+    获取指定平台最近 N 天的统计数据。
+
+    Args:
+        platform: 平台标识（如 "amazon"）
+        days: 统计天数（默认 30 天）
+
+    Returns:
+        {
+            "total": int,
+            "recommended": int,
+            "cautious": int,
+            "not_recommended": int,
+            "avg_capacity": float,
+            "avg_profit": float,
+        }
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT analysis_json FROM products
+            WHERE platform = ?
+              AND scrape_time >= datetime('now', ?)
+            """,
+            (platform, f"-{days} days"),
+        ).fetchall()
+
+        stats = {
+            "total": len(rows),
+            "recommended": 0,
+            "cautious": 0,
+            "not_recommended": 0,
+            "avg_capacity": 0.0,
+            "avg_profit": 0.0,
+        }
+        cap_scores = []
+        profit_scores = []
+
+        for (analysis_json,) in rows:
+            if not analysis_json:
+                continue
+            try:
+                a = json.loads(analysis_json)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            verdict = a.get("final_verdict", "")
+            if verdict == "recommended":
+                stats["recommended"] += 1
+            elif verdict == "cautious":
+                stats["cautious"] += 1
+            elif verdict == "not_recommended":
+                stats["not_recommended"] += 1
+
+            cap = a.get("market_capacity", {})
+            if isinstance(cap, dict) and "score" in cap:
+                cap_scores.append(cap["score"])
+            profit = a.get("profit_potential", {})
+            if isinstance(profit, dict) and "score" in profit:
+                profit_scores.append(profit["score"])
+
+        if cap_scores:
+            stats["avg_capacity"] = round(sum(cap_scores) / len(cap_scores), 1)
+        if profit_scores:
+            stats["avg_profit"] = round(sum(profit_scores) / len(profit_scores), 1)
+
+        return stats
+    finally:
+        conn.close()
+
+
+def get_category_trend(keyword: str, days: int = 30, db_path: Optional[str] = None) -> list[dict]:
+    """
+    获取关键词相关产品的趋势数据（按天聚合）。
+
+    Args:
+        keyword: 搜索关键词
+        days: 查询天数（默认 30 天）
+
+    Returns:
+        [{"date": "2026-06-01", "avg_price": 25.99, "avg_rating": 4.2, "count": 5}, ...]
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT scrape_time, price, rating, title FROM products
+            WHERE title LIKE ?
+              AND scrape_time >= datetime('now', ?)
+            ORDER BY scrape_time
+            """,
+            (f"%{keyword}%", f"-{days} days"),
+        ).fetchall()
+
+        # 按日期分组
+        daily = {}
+        for scrape_time, price, rating, title in rows:
+            date = str(scrape_time)[:10]  # YYYY-MM-DD
+            if date not in daily:
+                daily[date] = {"prices": [], "ratings": []}
+            try:
+                daily[date]["prices"].append(float(price))
+            except (ValueError, TypeError):
+                pass
+            try:
+                daily[date]["ratings"].append(float(rating))
+            except (ValueError, TypeError):
+                pass
+
+        result = []
+        for date in sorted(daily.keys()):
+            d = daily[date]
+            avg_price = round(sum(d["prices"]) / len(d["prices"]), 2) if d["prices"] else 0
+            avg_rating = round(sum(d["ratings"]) / len(d["ratings"]), 1) if d["ratings"] else 0
+            result.append({
+                "date": date,
+                "avg_price": avg_price,
+                "avg_rating": avg_rating,
+                "count": len(d["prices"]),
+            })
+
+        return result
+    finally:
+        conn.close()
+
+
 def get_latest_products(db_path: Optional[str] = None) -> list[dict]:
     """
     获取最近一次抓取的产品列表（按 scrape_time 分组，取最新批次）。
