@@ -46,13 +46,14 @@
 │   ├── calculator.py       # 利润计算器（工厂模式，多平台）
 │   ├── trends.py           # Google Trends 趋势查询
 │   ├── database.py         # SQLite 数据库模块
+│   ├── market_scanner.py   # 市场扫描引擎（蓝海指数、趋势预测）
 │   └── utils.py            # 工具函数
 ├── tests/
 │   └── test_basic.py
 ├── docs/
 │   ├── CHANGELOG.md
 │   ├── DEPLOY.md           # 部署备忘录
-│   └── specs/              # 功能规格文档（16 份）
+│   └── specs/              # 功能规格文档（17 份）
 └── data/                   # 本地数据（不提交）
     ├── cache/
     └── products.db
