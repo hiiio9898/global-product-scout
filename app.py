@@ -1047,13 +1047,20 @@ def _render_live_page(api_ok: bool):
                         margin = profit_result["margin_pct"]
                         if margin >= 30:
                             margin_delta = "normal"
-                            margin_status = "🟢 利润可观"
+                            margin_status = "利润可观"
+                            st.success(f"利润可观（毛利率 {margin}%）")
                         elif margin >= 15:
                             margin_delta = "off"
-                            margin_status = "🟡 利润一般"
+                            margin_status = "利润尚可"
+                            st.info(f"利润尚可（毛利率 {margin}%）")
+                        elif margin >= 0:
+                            margin_delta = "inverse"
+                            margin_status = "利润微薄"
+                            st.warning(f"利润微薄（毛利率 {margin}%）— 需要优化成本结构")
                         else:
                             margin_delta = "inverse"
-                            margin_status = "🔴 利润微薄"
+                            margin_status = "利润为负"
+                            st.error(f"利润为负（毛利率 {margin}%）— 建议放弃该产品")
 
                         r1, r2, r3 = st.columns(3)
                         r1.metric(
@@ -1438,9 +1445,15 @@ def _render_targeted_page(api_ok: bool):
                                 )
                                 if profit_result["has_procurement"]:
                                     margin = profit_result["margin_pct"]
-                                    margin_status = "🟢 利润可观" if margin >= 30 else ("🟡 利润一般" if margin >= 15 else "🔴 利润微薄")
+                                    if margin >= 30:
+                                        st.success(f"利润可观（毛利率 {margin}%）")
+                                    elif margin >= 15:
+                                        st.info(f"利润尚可（毛利率 {margin}%）")
+                                    elif margin >= 0:
+                                        st.warning(f"利润微薄（毛利率 {margin}%）— 需要优化成本结构")
+                                    else:
+                                        st.error(f"利润为负（毛利率 {margin}%）— 建议放弃该产品")
                                     st.metric("净利", f"¥{profit_result['net_profit_cny']:.2f}")
-                                    st.metric("毛利率", f"{margin}% — {margin_status}")
 
         # ---- 搜索结果完整列表 ----
         st.divider()
