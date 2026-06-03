@@ -287,7 +287,7 @@ def _parse_batch_response(content: str, batch_products: list[dict]) -> list[dict
 def _analyze_batch(batch: list[dict], client, llm_cfg: dict) -> list[dict]:
     """调用 LLM API 分析一批产品。"""
     prompt = _build_batch_prompt(batch)
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             resp = client.chat.completions.create(
                 model=llm_cfg["model"],
@@ -312,9 +312,14 @@ def _analyze_batch(batch: list[dict], client, llm_cfg: dict) -> list[dict]:
             batch_results = _parse_batch_response(content, batch)
             if batch_results:
                 return batch_results
-        except Exception:
-            if attempt < 1:
-                time.sleep(2)
+        except Exception as e:
+            if attempt < 2:
+                # 指数退避：2s → 4s → 8s，限流时更长
+                import random
+                delay = (2 ** (attempt + 1)) + random.uniform(0, 1)
+                if "429" in str(e):
+                    delay = 10 * (2 ** attempt)
+                time.sleep(delay)
 
     # 全部失败 → 返回错误信息
     return [{"title": p["title"], "raw_text": "AI 分析失败，请检查 API 配置或稍后重试", "parse_error": True, "final_verdict": "cautious", "verdict_reason": "AI 批量分析调用失败"} for p in batch]
@@ -464,7 +469,7 @@ def analyze_category_report(keyword: str, products: list[dict]) -> dict:
     )
 
     last_error = None
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             resp = client.chat.completions.create(
                 model=llm_cfg["model"],
@@ -484,8 +489,12 @@ def analyze_category_report(keyword: str, products: list[dict]) -> dict:
             return _parse_category_report_response(content, keyword, products)
         except Exception as e:
             last_error = e
-            if attempt < 1:
-                time.sleep(2)
+            if attempt < 2:
+                import random
+                delay = (2 ** (attempt + 1)) + random.uniform(0, 1)
+                if "429" in str(e):
+                    delay = 10 * (2 ** attempt)
+                time.sleep(delay)
 
     # API 调用失败 → 返回错误（包含具体原因）
     return {
