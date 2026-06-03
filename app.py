@@ -1899,15 +1899,37 @@ def _render_history_list(total_count: int):
                 _render_comparison_view(products, global_indices)
 
     # ---- 查看单条详情 ----
-    with st.expander("🔍 点击展开查看某条记录的完整分析 JSON", expanded=False):
+    with st.expander("🔍 单条记录详情", expanded=False):
         selected_idx = st.selectbox(
             "选择产品",
             options=range(len(products)),
-            format_func=lambda i: f"#{i+1} {(products[i].get('title', '') or '')[:50]}{'…' if len((products[i].get('title', '') or '')) > 50 else ''}",
+            format_func=lambda i: f"#{i+1} {(products[i].get('title', '') or '')[:45]}",
             help="选择产品查看详情分析",
+            key="history_detail_select",
         )
         if selected_idx is not None:
-            st.json(products[selected_idx].get("analysis", {}))
+            p = products[selected_idx]
+            a = p.get("analysis", {})
+
+            # 基本信息
+            verdict = a.get("final_verdict", "")
+            verdict_label = {"recommended": "🟢 推荐", "cautious": "🟡 谨慎", "not_recommended": "🔴 不推荐"}.get(verdict, verdict)
+            st.markdown(f"**{verdict_label}** — {a.get('verdict_reason', '无判定理由')}")
+
+            # 五维度评分
+            dim_cols = st.columns(5)
+            for col, (label, key) in zip(dim_cols, ANALYSIS_DIMS):
+                dim = a.get(key, {})
+                score = dim.get("score", "-") if isinstance(dim, dict) else "-"
+                reason = dim.get("reason", "") if isinstance(dim, dict) else ""
+                with col:
+                    st.metric(label, f"{score}/10")
+                    if reason:
+                        st.caption(reason)
+
+            # 原始 JSON（折叠查看）
+            with st.expander("📄 查看原始 JSON", expanded=False):
+                st.json(a)
 
     # ---- 导出 CSV ----
     st.divider()
