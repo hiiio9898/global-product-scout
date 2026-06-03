@@ -94,370 +94,6 @@ ANALYSIS_DIMS = [
 
 
 # ============================================================
-# ==================== Landing Page 首页 ======================
-# ============================================================
-
-def _render_landing_page():
-    """渲染 Landing Page — 深灰色 Apple 风格产品介绍页。"""
-
-    st.markdown("""
-    <style>
-    /* === Landing Page 深色主题（页面作用域隔离） === */
-    [data-testid="stAppViewContainer"] > .main {
-        background-color: #121212 !important;
-    }
-    [data-testid="stAppViewContainer"] > .main .block-container {
-        background-color: #121212 !important;
-        max-width: 1200px !important;
-        padding: 4rem 3rem !important;
-    }
-    [data-testid="stAppViewContainer"] > .main,
-    [data-testid="stAppViewContainer"] > .main p,
-    [data-testid="stAppViewContainer"] > .main span,
-    [data-testid="stAppViewContainer"] > .main label,
-    [data-testid="stAppViewContainer"] > .main .stMarkdown {
-        color: #ffffff !important;
-    }
-    [data-testid="stAppViewContainer"] > .main h1,
-    [data-testid="stAppViewContainer"] > .main h2,
-    [data-testid="stAppViewContainer"] > .main h3,
-    [data-testid="stAppViewContainer"] > .main h4 {
-        color: #ffffff !important;
-    }
-    /* 字体 */
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@400;500;700&display=swap');
-
-    [data-testid="stAppViewContainer"] > .main {
-        font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
-    }
-    /* Hero 标题 */
-    .gps-hero-title {
-        font-family: 'Playfair Display', Georgia, serif !important;
-        font-size: 4rem !important;
-        font-weight: 700 !important;
-        line-height: 1.12 !important;
-        letter-spacing: -0.03em !important;
-        color: #ffffff !important;
-        margin-bottom: 1.5rem !important;
-    }
-    .gps-hero-title .hl {
-        color: #FF5E00 !important;
-        text-decoration: underline;
-        text-decoration-color: #FF5E00;
-        text-underline-offset: 8px;
-        text-decoration-thickness: 3px;
-    }
-    /* Hero 副标题 */
-    .gps-hero-sub {
-        font-size: 1.15rem !important;
-        color: #b3b3b3 !important;
-        line-height: 1.75 !important;
-        max-width: 520px;
-        margin-bottom: 2.5rem;
-    }
-    /* 信任文字 */
-    .gps-trust {
-        font-size: 0.92rem !important;
-        color: #808080 !important;
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-    }
-    /* 特性块 */
-    .gps-feature {
-        padding: 2.5rem 0;
-        border-bottom: 1px solid rgba(255,255,255,0.06);
-    }
-    .gps-feature h3 {
-        font-family: 'Playfair Display', Georgia, serif !important;
-        font-size: 1.8rem !important;
-        font-weight: 700 !important;
-        letter-spacing: -0.02em !important;
-        margin-bottom: 1rem !important;
-    }
-    .gps-feature p {
-        color: #b3b3b3 !important;
-        line-height: 1.8 !important;
-        margin-bottom: 1.2rem !important;
-    }
-    .gps-feature .gps-list-item {
-        color: #b3b3b3 !important;
-        padding: 0.5rem 0 !important;
-        font-size: 0.95rem !important;
-    }
-    .gps-feature .gps-list-item::before {
-        content: '\25CF';
-        color: #FF5E00;
-        margin-right: 0.8rem;
-        font-size: 0.5rem;
-    }
-    /* 图形占位 */
-    .gps-visual {
-        height: 280px;
-        background: linear-gradient(135deg, rgba(255,94,0,0.07) 0%, rgba(255,94,0,0.02) 100%);
-        border-radius: 4px;
-        border: 1px solid rgba(255,94,0,0.06);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        opacity: 0.7;
-    }
-    /* 统计数字 */
-    .gps-stat-num {
-        font-family: 'Playfair Display', Georgia, serif !important;
-        font-size: 3.2rem !important;
-        font-weight: 700 !important;
-        color: #FF5E00 !important;
-        line-height: 1 !important;
-        margin-bottom: 0.4rem !important;
-    }
-    .gps-stat-label {
-        font-size: 1rem !important;
-        color: #808080 !important;
-    }
-    /* CTA 区域 */
-    .gps-cta-title {
-        font-family: 'Playfair Display', Georgia, serif !important;
-        font-size: 2.6rem !important;
-        font-weight: 700 !important;
-        letter-spacing: -0.02em !important;
-        color: #ffffff !important;
-        margin-bottom: 1rem !important;
-    }
-    .gps-cta-sub {
-        font-size: 1.1rem !important;
-        color: #b3b3b3 !important;
-        line-height: 1.8 !important;
-        margin-bottom: 2.5rem !important;
-    }
-    /* Landing Page 按钮覆盖 */
-    [data-testid="stAppViewContainer"] > .main .stButton > button {
-        border-radius: 3px !important;
-        font-weight: 600 !important;
-        padding: 0.85rem 2.2rem !important;
-        letter-spacing: -0.01em !important;
-    }
-    .gps-btn-primary > button {
-        background-color: #FF5E00 !important;
-        color: #121212 !important;
-        border: none !important;
-    }
-    .gps-btn-primary > button:hover {
-        background-color: #FF7A2A !important;
-        color: #121212 !important;
-        box-shadow: 0 8px 24px rgba(255,94,0,0.3) !important;
-    }
-    .gps-btn-secondary > button {
-        background-color: transparent !important;
-        color: #ffffff !important;
-        border: 1.5px solid #808080 !important;
-    }
-    .gps-btn-secondary > button:hover {
-        border-color: #ffffff !important;
-        color: #ffffff !important;
-        background-color: rgba(255,255,255,0.04) !important;
-    }
-    /* 噪点纹理 */
-    [data-testid="stAppViewContainer"] > .main::before {
-        content: '';
-        position: fixed;
-        top: 0; left: 0;
-        width: 100%; height: 100%;
-        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-        background-repeat: repeat;
-        pointer-events: none;
-        z-index: 0;
-        mix-blend-mode: overlay;
-    }
-    [data-testid="stAppViewContainer"] > .main .block-container {
-        position: relative;
-        z-index: 1;
-    }
-    /* 渐入动画 */
-    @keyframes gpsFadeUp {
-        from { opacity: 0; transform: translateY(24px); }
-        to   { opacity: 1; transform: translateY(0); }
-    }
-    .gps-animate {
-        animation: gpsFadeUp 0.7s cubic-bezier(0.25,0.46,0.45,0.94) both;
-    }
-    .gps-delay-1 { animation-delay: 0.15s; }
-    .gps-delay-2 { animation-delay: 0.30s; }
-    </style>
-    """, unsafe_allow_html=True)
-
-    # ============ HERO ============
-    hero_left, hero_right = st.columns([1, 1.15], gap="large")
-
-    with hero_left:
-        st.markdown("""
-        <div class="gps-animate">
-            <div class="gps-hero-title">
-                发现下一个<span class="hl">爆款产品</span>。在几分钟内。
-            </div>
-            <div class="gps-hero-sub">
-                Global Product Scout 用 AI 分析全球热销数据，帮助跨境电商卖家找到高利润产品。
-                无需手动调研，自动生成五维度评估报告。
-            </div>
-            <div class="gps-trust">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF5E00" stroke-width="2">
-                    <circle cx="12" cy="12" r="11"/>
-                    <polyline points="16 12 12 8 8 12"/>
-                </svg>
-                已帮助 500+ 卖家找到高利润品类
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with hero_right:
-        st.markdown("""
-        <div class="gps-animate gps-delay-1" style="
-            width: 100%;
-            aspect-ratio: 1 / 1.1;
-            background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
-            border-radius: 4px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-            border: 1px solid rgba(255,94,0,0.08);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            position: relative;
-        ">
-            <!-- SVG 手绘风格图形：折线 + 散点 + 几何 -->
-            <svg width="85%" height="85%" viewBox="0 0 400 360" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <polyline points="30,280 90,200 150,230 220,140 290,170 360,80" stroke="#FF5E00" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                <circle cx="90" cy="200" r="5" fill="#FF5E00"/>
-                <circle cx="150" cy="230" r="4" fill="#FF5E00" opacity="0.6"/>
-                <circle cx="220" cy="140" r="6" fill="#FF5E00"/>
-                <circle cx="290" cy="170" r="4" fill="#FF5E00" opacity="0.6"/>
-                <circle cx="360" cy="80" r="7" fill="#FF5E00"/>
-                <line x1="30" y1="320" x2="380" y2="320" stroke="#333" stroke-width="1"/>
-                <line x1="30" y1="40" x2="30" y2="320" stroke="#333" stroke-width="1"/>
-                <rect x="60" y="250" width="30" height="70" rx="3" fill="#FF5E00" opacity="0.15"/>
-                <rect x="130" y="200" width="30" height="120" rx="3" fill="#FF5E00" opacity="0.2"/>
-                <rect x="200" y="170" width="30" height="150" rx="3" fill="#FF5E00" opacity="0.25"/>
-                <rect x="270" y="120" width="30" height="200" rx="3" fill="#FF5E00" opacity="0.3"/>
-                <rect x="340" y="60" width="30" height="260" rx="3" fill="#FF5E00" opacity="0.35"/>
-            </svg>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # Hero CTA 按钮
-    col_btn1, col_btn2, _ = st.columns([1, 1, 3])
-    with col_btn1:
-        st.markdown('<div class="gps-btn-primary">', unsafe_allow_html=True)
-        if st.button("开始使用", key="lp_cta_primary", type="primary"):
-            st.session_state["nav_page"] = "📊 Dashboard"
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-    with col_btn2:
-        st.markdown('<div class="gps-btn-secondary">', unsafe_allow_html=True)
-        if st.button("查看功能", key="lp_cta_secondary"):
-            st.session_state["nav_page"] = "📊 Dashboard"
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown("<div style='height:5rem'></div>", unsafe_allow_html=True)
-
-    # ============ FEATURES ============
-    st.markdown("<div style='background:#1e1e1e;margin:-4rem -3rem;padding:4rem 3rem;position:relative;'>", unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="gps-animate">
-        <h2 style="font-family:'Playfair Display',Georgia,serif;font-size:2.8rem;font-weight:700;letter-spacing:-0.02em;color:#fff;margin-bottom:0.8rem;">核心功能</h2>
-        <p style="font-size:1.1rem;color:#b3b3b3;line-height:1.8;max-width:560px;margin-bottom:3rem;">通过 AI 和数据分析，从嘈杂的市场中找出真正的机会。</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    features = [
-        {
-            "title": "多平台数据抓取",
-            "desc": "实时监控 Amazon、eBay、阿里巴巴国际站的热销产品。自动抓取销售排名、评价、价格变化趋势。每次点击响应时间低于 50 毫秒。",
-            "points": ["真实销售数据，每日自动更新", "跨平台对比分析", "地理位置精准定位"],
-            "svg": "<svg width='120' height='120' viewBox='0 0 120 120' fill='none'><circle cx='60' cy='60' r='45' stroke='#FF5E00' stroke-width='1.5'/><circle cx='60' cy='60' r='25' stroke='#FF5E00' stroke-width='1' opacity='0.5'/><line x1='60' y1='15' x2='60' y2='105' stroke='#FF5E00' stroke-width='0.8' opacity='0.3'/><line x1='15' y1='60' x2='105' y2='60' stroke='#FF5E00' stroke-width='0.8' opacity='0.3'/></svg>",
-        },
-        {
-            "title": "AI 五维度评估",
-            "desc": "每个产品评估市场容量、竞争程度、利润潜力、新手友好度、季节性风险。无需配置，自动评分 0-10 分。",
-            "points": ["自动评分体系（0-10 分）", "实时竞争对手分析", "风险预警机制"],
-            "svg": "<svg width='120' height='120' viewBox='0 0 120 120' fill='none'><rect x='20' y='20' width='80' height='80' rx='4' stroke='#FF5E00' stroke-width='1.5'/><line x1='20' y1='50' x2='100' y2='50' stroke='#FF5E00' stroke-width='0.8' opacity='0.4'/><line x1='20' y1='80' x2='100' y2='80' stroke='#FF5E00' stroke-width='0.8' opacity='0.4'/><line x1='50' y1='20' x2='50' y2='100' stroke='#FF5E00' stroke-width='0.8' opacity='0.4'/><circle cx='75' cy='35' r='8' stroke='#FF5E00' stroke-width='1.5'/></svg>",
-        },
-        {
-            "title": "利润计算与 1688 比价",
-            "desc": "输入采购成本，自动计算毛利率和净利润。同时抓取 1688 报价做参考，精确估算供应链成本。支持历史价格对比。",
-            "points": ["多平台价格差异对比", "采购成本历史记录", "利润率趋势图表"],
-            "svg": "<svg width='120' height='120' viewBox='0 0 120 120' fill='none'><circle cx='60' cy='60' r='40' stroke='#FF5E00' stroke-width='1.5'/><text x='45' y='68' font-family='serif' font-size='28' fill='#FF5E00' opacity='0.8'>&#165;</text></svg>",
-        },
-        {
-            "title": "品类深度报告",
-            "desc": "输入关键词，获得完整的品类分析报告。包括市场规模、竞争格局、价格分布、入场建议。Top 3 产品推荐算法。",
-            "points": ["自动生成品类综合评分", "Top 3 产品推荐", "差异化方向指导"],
-            "svg": "<svg width='120' height='120' viewBox='0 0 120 120' fill='none'><polyline points='20,90 45,60 65,75 95,30' stroke='#FF5E00' stroke-width='2' stroke-linecap='round'/><circle cx='95' cy='30' r='5' fill='#FF5E00'/><line x1='20' y1='100' x2='105' y2='100' stroke='#FF5E00' stroke-width='0.8' opacity='0.3'/></svg>",
-        },
-    ]
-
-    for idx, feat in enumerate(features):
-        is_reverse = idx % 2 == 1
-        col_visual, col_text = (st.columns([1, 1.15], gap="large") if not is_reverse
-                               else st.columns([1.15, 1], gap="large"))
-
-        with (col_visual if not is_reverse else col_text):
-            list_html = ''.join(f'<div class="gps-list-item">{p}</div>' for p in feat['points'])
-            st.markdown(
-                f"<div class='gps-feature gps-animate'>"
-                f"<h3>{feat['title']}</h3>"
-                f"<p>{feat['desc']}</p>"
-                f"{list_html}</div>",
-                unsafe_allow_html=True,
-            )
-
-        with (col_text if not is_reverse else col_visual):
-            st.markdown(
-                f"<div class='gps-visual gps-animate gps-delay-1'>{feat['svg']}</div>",
-                unsafe_allow_html=True,
-            )
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<div style='height:5rem'></div>", unsafe_allow_html=True)
-
-    # ============ STATS ============
-    stats = [("500K+", "已分析产品"), ("45ms", "响应时间"), ("98%", "数据准确率")]
-    cols = st.columns(3, gap="large")
-    for i, (num, label) in enumerate(stats):
-        with cols[i]:
-            st.markdown(f"""
-            <div class="gps-animate gps-delay-{i}">
-                <div class="gps-stat-num">{num}</div>
-                <div class="gps-stat-label">{label}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    st.markdown("<div style='height:5rem'></div>", unsafe_allow_html=True)
-
-    # ============ CTA ============
-    st.markdown("<div style='background:#1e1e1e;margin:-4rem -3rem;padding:5rem 3rem;text-align:center;'>", unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="gps-animate">
-        <div class="gps-cta-title">开始用数据驱动你的选品决策</div>
-        <div class="gps-cta-sub">
-            不再依赖猜测和直觉。让 AI 分析替代繁琐的手动调研。<br>
-            每周节省 20 小时，发现真正高利润的产品机会。
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div style="display:flex;justify-content:center;"><div class="gps-btn-primary" style="display:inline-block;">', unsafe_allow_html=True)
-    if st.button("现在免费试用", key="lp_cta_bottom", type="primary"):
-        st.session_state["nav_page"] = "📊 Dashboard"
-        st.rerun()
-    st.markdown('</div></div>', unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ============================================================
 # 侧边栏 — 配置区
 # ============================================================
 
@@ -468,8 +104,8 @@ def render_sidebar(source_info: dict | None = None):
     # ---- 页面导航 ----
     page = st.sidebar.radio(
         "📌 页面导航",
-        options=["🏠 首页", "📊 Dashboard", "🔍 实时选品", "🎯 指定选品", "📚 历史记录"],
-        help="首页：产品介绍与功能概览\nDashboard：数据概览（自动按平台筛选）\n实时选品：抓取并分析当前平台热销产品\n指定选品：输入关键词深度分析特定品类\n历史记录：查看过去保存的分析结果",
+        options=["📊 Dashboard", "🔍 实时选品", "🎯 指定选品", "📚 历史记录"],
+        help="Dashboard：数据概览（自动按平台筛选）\n实时选品：抓取并分析当前平台热销产品\n指定选品：输入关键词深度分析特定品类\n历史记录：查看过去保存的分析结果",
     )
 
     st.sidebar.divider()
@@ -863,11 +499,48 @@ def _render_dashboard_page():
     # 获取数据
     all_products = get_all_products()
     if not all_products:
-        st.info(
-            "📭 **暂无数据**\n\n"
-            "请先切换到「🔍 实时选品」页面，点击「开始分析」运行一次分析，\n"
-            "数据会自动保存到数据库并在此展示概览。"
+        st.markdown("### 欢迎使用 Global Product Scout")
+        st.markdown(
+            "这是一个 AI 驱动的跨境电商选品工具。"
+            "它会自动抓取 Amazon、eBay、阿里巴巴国际站的热销产品数据，"
+            "并通过多维度 AI 分析帮你评估每个产品的选品潜力。"
         )
+
+        st.divider()
+
+        st.markdown("### 快速开始")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            with st.container(border=True):
+                st.markdown("#### 🔍 实时选品")
+                st.markdown(
+                    "选择平台和地区，一键抓取当前热销榜单。"
+                    "系统会自动进行五维度 AI 评估，给出推荐/谨慎/不推荐的明确判定。"
+                )
+                if st.button("前往实时选品", key="goto_live", type="primary", width="stretch"):
+                    st.session_state["nav_page"] = "🔍 实时选品"
+                    st.rerun()
+        with col_b:
+            with st.container(border=True):
+                st.markdown("#### 🎯 指定选品")
+                st.markdown(
+                    "输入产品关键词，深度分析特定品类。"
+                    "生成品类综合报告、市场规模评估、竞争格局分析和 Top 3 推荐。"
+                )
+                if st.button("前往指定选品", key="goto_targeted", width="stretch"):
+                    st.session_state["nav_page"] = "🎯 指定选品"
+                    st.rerun()
+
+        st.divider()
+
+        with st.expander("💡 数据来源说明", expanded=False):
+            st.markdown(
+                "- **Amazon**：Best Sellers 榜单 + 关键词搜索\n"
+                "- **eBay**：Trending 产品 + 关键词搜索\n"
+                "- **Alibaba**：国际站热销 + 关键词搜索\n"
+                "- 数据每日自动更新（通过 GitHub Actions 定时任务）\n"
+                "- 也可在本地运行 `python daily_scrape.py` 手动更新"
+            )
         return
 
     # ---- 指标计算 ----
@@ -2549,9 +2222,7 @@ init_db()
 api_ok, page = render_sidebar(st.session_state.source_info)
 
 # 页面路由
-if "首页" in page:
-    _render_landing_page()
-elif "Dashboard" in page:
+if "Dashboard" in page:
     _render_dashboard_page()
 elif "实时选品" in page:
     _render_live_page(api_ok)
