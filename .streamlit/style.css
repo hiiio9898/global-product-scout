@@ -61,6 +61,23 @@
     margin-top: 0.2rem !important;
 }
 
+/* ---- Captions — ensure spacing below ---- */
+.main .stCaption,
+.main p[data-testid="stCaption"] {
+    margin-bottom: 0.5rem !important;
+}
+
+/* ---- Dividers — ensure proper spacing ---- */
+.main hr,
+.main [data-testid="stHorizontalBlock"] hr {
+    margin: 0.8rem 0 !important;
+}
+
+/* ---- General spacing between blocks ---- */
+.main .stMarkdown {
+    margin-bottom: 0.3rem !important;
+}
+
 /* ---- Metric Cards — Apple Card style ---- */
 [data-testid="stMetric"] {
     border: 1px solid rgba(0, 0, 0, 0.06) !important;
