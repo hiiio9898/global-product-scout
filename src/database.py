@@ -113,6 +113,26 @@ def init_db(db_path: Optional[str] = None) -> None:
                 conn.execute(f"ALTER TABLE products ADD COLUMN {col} {default}")
             except sqlite3.OperationalError:
                 pass  # 字段已存在，忽略
+
+        # 创建索引（幂等，IF NOT EXISTS）
+        for idx_sql in [
+            "CREATE INDEX IF NOT EXISTS idx_products_platform_region ON products(platform, region, scrape_time DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_products_verdict ON products(platform, analysis_json)",
+            "CREATE INDEX IF NOT EXISTS idx_favorites_title_platform ON favorites(title, platform)",
+        ]:
+            try:
+                conn.execute(idx_sql)
+            except sqlite3.OperationalError:
+                pass  # 索引已存在或表不存在
+
+        # 数据清理：删除 90 天前的数据
+        try:
+            conn.execute(
+                "DELETE FROM products WHERE scrape_time < datetime('now', '-90 days')"
+            )
+        except sqlite3.OperationalError:
+            pass  # 表不存在时忽略
+
         conn.commit()
     finally:
         conn.close()
