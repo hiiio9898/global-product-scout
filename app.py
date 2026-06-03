@@ -28,6 +28,15 @@ from src.calculator import calculate_profit, get_calculator
 from src.scraper_1688 import search_1688_hybrid
 from src.trends import get_trend_direction, get_trend_icon
 from src.utils import deduplicate_products
+from src.market_scanner import (
+    scan_market,
+    scan_single_market,
+    calculate_blue_ocean_score,
+    classify_competition,
+    classify_demand,
+    predict_trend,
+    build_retrospective,
+)
 from src.platforms import (
     PLATFORMS,
     get_platform_info,
@@ -105,8 +114,8 @@ def render_sidebar(source_info: dict | None = None):
     # ---- 页面导航 ----
     page = st.sidebar.radio(
         "📌 页面导航",
-        options=["📊 Dashboard", "🔍 实时选品", "🎯 指定选品", "📚 历史记录"],
-        help="Dashboard：数据概览（自动按平台筛选）\n实时选品：抓取并分析当前平台热销产品\n指定选品：输入关键词深度分析特定品类\n历史记录：查看过去保存的分析结果",
+        options=["📊 Dashboard", "🔍 实时选品", "🎯 指定选品", "🌐 市场扫描", "📚 历史记录"],
+        help="Dashboard：数据概览（自动按平台筛选）\n实时选品：抓取并分析当前平台热销产品\n指定选品：输入关键词深度分析特定品类\n市场扫描：批量扫描多平台多地区，找出蓝海市场\n历史记录：查看过去保存的分析结果",
     )
 
     st.sidebar.divider()
@@ -1563,6 +1572,357 @@ def _render_targeted_page(api_ok: bool):
         )
 
 
+
+
+# ============================================================
+# ==================== 市场扫描页面 ===========================
+# ============================================================
+
+def _render_market_scanner_page(api_ok: bool):
+    """渲染市场扫描页面 — 批量扫描多平台×多地区，找出蓝海市场。"""
+
+    st.title("🌐 市场机会扫描")
+    st.markdown("输入关键词，同时扫描多个平台和地区，找到蓝海市场和最佳入场时机。")
+    st.divider()
+
+    # ---- 输入区域 ----
+    with st.container(border=True):
+        col_kw, col_btn = st.columns([3, 1])
+        with col_kw:
+            keyword = st.text_input(
+                "🔍 搜索关键词",
+                value=st.session_state.get("scan_keyword", ""),
+                placeholder="例：portable blender, cat toys, yoga mat",
+                help="输入英文关键词效果最佳",
+                key="scan_keyword_input",
+            )
+        with col_btn:
+            st.write("")
+            st.write("")
+            scan_clicked = st.button(
+                "🌐 开始扫描",
+                type="primary",
+                width="stretch",
+                disabled=not keyword.strip(),
+                key="scan_start_btn",
+            )
+
+        # 平台选择
+        platform_keys = get_platform_choices()
+        platform_names = {k: f"{PLATFORMS[k]['icon']} {PLATFORMS[k]['name']}" for k in platform_keys}
+        selected_platforms = st.multiselect(
+            "🛒 扫描平台",
+            options=platform_keys,
+            default=platform_keys[:2],
+            format_func=lambda k: platform_names[k],
+            key="scan_platforms",
+        )
+
+        # 地区选择
+        all_regions = set()
+        for pf in selected_platforms:
+            pf_info = get_platform_info(pf)
+            for rk in pf_info.get("regions", {}).keys():
+                all_regions.add(rk)
+        region_options = sorted(all_regions)
+        region_labels = {}
+        for pf in selected_platforms:
+            for rk, rv in get_platform_info(pf).get("regions", {}).items():
+                label = f"{rv['name']} ({rk})"
+                if label not in region_labels:
+                    region_labels[rk] = label
+        selected_regions = st.multiselect(
+            "🌍 扫描地区",
+            options=region_options,
+            default=region_options[:4],
+            format_func=lambda k: region_labels.get(k, k.upper()),
+            key="scan_regions",
+        )
+
+        # 预估耗时
+        combo_count = len(selected_platforms) * len(selected_regions)
+        if combo_count > 0:
+            est_seconds = combo_count * 30
+            st.caption(f"⏱️ 预估耗时：{combo_count} 个市场 × ~30秒 ≈ {est_seconds // 60} 分钟")
+
+    # ---- 扫描触发 ----
+    if scan_clicked and keyword.strip() and selected_platforms and selected_regions:
+        st.session_state.scan_keyword = keyword.strip()
+        st.session_state.scan_platforms = selected_platforms
+        st.session_state.scan_regions = selected_regions
+        st.session_state.scan_step = "scanning"
+        st.session_state.scan_results = None
+        st.session_state.scan_report = None
+        st.rerun()
+
+    # ---- 扫描执行 ----
+    if st.session_state.get("scan_step") == "scanning":
+        kw = st.session_state.scan_keyword
+        platforms = st.session_state.scan_platforms
+        regions = st.session_state.scan_regions
+
+        with st.status("🌐 正在扫描市场...", expanded=True) as status:
+            progress_bar = st.progress(0, text="准备扫描...")
+
+            def _on_progress(done, total, label):
+                pct = min(done / total, 1.0) if total > 0 else 0
+                progress_bar.progress(pct, text=f"扫描进度：{done}/{total} — {label}")
+
+            results = scan_market(kw, platforms, regions, progress_callback=_on_progress)
+            st.session_state.scan_results = results
+
+            progress_bar.empty()
+            status.update(label="✅ 扫描完成！", state="complete")
+
+        # 扫描完成后，计算蓝海指数并排序
+        markets = results.get("markets", [])
+        for m in markets:
+            if not m.get("error"):
+                # 用已有 AI 分析结果计算蓝海指数（如果有）
+                m["blue_ocean_score"] = 0.0
+                m["competition_level"] = "unknown"
+            else:
+                m["blue_ocean_score"] = 0.0
+                m["competition_level"] = "unknown"
+
+        st.session_state.scan_step = "scanned"
+        st.rerun()
+
+    # ---- 结果展示 ----
+    if st.session_state.get("scan_step") in ("scanned", "done"):
+        results = st.session_state.scan_results
+        if not results:
+            st.warning("无扫描结果。")
+            return
+
+        keyword = results.get("keyword", "")
+        markets = results.get("markets", [])
+        valid_markets = [m for m in markets if not m.get("error")]
+        failed_markets = [m for m in markets if m.get("error")]
+
+        st.success(f"✅ 扫描「{keyword}」完成 — {len(valid_markets)}/{len(markets)} 个市场成功")
+
+        if failed_markets:
+            with st.expander(f"⚠️ {len(failed_markets)} 个市场扫描失败", expanded=False):
+                for m in failed_markets:
+                    st.caption(f"❌ {PLATFORMS.get(m['platform'], {}).get('icon', '')} {m.get('region_name', m['region'])} — {m.get('error', '未知错误')}")
+
+        # ---- 蓝海指数排行榜 ----
+        if valid_markets:
+            st.divider()
+            st.subheader("🏆 蓝海指数排行榜")
+            st.caption("基于产品数量、平均价格、平均评分综合评估市场机会")
+
+            # 按产品数量降序（产品多=需求大，作为基础排序）
+            sorted_markets = sorted(valid_markets, key=lambda m: m.get("product_count", 0), reverse=True)
+
+            for i, m in enumerate(sorted_markets):
+                pf_icon = PLATFORMS.get(m["platform"], {}).get("icon", "")
+                pf_name = PLATFORMS.get(m["platform"], {}).get("name", m["platform"])
+                region_name = m.get("region_name", m["region"].upper())
+                count = m.get("product_count", 0)
+                avg_price = m.get("avg_price", 0)
+                avg_rating = m.get("avg_rating", 0)
+
+                # 简单蓝海指数：产品多 + 价格高 + 评分高 = 机会大
+                opportunity = min(count / 2, 5) + min(avg_price / 10, 3) + min(avg_rating / 2, 2)
+                opportunity = round(min(opportunity, 10), 1)
+
+                col_rank, col_info, col_stats = st.columns([0.5, 2, 3])
+                with col_rank:
+                    st.markdown(f"### #{i+1}")
+                with col_info:
+                    st.markdown(f"**{pf_icon} {pf_name} — {region_name}**")
+                    st.caption(f"产品数：{count} | 来源：{m.get('source', 'unknown')}")
+                with col_stats:
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("平均价格", f"${avg_price:.2f}")
+                    c2.metric("平均评分", f"{avg_rating:.1f}")
+                    c3.metric("机会指数", f"{opportunity}/10")
+
+        # ---- 竞争热度矩阵 ----
+        if len(valid_markets) >= 2:
+            st.divider()
+            st.subheader("📊 竞争热度矩阵")
+
+            # 构建矩阵数据
+            matrix_data = []
+            for m in valid_markets:
+                pf_name = PLATFORMS.get(m["platform"], {}).get("name", m["platform"])
+                region_name = m.get("region_name", m["region"].upper())
+                count = m.get("product_count", 0)
+                avg_price = m.get("avg_price", 0)
+
+                if count >= 15:
+                    demand = "high"
+                elif count >= 8:
+                    demand = "medium"
+                else:
+                    demand = "low"
+
+                if avg_price >= 30:
+                    margin = "high"
+                elif avg_price >= 15:
+                    margin = "medium"
+                else:
+                    margin = "low"
+
+                matrix_data.append({
+                    "平台": pf_name,
+                    "地区": region_name,
+                    "产品数": count,
+                    "平均价格": f"${avg_price:.2f}",
+                    "需求热度": {"high": "🟢 高", "medium": "🟡 中", "low": "🔴 低"}[demand],
+                    "利润空间": {"high": "🟢 高", "medium": "🟡 中", "low": "🔴 低"}[margin],
+                })
+
+            df_matrix = pd.DataFrame(matrix_data)
+            st.dataframe(df_matrix, width="stretch", hide_index=True)
+
+        # ---- 跨市场 AI 分析 ----
+        if len(valid_markets) >= 2 and api_ok:
+            st.divider()
+            st.subheader("🤖 AI 跨市场分析")
+            st.caption("基于扫描数据，AI 给出最佳市场推荐和入场策略")
+
+            if st.button("🔍 生成 AI 分析报告", key="scan_ai_btn", type="primary"):
+                with st.status("🤖 AI 正在分析...", expanded=False) as status:
+                    from src.analyzer import analyze_market_comparison
+                    report = analyze_market_comparison(keyword, valid_markets)
+                    st.session_state.scan_report = report
+                    status.update(label="✅ AI 分析完成！", state="complete")
+                st.rerun()
+
+        # 展示 AI 报告
+        report = st.session_state.get("scan_report")
+        if report and report.get("success"):
+            best = report.get("best_market", {})
+            if best:
+                pf = best.get("platform", "")
+                rg = best.get("region", "")
+                pf_name = PLATFORMS.get(pf, {}).get("name", pf)
+                st.info(f"🏆 **最佳市场推荐：** {PLATFORMS.get(pf, {}).get('icon', '')} {pf_name} {rg.upper()} — {best.get('reason', '')}")
+
+            # Top 3 机会
+            top3 = report.get("top3_opportunities", [])
+            if top3:
+                cols = st.columns(min(len(top3), 3))
+                for i, opp in enumerate(top3[:3]):
+                    with cols[i]:
+                        pf = opp.get("platform", "")
+                        rg = opp.get("region", "")
+                        pf_name = PLATFORMS.get(pf, {}).get("name", pf)
+                        score = opp.get("blue_ocean_score", 0)
+                        with st.container(border=True):
+                            st.markdown(f"**#{opp.get('rank', i+1)} {PLATFORMS.get(pf, {}).get('icon', '')} {pf_name} {rg.upper()}**")
+                            st.metric("蓝海指数", f"{score}/10")
+                            st.caption(opp.get("reason", ""))
+
+            # 入场策略
+            strategy = report.get("entry_strategy", "")
+            if strategy:
+                st.markdown(f"**💡 入场策略：** {strategy}")
+
+            # 风险因素
+            risks = report.get("risk_factors", [])
+            if risks:
+                with st.expander("⚠️ 风险因素", expanded=False):
+                    for risk in risks:
+                        st.caption(f"• {risk}")
+
+        elif report and not report.get("success"):
+            st.warning(f"⚠️ AI 分析失败：{report.get('error', '未知错误')}")
+
+        # ---- 预测与回顾（基于历史数据） ----
+        st.divider()
+        st.subheader("📈 趋势预测与时间回顾")
+        st.caption("基于数据库中的历史数据，分析产品的价格/排名/评论变化趋势")
+
+        all_products = get_all_products()
+        if all_products:
+            unique_titles = sorted({p.get("title", "") for p in all_products if p.get("title")})
+            if unique_titles:
+                selected_title = st.selectbox(
+                    "选择产品查看趋势",
+                    options=unique_titles,
+                    format_func=lambda t: t[:50],
+                    key="scan_trend_select",
+                )
+
+                if selected_title:
+                    trend_data = get_trend_data(title=selected_title)
+
+                    if trend_data and len(trend_data) >= 2:
+                        # 时间回顾
+                        retro = build_retrospective(trend_data)
+                        if retro.get("price"):
+                            st.markdown(f"**📅 回顾周期：** {retro['period']}（{retro['data_points']} 个数据点）")
+                            c1, c2, c3 = st.columns(3)
+                            with c1:
+                                p = retro["price"]
+                                st.metric("价格变化", f"${p['end']:.2f}", delta=f"{p['change_pct']:+.1f}%")
+                            with c2:
+                                r = retro.get("rank", {})
+                                if r:
+                                    st.metric("排名变化", f"#{r['end']}", delta=f"{r['change']:+d} 位")
+                            with c3:
+                                rv = retro.get("reviews", {})
+                                if rv:
+                                    st.metric("评论增长", f"+{rv['growth']}", delta=f"{rv['growth_rate']:.0f}/天")
+
+                        # 趋势预测
+                        prediction = predict_trend(trend_data)
+                        if prediction.get("prediction"):
+                            confidence = prediction.get("confidence", "low")
+                            conf_label = {"high": "🟢 高置信", "medium": "🟡 中置信", "low": "🔴 低置信"}[confidence]
+                            st.info(f"📈 **趋势预测：** {prediction['prediction']}（{conf_label}）")
+
+                        # 价格趋势图
+                        import plotly.graph_objects as go
+                        df_trend = pd.DataFrame(trend_data)
+                        df_trend["scrape_time"] = pd.to_datetime(df_trend["scrape_time"])
+
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatter(
+                            x=df_trend["scrape_time"],
+                            y=pd.to_numeric(df_trend["price"], errors="coerce"),
+                            mode="lines+markers",
+                            name="价格",
+                            line=dict(color="#FF5E00", width=2),
+                        ))
+                        fig.update_layout(
+                            title="价格变化趋势",
+                            xaxis_title="时间",
+                            yaxis_title="价格 (USD)",
+                            height=300,
+                            margin=dict(l=40, r=20, t=40, b=40),
+                        )
+                        st.plotly_chart(fig, width="stretch")
+                    else:
+                        st.info("该产品历史数据不足（至少需要 2 次抓取记录），请先运行实时选品或指定选品。")
+        else:
+            st.info("暂无历史数据。请先在「实时选品」或「指定选品」页面运行一次分析。")
+
+        # ---- 重新扫描 ----
+        st.divider()
+        if st.button("🔄 重新扫描", key="scan_retry_btn"):
+            st.session_state.scan_step = "idle"
+            st.session_state.scan_results = None
+            st.session_state.scan_report = None
+            st.rerun()
+
+    # ---- 空闲状态 ----
+    elif st.session_state.get("scan_step", "idle") == "idle":
+        st.info(
+            "👈 输入关键词，选择平台和地区，点击「开始扫描」：\n\n"
+            "1. 🔍 输入英文产品关键词\n"
+            "2. 🛒 选择要扫描的平台\n"
+            "3. 🌍 选择要扫描的地区\n"
+            "4. 🌐 点击「开始扫描」\n\n"
+            "**热门品类参考：** portable blender, cat toys, yoga mat, "
+            "kitchen organizer, phone case, LED strip lights"
+        )
+
 # ============================================================
 # ==================== 历史记录页面 ============================
 # ============================================================
@@ -2280,5 +2640,7 @@ elif "实时选品" in page:
     _render_live_page(api_ok)
 elif "指定选品" in page:
     _render_targeted_page(api_ok)
+elif "市场扫描" in page:
+    _render_market_scanner_page(api_ok)
 elif "历史记录" in page:
     _render_history_page()

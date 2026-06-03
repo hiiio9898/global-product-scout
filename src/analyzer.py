@@ -565,3 +565,136 @@ def _parse_category_report_response(
     data["raw_text"] = None
     data["success"] = True
     return data
+
+
+# ============================================================
+# 跨市场对比分析
+# ============================================================
+
+CROSS_MARKET_PROMPT = """你是资深跨境电商选品顾问。
+
+以下是关键词「{keyword}」在 {n} 个市场的扫描数据：
+{market_data}
+
+请分析并返回严格 JSON 格式：
+{{
+  "best_market": {{
+    "platform": "amazon",
+    "region": "de",
+    "reason": "推荐理由（50字以内）"
+  }},
+  "top3_opportunities": [
+    {{"rank": 1, "platform": "amazon", "region": "de", "blue_ocean_score": 8.5, "reason": "理由（30字以内）"}},
+    {{"rank": 2, "platform": "ebay", "region": "us", "blue_ocean_score": 7.2, "reason": "理由（30字以内）"}},
+    {{"rank": 3, "platform": "amazon", "region": "uk", "blue_ocean_score": 6.8, "reason": "理由（30字以内）"}}
+  ],
+  "market_comparison": [
+    {{"platform": "amazon", "region": "us", "competition": "high", "demand": "high", "profit_margin": "medium"}},
+    {{"platform": "amazon", "region": "de", "competition": "low", "demand": "high", "profit_margin": "high"}}
+  ],
+  "entry_strategy": "建议先进入XX市场，因为...（100字以内）",
+  "risk_factors": ["风险1", "风险2"]
+}}
+只返回 JSON。"""
+
+
+def analyze_market_comparison(keyword: str, markets: list[dict]) -> dict:
+    """
+    跨市场对比分析 — AI 生成入场策略。
+
+    Args:
+        keyword: 搜索关键词
+        markets: 各市场的扫描结果列表
+
+    Returns:
+        跨市场对比报告（含 best_market, top3_opportunities, entry_strategy 等）
+    """
+    llm_cfg = get_llm_config()
+    api_key = llm_cfg["api_key"]
+
+    # 构建市场摘要数据
+    market_summaries = []
+    for m in markets:
+        if m.get("error"):
+            continue
+        summary = {
+            "platform": m["platform"],
+            "region": m["region"],
+            "region_name": m.get("region_name", m["region"]),
+            "product_count": m.get("product_count", 0),
+            "avg_price": m.get("avg_price", 0),
+            "avg_rating": m.get("avg_rating", 0),
+        }
+        market_summaries.append(summary)
+
+    if not market_summaries:
+        return {"success": False, "error": "无有效市场数据"}
+
+    market_data_str = json.dumps(market_summaries, ensure_ascii=False, indent=1)
+
+    # 无 API Key → 返回基础数据
+    if not api_key:
+        return {
+            "success": True,
+            "best_market": market_summaries[0] if market_summaries else {},
+            "top3_opportunities": [],
+            "market_comparison": market_summaries,
+            "entry_strategy": "未配置 AI API Key，无法生成智能入场策略。",
+            "risk_factors": [],
+            "parse_error": False,
+        }
+
+    client = OpenAI(
+        api_key=api_key,
+        base_url=llm_cfg["base_url"],
+        timeout=120,
+    )
+
+    prompt = CROSS_MARKET_PROMPT.format(
+        keyword=keyword,
+        n=len(market_summaries),
+        market_data=market_data_str,
+    )
+
+    import random
+    last_error = None
+    for attempt in range(3):
+        try:
+            resp = client.chat.completions.create(
+                model=llm_cfg["model"],
+                messages=[
+                    {"role": "system", "content": "你是资深跨境电商选品顾问。只返回 JSON。"},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+                max_tokens=4000,
+            )
+            content = resp.choices[0].message.content or ""
+            if not content.strip() and hasattr(resp.choices[0].message, "reasoning_content"):
+                content = resp.choices[0].message.reasoning_content or ""
+            return _parse_cross_market_response(content)
+        except Exception as e:
+            last_error = e
+            if attempt < 2:
+                delay = (2 ** (attempt + 1)) + random.uniform(0, 1)
+                if "429" in str(e):
+                    delay = 10 * (2 ** attempt)
+                time.sleep(delay)
+
+    return {"success": False, "error": f"AI API 调用失败：{last_error}"}
+
+
+def _parse_cross_market_response(content: str) -> dict:
+    """解析跨市场对比的 AI 返回 JSON。"""
+    cleaned = _strip_markdown_json(content)
+    data = _extract_json_object(cleaned)
+
+    if not data:
+        return {"success": False, "error": "AI 返回格式异常", "raw_text": content}
+
+    data.setdefault("success", True)
+    data.setdefault("parse_error", False)
+    data.setdefault("top3_opportunities", [])
+    data.setdefault("market_comparison", [])
+    data.setdefault("risk_factors", [])
+    return data

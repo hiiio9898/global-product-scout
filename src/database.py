@@ -49,6 +49,19 @@ CREATE TABLE IF NOT EXISTS products (
 );
 """
 
+_CREATE_MARKET_SCANS_SQL = """
+CREATE TABLE IF NOT EXISTS market_scans (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    keyword         TEXT,
+    scan_time       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    platforms       TEXT,
+    regions         TEXT,
+    results_json    TEXT,
+    best_market     TEXT,
+    blue_ocean_score REAL
+);
+"""
+
 
 # ============================================================
 # 数据库连接上下文管理器
@@ -132,6 +145,9 @@ def init_db(db_path: Optional[str] = None) -> None:
             )
         except sqlite3.OperationalError:
             pass  # 表不存在时忽略
+
+        # 创建市场扫描表
+        conn.execute(_CREATE_MARKET_SCANS_SQL)
 
         conn.commit()
     finally:
@@ -1001,6 +1017,107 @@ def get_favorites(
                 item["analysis"] = json.loads(item.get("analysis_json", "{}"))
             except (json.JSONDecodeError, TypeError):
                 item["analysis"] = {}
+            results.append(item)
+        return results
+    finally:
+        conn.close()
+
+
+# ============================================================
+# 市场扫描结果存储（Spec 25）
+# ============================================================
+
+def save_market_scan(
+    keyword: str,
+    platforms: list[str],
+    regions: list[str],
+    results: dict,
+    best_market: str = "",
+    blue_ocean_score: float = 0.0,
+    db_path: Optional[str] = None,
+) -> int:
+    """
+    保存市场扫描结果到数据库。
+
+    Returns:
+        插入记录的 ID
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.execute(
+            """
+            INSERT INTO market_scans (keyword, platforms, regions, results_json, best_market, blue_ocean_score)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                keyword,
+                json.dumps(platforms, ensure_ascii=False),
+                json.dumps(regions, ensure_ascii=False),
+                json.dumps(results, ensure_ascii=False),
+                best_market,
+                blue_ocean_score,
+            ),
+        )
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def get_market_scans(
+    keyword: Optional[str] = None,
+    limit: int = 20,
+    db_path: Optional[str] = None,
+) -> list[dict]:
+    """
+    获取历史市场扫描记录。
+
+    Args:
+        keyword: 可选关键词筛选
+        limit: 最大返回条数
+
+    Returns:
+        扫描记录列表
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        if keyword:
+            rows = conn.execute(
+                "SELECT * FROM market_scans WHERE keyword LIKE ? ORDER BY scan_time DESC LIMIT ?",
+                (f"%{keyword}%", limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM market_scans ORDER BY scan_time DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+
+        results = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["results"] = json.loads(item.get("results_json", "{}"))
+            except (json.JSONDecodeError, TypeError):
+                item["results"] = {}
+            try:
+                item["platforms_list"] = json.loads(item.get("platforms", "[]"))
+            except (json.JSONDecodeError, TypeError):
+                item["platforms_list"] = []
+            try:
+                item["regions_list"] = json.loads(item.get("regions", "[]"))
+            except (json.JSONDecodeError, TypeError):
+                item["regions_list"] = []
             results.append(item)
         return results
     finally:
