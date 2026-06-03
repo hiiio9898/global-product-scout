@@ -38,6 +38,11 @@ PLATFORMS = {
             "uk": {"name": "英国站", "domain": "amazon.co.uk", "currency": "GBP", "exchange_rate": 9.32},
             "jp": {"name": "日本站", "domain": "amazon.co.jp", "currency": "JPY", "exchange_rate": 0.048},
             "de": {"name": "德国站", "domain": "amazon.de", "currency": "EUR", "exchange_rate": 7.88},
+            "fr": {"name": "法国站", "domain": "amazon.fr", "currency": "EUR", "exchange_rate": 7.88},
+            "it": {"name": "意大利站", "domain": "amazon.it", "currency": "EUR", "exchange_rate": 7.88},
+            "es": {"name": "西班牙站", "domain": "amazon.es", "currency": "EUR", "exchange_rate": 7.88},
+            "ca": {"name": "加拿大站", "domain": "amazon.ca", "currency": "CAD", "exchange_rate": 5.30},
+            "au": {"name": "澳洲站", "domain": "amazon.com.au", "currency": "AUD", "exchange_rate": 4.80},
         },
         "default_region": "us",
         "profit_defaults": {
@@ -60,6 +65,8 @@ PLATFORMS = {
             "us": {"name": "美国站", "domain": "ebay.com", "currency": "USD", "exchange_rate": 7.24},
             "uk": {"name": "英国站", "domain": "ebay.co.uk", "currency": "GBP", "exchange_rate": 9.18},
             "de": {"name": "德国站", "domain": "ebay.de", "currency": "EUR", "exchange_rate": 7.88},
+            "au": {"name": "澳洲站", "domain": "ebay.com.au", "currency": "AUD", "exchange_rate": 4.80},
+            "ca": {"name": "加拿大站", "domain": "ebay.ca", "currency": "CAD", "exchange_rate": 5.30},
         },
         "default_region": "us",
         "profit_defaults": {
