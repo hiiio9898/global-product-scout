@@ -136,7 +136,21 @@ def get_region_info(platform_key: str, region_key: str) -> dict:
             f"平台 {platform_key} 不支持地区 {region_key}，"
             f"可用地区：{list(platform['regions'].keys())}"
         )
-    return platform["regions"][region_key]
+    info = dict(platform["regions"][region_key])
+
+    # 尝试用实时汇率覆盖硬编码值
+    try:
+        from src.exchange_rate import get_rate
+        currency = info.get("currency", "USD")
+        if currency != "USD":
+            usd_to_cny = get_rate("USD", "CNY")
+            foreign_to_usd = get_rate("USD", currency)
+            if foreign_to_usd and foreign_to_usd > 0:
+                info["exchange_rate"] = round(usd_to_cny / foreign_to_usd, 4)
+    except Exception:
+        pass  # 降级使用硬编码值
+
+    return info
 
 
 def get_platform_choices() -> list[str]:

@@ -284,6 +284,17 @@ def render_sidebar(source_info: dict | None = None):
     count = get_product_count()
     st.sidebar.caption(f"📦 历史记录：{count} 条产品数据")
 
+    # ---- 汇率状态 ----
+    try:
+        from src.exchange_rate import get_rate_status
+        rate_info = get_rate_status()
+        if rate_info["age_hours"] < 24:
+            st.sidebar.caption(f"💱 1 USD = {rate_info['rate']:.2f} CNY（{rate_info['age_hours']:.0f}h 前更新）")
+        else:
+            st.sidebar.caption(f"💱 1 USD = {rate_info['rate']:.2f} CNY（使用默认汇率）")
+    except Exception:
+        pass
+
     return llm_cfg["configured"], page
 
 
