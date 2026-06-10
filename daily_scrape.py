@@ -120,6 +120,14 @@ def main():
         "--skip-analysis", action="store_true",
         help="跳过 AI 分析（仅抓取并保存原始数据）"
     )
+    parser.add_argument(
+        "--regions", nargs="+", default=None,
+        help="指定要抓取的地区（如 us uk jp de），默认仅抓取各平台默认地区"
+    )
+    parser.add_argument(
+        "--all-regions", action="store_true",
+        help="抓取所有平台的所有地区站点（耗时较长）"
+    )
     args = parser.parse_args()
 
     # 列出可用平台
@@ -165,24 +173,46 @@ def main():
         print(f"\n🤖 AI 分析配置：{provider}/{model}")
         print(f"  API Key：{'已配置 ✅' if api_ok else '未配置 ⚠️（将降级为模拟分析）'}")
 
-    # ---------- 逐平台抓取 + 分析 + 保存 ----------
+    # ---------- 构建 (platform, region) 任务列表 ----------
+    tasks = []
+    for platform_key in target_platforms:
+        platform = get_platform_info(platform_key)
+        if args.all_regions:
+            # 抓取该平台所有地区
+            for rk in platform["regions"]:
+                tasks.append((platform_key, rk))
+        elif args.regions:
+            # 仅抓取用户指定的地区（需该平台支持）
+            for rk in args.regions:
+                if rk in platform["regions"]:
+                    tasks.append((platform_key, rk))
+                else:
+                    print(f"  ⚠️  {platform_key} 不支持地区 '{rk}'，跳过")
+        else:
+            # 默认：仅抓取各平台默认地区
+            tasks.append((platform_key, platform.get("default_region", "us")))
+
+    print(f"\n📋 抓取任务：{len(tasks)} 个站点")
+
+    # ---------- 逐站点抓取 + 分析 + 保存 ----------
     total_saved = 0
     total_products = 0
     platform_summary = []
 
-    for platform_key in target_platforms:
+    for platform_key, region_key in tasks:
         platform = get_platform_info(platform_key)
         icon = platform.get("icon", "📦")
         name = platform.get("name", platform_key)
-        region_key = platform.get("default_region", "us")
         region = get_region_info(platform_key, region_key)
+        region_name = region.get("name", region_key)
         currency = region.get("currency", "USD")
+        label = f"{name} {region_name}"
 
         # 第一步：抓取
         products, source_info = scrape_platform(platform_key, region_key)
 
         if not products:
-            platform_summary.append(f"  {icon} {name}：0 个产品 ❌")
+            platform_summary.append(f"  {icon} {label}：0 个产品 ❌")
             continue
 
         total_products += len(products)
@@ -192,7 +222,7 @@ def main():
             results = [{}] * len(products)
             print(f"  ⏭  跳过 AI 分析（--skip-analysis）")
         else:
-            print(f"  🤖 AI 分析 {name} 产品...")
+            print(f"  🤖 AI 分析 {label} 产品...")
             results = analyze_products(products)
             print(f"  分析完成：{len(results)} 个产品")
             verdict_counts = {}
@@ -205,7 +235,7 @@ def main():
 
         # 第三步：保存到数据库
         source_label = source_info.get("source", "unknown")
-        source_tag = f"{platform_key}_{source_label}"
+        source_tag = f"{platform_key}_{region_key}_{source_label}"
         saved = save_products(
             products, results,
             source=source_tag,
@@ -214,7 +244,7 @@ def main():
             currency=currency,
         )
         total_saved += saved
-        platform_summary.append(f"  {icon} {name}：{saved} 个产品 ✅")
+        platform_summary.append(f"  {icon} {label}：{saved} 个产品 ✅")
         print(f"  💾 已保存 {saved} 条到数据库")
 
     # ---------- 导出 JSON ----------
