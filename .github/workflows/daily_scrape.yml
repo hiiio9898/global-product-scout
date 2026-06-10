@@ -1,37 +1,45 @@
 name: Daily Scrape
 
 on:
-  # 定时触发：北京时间每天 14:00（UTC 6:00）
   schedule:
-    - cron: '0 6 * * *'
-  # 允许通过 GitHub 网页手动触发
+    - cron: '0 6 * * *'   # 北京时间 14:00
   workflow_dispatch:
 
-# 需要写权限来 push 代码
 permissions:
   contents: write
+
+# 防止同时运行多个爬取任务
+concurrency:
+  group: daily-scrape
+  cancel-in-progress: false
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    timeout-minutes: 15
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          # 安装 Playwright 浏览器及其系统依赖（Scrapling StealthyFetcher 需要）
-          python -m playwright install chromium
-          python -m playwright install-deps
+
+      - name: Install Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: playwright-${{ runner.os }}-
+      - run: python -m playwright install chromium && python -m playwright install-deps
 
       - name: Run daily scrape
         env:
