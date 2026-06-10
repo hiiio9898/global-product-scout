@@ -4,6 +4,7 @@ openai
 scrapling>=0.4.8
 curl_cffi>=0.15.0
 rich>=14.0.0
+msgspec
 patchright==1.59.1
 playwright==1.59.0
 browserforge>=1.2.4

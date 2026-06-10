@@ -47,6 +47,11 @@ _REGION_DOMAINS = {
     "uk": "amazon.co.uk",
     "jp": "amazon.co.jp",
     "de": "amazon.de",
+    "fr": "amazon.fr",
+    "it": "amazon.it",
+    "es": "amazon.es",
+    "ca": "amazon.ca",
+    "au": "amazon.com.au",
 }
 
 
@@ -273,7 +278,7 @@ def _scrape_amazon_best_sellers(region: str = "us") -> list[dict]:
     delay = cfg["scrape_delay"]
 
     domain = _REGION_DOMAINS.get(region, "amazon.com")
-    url = f"https://www.{domain}/Best-Sellers/zgbs/"
+    url = f"https://www.{domain}/gp/bestsellers/"
 
     # 请求前等待，遵守速率限制
     time.sleep(delay)
