@@ -50,8 +50,8 @@ SAMPLE_PRODUCTS = [
         "num_reviews": 15000,
         "rank": 1,
         "category": "Electronics",
-        "asin": "B09EXAMPLE1",
-        "url": "https://www.amazon.com/dp/B09EXAMPLE1",
+        "asin": "B0CKLXYZ1A",
+        "url": "https://www.amazon.com/dp/B0CKLXYZ1A",
     },
     {
         "title": "Wireless Earbuds Pro",
@@ -60,8 +60,8 @@ SAMPLE_PRODUCTS = [
         "num_reviews": 28000,
         "rank": 2,
         "category": "Electronics",
-        "asin": "B09EXAMPLE2",
-        "url": "https://www.amazon.com/dp/B09EXAMPLE2",
+        "asin": "B0CKLXYZ2B",
+        "url": "https://www.amazon.com/dp/B0CKLXYZ2B",
     },
     {
         "title": "USB-C Fast Charging Cable",
@@ -70,8 +70,8 @@ SAMPLE_PRODUCTS = [
         "num_reviews": 50000,
         "rank": 3,
         "category": "Accessories",
-        "asin": "B09EXAMPLE3",
-        "url": "https://www.amazon.com/dp/B09EXAMPLE3",
+        "asin": "B0CKLXYZ3C",
+        "url": "https://www.amazon.com/dp/B0CKLXYZ3C",
     },
     {
         "title": "Laptop Stand Aluminum",
@@ -80,8 +80,8 @@ SAMPLE_PRODUCTS = [
         "num_reviews": 8200,
         "rank": 4,
         "category": "Office",
-        "asin": "B09EXAMPLE4",
-        "url": "https://www.amazon.com/dp/B09EXAMPLE4",
+        "asin": "B0CKLXYZ4D",
+        "url": "https://www.amazon.com/dp/B0CKLXYZ4D",
     },
     {
         "title": "LED Desk Lamp Dimmable",
@@ -90,8 +90,8 @@ SAMPLE_PRODUCTS = [
         "num_reviews": 12000,
         "rank": 5,
         "category": "Home & Kitchen",
-        "asin": "B09EXAMPLE5",
-        "url": "https://www.amazon.com/dp/B09EXAMPLE5",
+        "asin": "B0CKLXYZ5E",
+        "url": "https://www.amazon.com/dp/B0CKLXYZ5E",
     },
 ]
 

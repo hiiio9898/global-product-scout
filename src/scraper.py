@@ -83,13 +83,28 @@ def _is_physical_product(title: str) -> bool:
 # 缓存读写
 # ============================================================
 
+def _is_valid_cache(products: list[dict]) -> bool:
+    """验证缓存数据不是占位/示例数据。"""
+    if not products or len(products) < 3:
+        return False
+    for p in products:
+        asin = p.get("asin", "")
+        if not asin or "EXAMPLE" in asin.upper() or asin.startswith("B09EX"):
+            return False
+    return True
+
+
 def _load_cache(region: str = "us") -> Optional[list[dict]]:
     """读取本地缓存的 JSON 数据，文件不存在或损坏时返回 None。"""
     cache_file = _get_cache_file(region)
     # 兼容旧版缓存文件
     if not os.path.exists(cache_file) and region == "us":
         cache_file = _CACHE_FILE
-    return load_json_cache(cache_file)
+    data = load_json_cache(cache_file)
+    if data and not _is_valid_cache(data):
+        print(f"⚠️ 缓存文件包含占位数据，已忽略: {cache_file}")
+        return None
+    return data
 
 
 def _save_cache(products: list[dict], region: str = "us") -> None:

@@ -685,14 +685,14 @@ def get_category_trend(keyword: str, days: int = 30, db_path: Optional[str] = No
 
 def get_latest_products(db_path: Optional[str] = None) -> list[dict]:
     """
-    获取最近一次抓取的产品列表（按 scrape_time 分组，取最新批次）。
+    获取最近一次各平台的产品数据（取每个平台的最新批次）。
 
     返回的产品包含以下字段：
-        title, price, rating, num_reviews, rank, category, scrape_time
-    不包含 analysis_json（分析结果）。
+        title, price, rating, num_reviews, rank, category, scrape_time,
+        platform, region, currency
 
     Returns:
-        产品字典列表，按 rank 排序。
+        产品字典列表，按 platform + rank 排序。
     """
     if db_path is None:
         cfg = get_config()
@@ -702,35 +702,43 @@ def get_latest_products(db_path: Optional[str] = None) -> list[dict]:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
-        # 获取最新的 scrape_time
-        latest_time_row = conn.execute(
-            "SELECT scrape_time FROM products ORDER BY scrape_time DESC LIMIT 1"
-        ).fetchone()
-        if not latest_time_row:
-            return []
-        latest_time = latest_time_row["scrape_time"]
-
-        # 获取该批次的所有产品
-        rows = conn.execute(
-            "SELECT title, price, rating, num_reviews, rank, category, scrape_time "
-            "FROM products WHERE scrape_time = ? "
-            "ORDER BY rank",
-            (latest_time,),
+        # 取每个平台的最新 scrape_time
+        platform_times = conn.execute(
+            "SELECT platform, MAX(scrape_time) as latest_time "
+            "FROM products GROUP BY platform"
         ).fetchall()
+        if not platform_times:
+            return []
 
-        # 转为字典列表
-        return [
-            {
-                "title": row["title"],
-                "price": _safe_float(row["price"]),
-                "rating": _safe_float(row["rating"]),
-                "num_reviews": int(row["num_reviews"] or "0"),
-                "rank": int(row["rank"] or 0),
-                "category": row["category"] or "",
-                "scrape_time": row["scrape_time"],
-            }
-            for row in rows
-        ]
+        # 按平台取最新批次的产品
+        all_products = []
+        for row in platform_times:
+            platform = row["platform"]
+            latest_time = row["latest_time"]
+            products = conn.execute(
+                "SELECT title, price, rating, num_reviews, rank, category, "
+                "scrape_time, platform, region, currency "
+                "FROM products WHERE platform = ? AND scrape_time = ? "
+                "ORDER BY rank",
+                (platform, latest_time),
+            ).fetchall()
+            all_products.extend(
+                {
+                    "title": p["title"],
+                    "price": _safe_float(p["price"]),
+                    "rating": _safe_float(p["rating"]),
+                    "num_reviews": int(p["num_reviews"] or "0"),
+                    "rank": int(p["rank"] or 0),
+                    "category": p["category"] or "",
+                    "scrape_time": p["scrape_time"],
+                    "platform": p["platform"] or "amazon",
+                    "region": p["region"] or "us",
+                    "currency": p["currency"] or "USD",
+                }
+                for p in products
+            )
+
+        return all_products
     finally:
         conn.close()
 
