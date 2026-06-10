@@ -19,19 +19,42 @@
 ├── .env.example
 ├── .gitignore
 ├── requirements.txt
+├── packages.txt
+├── runtime.txt
 ├── app.py
+├── daily_scrape.py
 ├── src/
 │   ├── __init__.py
 │   ├── config.py
-│   ├── scraper.py
-│   ├── analyzer.py
-│   └── utils.py
+│   ├── platforms.py          # 平台注册表（PLATFORMS 字典）
+│   ├── scrapling_adapter.py  # Scrapling 适配层
+│   ├── scraper.py            # Amazon 爬虫
+│   ├── scraper_ebay.py       # eBay 爬虫（每平台独立文件）
+│   ├── scraper_alibaba.py    # Alibaba 爬虫
+│   ├── scraper_search.py     # 关键词搜索
+│   ├── scraper_1688.py       # 1688 比价
+│   ├── analyzer.py           # AI 分析引擎
+│   ├── calculator.py         # 利润计算器（工厂模式）
+│   ├── database.py           # SQLite 数据库
+│   ├── exchange_rate.py      # 实时汇率
+│   ├── market_scanner.py     # 市场扫描引擎
+│   ├── trends.py             # Google Trends
+│   └── utils.py              # 工具函数
 ├── tests/
 │   ├── __init__.py
-│   └── test_basic.py
+│   ├── test_basic.py
+│   └── test_integration.py
 ├── docs/
-│   └── CHANGELOG.md
-└── .claude/skills/
+│   ├── CHANGELOG.md
+│   ├── DEPLOY.md
+│   └── specs/
+├── data/
+│   ├── products.json
+│   └── cache/
+├── .github/workflows/
+├── .streamlit/
+├── .claude/skills/
+└── .devcontainer/
 ```
 
 ### 3. 生成核心文件
@@ -39,12 +62,17 @@
 1. `.env.example` — 所有配置项及说明
 2. `.gitignore` — Python 标准忽略 + `.env` + `.streamlit/secrets.toml`
 3. `requirements.txt` — 依赖清单
-4. `src/config.py` — 配置读取（通过 `python-dotenv`）
-5. `src/utils.py` — 工具函数（重试、日志、类型转换）
-6. `src/scraper.py` — 抓取模块（含 mock 数据）
-7. `src/analyzer.py` — DeepSeek 分析模块（含 mock 分析）
-8. `app.py` — Streamlit 主程序入口
-9. `tests/test_basic.py` — 基础测试（使用 mock 数据）
+4. `src/config.py` — 配置读取（st.secrets > .env 双源）
+5. `src/platforms.py` — 平台注册表（PLATFORMS 字典）
+6. `src/scrapling_adapter.py` — Scrapling 适配层（Fetcher→StealthyFetcher 降级）
+7. `src/utils.py` — 工具函数（UA 池、反爬检测、价格解析、JSON 缓存）
+8. `src/scraper.py` — Amazon 抓取模块（通过 scrapling_adapter）
+9. `src/calculator.py` — 利润计算器（@register_calculator 装饰器工厂）
+10. `src/analyzer.py` — AI 分析模块（OpenAI SDK 兼容，批量 6 个/批）
+11. `src/database.py` — SQLite 数据库（幂等初始化 + ALTER TABLE 迁移）
+12. `app.py` — Streamlit 主程序入口（5 个页面 + session_state 路由）
+13. `daily_scrape.py` — 独立定时抓取脚本
+14. `tests/test_basic.py` — 基础测试
 
 ### 4. 验证
 - 每个文件创建后执行 `python -m py_compile <file>` 确认无语法错误

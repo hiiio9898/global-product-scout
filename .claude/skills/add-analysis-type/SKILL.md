@@ -16,15 +16,15 @@
 ```python
 # 在 BATCH_SYSTEM_PROMPT 中新增字段要求
 # 在 _validate_result() 中新增字段验证
-# 在 _mock_analyze() 中新增 mock 逻辑
+# 注意：无 API 密钥时 analyzer 返回 error dict（parse_error: True, final_verdict: "cautious"）
 ```
 - 确保新增字段有默认值，不影响现有逻辑
 
 ### 3. 更新分析 Prompt
 在 `src/analyzer.py` 中：
-- 更新 `BATCH_SYSTEM_PROMPT`（批量分析）和 `SYSTEM_PROMPT`（单产品分析），在输出 JSON 格式要求中新增字段
+- 更新 `BATCH_SYSTEM_PROMPT`（批量分析，每批 6 个产品），在输出 JSON 格式要求中新增字段
 - 确保 Prompt 明确描述新维度的计算/评估逻辑
-- 在 `_mock_analyze()` 中添加对应逻辑
+- 更新 `_validate_result()` 以验证新字段存在且格式正确
 
 ### 4. 更新前端展示
 在 `app.py` 中：
@@ -50,6 +50,7 @@
 
 ## 注意事项
 - 新增字段必须有默认值，确保向后兼容
-- mock 分析应覆盖新维度，保证离线可测试
+- 无 API 密钥时 analyzer 返回 error dict（`parse_error: True`），新增字段需有默认值以兼容此场景
 - 不修改与当前任务无关的分析逻辑
 - 当前 AI 分析支持多模型切换（DeepSeek / MiMo / OpenAI），新增维度对所有模型生效
+- 分析结果支持三种模式：单品分析（`analyze_products`）、品类报告（`analyze_category_report`）、跨市场对比（`analyze_market_comparison`）
