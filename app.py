@@ -783,23 +783,40 @@ def _render_live_page(api_ok: bool):
         elif src_type == "live":
             st.success(f"✅ 实时抓取成功！已获取 {len(st.session_state.products)} 个热销产品\n\n⏰ 数据更新时间：{ts}")
 
-        # 第二步：AI 分析（如果还未开始）
+        # 第二步：AI 分析（流式渲染，Spec 21）
         if st.session_state.step == "loaded":
             with st.status("🤖 AI 正在深度分析产品竞争力与利润潜力...", expanded=False) as status:
                 progress_bar = st.progress(0, text="准备分析...")
                 total = len(st.session_state.products)
+                # 预创建空容器用于流式渲染
+                result_containers = [st.empty() for _ in range(total)]
 
                 def _on_progress(done, total_count):
                     pct = min(done / total_count, 1.0)
                     progress_bar.progress(pct, text=f"分析进度：{done}/{total_count}")
 
+                def _on_batch_complete(done, total_count, batch_results):
+                    """每批完成后立即渲染该批产品卡片（Spec 21 流式更新）。"""
+                    start_idx = done - len(batch_results)
+                    for j, r in enumerate(batch_results):
+                        idx = start_idx + j
+                        if idx < len(result_containers):
+                            verdict = r.get("final_verdict", "unknown")
+                            emoji = {"recommended": "🟢", "cautious": "🟡", "not_recommended": "🔴"}.get(verdict, "⚪")
+                            title = r.get("title", f"#{idx+1}")[:40]
+                            result_containers[idx].caption(f"{emoji} {title}")
+
                 results = analyze_products(
                     st.session_state.products,
                     progress_callback=_on_progress,
+                    on_complete_callback=_on_batch_complete,
                 )
                 st.session_state.results = results
                 st.session_state.step = "analyzed"
                 progress_bar.empty()
+                # 清除流式预览容器
+                for c in result_containers:
+                    c.empty()
                 status.update(label="✅ AI 分析完成！", state="complete")
 
             # 第三步：保存到数据库
@@ -939,7 +956,20 @@ def _render_live_page(api_ok: bool):
             )
 
             with st.expander(expander_label, expanded=(i == 0)):
-                st.caption(f"📦 **完整标题：** {title_text}")
+                # 产品图片 + 标题（Spec 27）
+                product_data = st.session_state.products[i] if i < len(st.session_state.products) else {}
+                product_url = product_data.get("url", "")
+                product_image = product_data.get("image", "")
+
+                col_img, col_info = st.columns([1, 4])
+                with col_img:
+                    if product_image:
+                        st.image(product_image, width=120)
+                with col_info:
+                    if product_url:
+                        st.markdown(f"📦 **[{title_text}]({product_url})**")
+                    else:
+                        st.caption(f"📦 **完整标题：** {title_text}")
                 if is_raw:
                     verdict_reason = r.get("verdict_reason", "")
                     st.warning(f"⚠️ AI 返回格式异常 — {verdict_reason}")
@@ -1102,6 +1132,14 @@ def _render_live_page(api_ok: bool):
                         result_1688 = search_1688_hybrid(product_title, price_usd)
                     st.session_state[_1688_cache_key] = result_1688
                     cached_1688 = result_1688
+                    # 自动回填采购成本（Spec 26）
+                    if result_1688.get("success") and result_1688.get("price_range"):
+                        pr = result_1688["price_range"]
+                        mid_price = (pr.get("min", 0) + pr.get("max", 0)) / 2
+                        if mid_price > 0:
+                            st.session_state[f"procurement_{i}"] = mid_price
+                            st.toast(f"✅ 已自动填入采购成本: ¥{mid_price:.2f}", icon="✅")
+                            st.rerun()
 
                 # 显示 1688 结果（新查询或缓存）
                 if cached_1688:
@@ -1437,6 +1475,12 @@ def _render_targeted_page(api_ok: bool):
                                         "local_estimate": "📊 本地规则估算",
                                     }.get(src_1688, "📦 参考价")
                                     st.success(f"{label_1688}：¥{pr['min']:.2f} ~ ¥{pr['max']:.2f}")
+                                    # 自动回填采购成本（Spec 26）
+                                    mid_price = (pr.get("min", 0) + pr.get("max", 0)) / 2
+                                    if mid_price > 0:
+                                        st.session_state[f"targeted_procurement_{i}"] = mid_price
+                                        st.toast(f"✅ 已自动填入: ¥{mid_price:.2f}", icon="✅")
+                                        st.rerun()
                                 else:
                                     st.warning(result_1688.get("error", "比价失败"))
 
@@ -1674,13 +1718,30 @@ def _render_market_scanner_page(api_ok: bool):
             progress_bar.empty()
             status.update(label="✅ 扫描完成！", state="complete")
 
-        # 扫描完成后，计算蓝海指数并排序
+        # 扫描完成后，计算蓝海指数并排序（Spec 25）
         markets = results.get("markets", [])
         for m in markets:
-            if not m.get("error"):
-                # 用已有 AI 分析结果计算蓝海指数（如果有）
-                m["blue_ocean_score"] = 0.0
-                m["competition_level"] = "unknown"
+            if not m.get("error") and m.get("products"):
+                # 从该市场的产品分析结果计算蓝海指数
+                products = m["products"]
+                # 聚合各维度平均分
+                dim_sums = {"market_capacity": 0, "competition": 0, "profit_potential": 0}
+                dim_counts = 0
+                for p in products:
+                    analysis = p.get("analysis", {})
+                    if analysis and not analysis.get("parse_error"):
+                        for key in dim_sums:
+                            dim = analysis.get(key, {})
+                            if isinstance(dim, dict) and dim.get("score"):
+                                dim_sums[key] += dim["score"]
+                        dim_counts += 1
+                if dim_counts > 0:
+                    avg_analysis = {k: {"score": v / dim_counts} for k, v in dim_sums.items()}
+                    m["blue_ocean_score"] = calculate_blue_ocean_score(avg_analysis)
+                    m["competition_level"] = classify_competition(dim_sums["competition"] / dim_counts)
+                else:
+                    m["blue_ocean_score"] = 0.0
+                    m["competition_level"] = "unknown"
             else:
                 m["blue_ocean_score"] = 0.0
                 m["competition_level"] = "unknown"
@@ -1724,21 +1785,21 @@ def _render_market_scanner_page(api_ok: bool):
                 avg_price = m.get("avg_price", 0)
                 avg_rating = m.get("avg_rating", 0)
 
-                # 简单蓝海指数：产品多 + 价格高 + 评分高 = 机会大
-                opportunity = min(count / 2, 5) + min(avg_price / 10, 3) + min(avg_rating / 2, 2)
-                opportunity = round(min(opportunity, 10), 1)
+                # 蓝海指数（Spec 25）：从AI分析结果计算
+                blue_ocean = m.get("blue_ocean_score", 0.0)
+                competition_level = m.get("competition_level", "unknown")
 
                 col_rank, col_info, col_stats = st.columns([0.5, 2, 3])
                 with col_rank:
                     st.markdown(f"### #{i+1}")
                 with col_info:
                     st.markdown(f"**{pf_icon} {pf_name} — {region_name}**")
-                    st.caption(f"产品数：{count} | 来源：{m.get('source', 'unknown')}")
+                    st.caption(f"产品数：{count} | 竞争度：{competition_level}")
                 with col_stats:
                     c1, c2, c3 = st.columns(3)
                     c1.metric("平均价格", f"${avg_price:.2f}")
                     c2.metric("平均评分", f"{avg_rating:.1f}")
-                    c3.metric("机会指数", f"{opportunity}/10")
+                    c3.metric("蓝海指数", f"{blue_ocean}/10")
 
         # ---- 竞争热度矩阵 ----
         if len(valid_markets) >= 2:

@@ -248,6 +248,23 @@ def _parse_product_card(card, rank: int) -> Optional[dict]:
     rating = _extract_rating(card)
     num_reviews = _extract_review_count(card)
 
+    # 提取产品URL
+    url = ""
+    link = card.css("a.a-link-normal").first if card.css("a.a-link-normal") else None
+    if link:
+        href = link.attrib.get("href", "")
+        if href.startswith("/"):
+            domain = _REGION_DOMAINS.get("us", "amazon.com")
+            url = f"https://www.{domain}{href}"
+        elif href.startswith("http"):
+            url = href
+
+    # 提取图片URL
+    image = ""
+    img = card.css("img").first if card.css("img") else None
+    if img:
+        image = img.attrib.get("src", "")
+
     return {
         "title": title,
         "asin": asin,
@@ -256,6 +273,8 @@ def _parse_product_card(card, rank: int) -> Optional[dict]:
         "num_reviews": num_reviews,
         "rank": rank,
         "category": "",
+        "url": url,
+        "image": image,
     }
 
 

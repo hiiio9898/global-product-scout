@@ -397,10 +397,13 @@ def analyze_products(
         batch_results = _analyze_batch(batch, client, llm_cfg)
         results.extend(batch_results)
 
+        # 进度回调
         if progress_callback:
-            progress_callback(min(len(results), total), total)
+            progress_callback(len(results), total)
+
+        # 流式回调：每批完成后通知UI（Spec 21）
         if on_complete_callback:
-            on_complete_callback(min(len(results), total), total, batch_results)
+            on_complete_callback(len(results), total, batch_results)
 
     return results
 

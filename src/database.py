@@ -121,6 +121,8 @@ def init_db(db_path: Optional[str] = None) -> None:
             ("platform", "TEXT DEFAULT 'amazon'"),
             ("region", "TEXT DEFAULT 'us'"),
             ("currency", "TEXT DEFAULT 'USD'"),
+            ("url", "TEXT DEFAULT ''"),
+            ("image", "TEXT DEFAULT ''"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE products ADD COLUMN {col} {default}")
@@ -191,8 +193,9 @@ def save_products(
                 """
                 INSERT INTO products
                     (title, price, rating, num_reviews, rank, category,
-                     analysis_json, source, asin, platform, region, currency)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     analysis_json, source, asin, platform, region, currency,
+                     url, image)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     product.get("title", ""),
@@ -207,6 +210,8 @@ def save_products(
                     platform,
                     region,
                     currency,
+                    product.get("url", ""),
+                    product.get("image", ""),
                 ),
             )
         return len(products)
@@ -706,7 +711,7 @@ def get_latest_products(db_path: Optional[str] = None) -> list[dict]:
     try:
         rows = conn.execute(
             "SELECT title, price, rating, num_reviews, rank, category, "
-            "scrape_time, platform, region, currency, analysis_json "
+            "scrape_time, platform, region, currency, analysis_json, url, image "
             "FROM products "
             "WHERE scrape_time >= datetime('now', '-2 hours') "
             "ORDER BY platform, region, rank"
@@ -725,6 +730,8 @@ def get_latest_products(db_path: Optional[str] = None) -> list[dict]:
                 "platform": p["platform"] or "amazon",
                 "region": p["region"] or "us",
                 "currency": p["currency"] or "USD",
+                "url": p["url"] or "",
+                "image": p["image"] or "",
             }
             # 解析 AI 分析结果
             analysis_raw = p["analysis_json"]
