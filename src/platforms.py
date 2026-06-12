@@ -98,6 +98,29 @@ PLATFORMS = {
             "packaging_cny": 3.0,
         },
     },
+    "aliexpress": {
+        "name": "AliExpress",
+        "icon": "🔶",
+        "scraper_module": "src.scraper_aliexpress",
+        "scraper_func": "fetch_aliexpress_best_sellers",
+        "search_module": "src.scraper_aliexpress",
+        "search_func": "search_aliexpress",
+        "calculator": "calculate_aliexpress_profit",
+        "scrape_mode": "stealth_only",
+        "currency": "USD",
+        "regions": {
+            "us": {"name": "美国站", "domain": "aliexpress.us", "currency": "USD", "exchange_rate": 7.24},
+            "eu": {"name": "欧洲站", "domain": "aliexpress.com", "currency": "EUR", "exchange_rate": 7.88},
+            "ru": {"name": "俄罗斯站", "domain": "aliexpress.ru", "currency": "RUB", "exchange_rate": 0.08},
+        },
+        "default_region": "us",
+        "profit_defaults": {
+            "commission_pct": 0.065,
+            "withdrawal_fee_pct": 0.02,
+            "shipping_cny": 15.0,
+            "packaging_cny": 3.0,
+        },
+    },
 }
 
 

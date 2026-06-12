@@ -1064,7 +1064,7 @@ def _render_live_page(api_ok: bool):
                         st.caption(f"**{label}** ({score_val}/10)")
                         st.text(reason_val)
 
-                # ---- 📈 Google Trends 趋势 ----
+                # ---- 📈 Google Trends 趋势（Spec 31 增强） ----
                 if st.button("📈 查询 Google Trends 趋势", key=f"trend_{i}", width="stretch"):
                     trend_keyword = title_text.split(" - ")[0].split(",")[0][:30].strip()
                     with st.spinner(f"正在查询趋势：{trend_keyword}..."):
@@ -1072,6 +1072,18 @@ def _render_live_page(api_ok: bool):
                     if trend["available"]:
                         icon = get_trend_icon(trend["direction"])
                         st.success(f"📈 趋势：{icon} | 当前热度 {trend['interest']} | 平均 {trend['avg_interest']}")
+                        # 展示12个月趋势图（Spec 31）
+                        from src.trends import get_trend_timeseries
+                        ts = get_trend_timeseries(trend_keyword)
+                        if ts["available"] and ts["dates"]:
+                            import plotly.express as px
+                            fig = px.line(
+                                x=ts["dates"], y=ts["values"],
+                                title=f"Google Trends: {trend_keyword}",
+                                labels={"x": "日期", "y": "搜索热度"},
+                            )
+                            fig.update_layout(height=250, margin=dict(l=40, r=20, t=40, b=40))
+                            st.plotly_chart(fig, width="stretch")
                     else:
                         st.warning(f"⚠️ {trend['error']}")
 
@@ -2047,6 +2059,24 @@ def _render_history_page():
             "并将 `data/products.json` 提交到 GitHub。"
         )
 
+    # 价格监控告警（Spec 20）
+    try:
+        from src.database import get_price_alerts
+        alerts = get_price_alerts(threshold_pct=10.0)
+        if alerts:
+            with st.expander(f"🔔 价格变动告警（{len(alerts)} 条）", expanded=False):
+                for alert in alerts[:10]:
+                    change = alert["change_pct"]
+                    icon = "📉" if change < 0 else "📈"
+                    color = "red" if change < 0 else "green"
+                    st.markdown(
+                        f"{icon} **{alert['title'][:40]}** — "
+                        f"${alert['old_price']:.2f} → ${alert['new_price']:.2f} "
+                        f"(**{change:+.1f}%**)"
+                    )
+    except Exception:
+        pass  # 数据库不可用时忽略
+
     # ---- Tabs ----
     tab_list, tab_trend, tab_compare, tab_fav = st.tabs([
         "📚 历史记录", "📈 产品趋势", "⚖️ 跨平台对比", "⭐ 已收藏"
@@ -2607,6 +2637,15 @@ def _render_favorites_tab():
 
     st.caption(f"共 {len(favorites)} 个收藏产品")
 
+    # 采购流程状态定义
+    STATUS_MAP = {
+        "saved":     ("📋 已收藏", "仅收藏，待评估"),
+        "sourcing":  ("🔍 找供应商", "正在1688/阿里巴巴寻找供应商"),
+        "sampling":  ("📦 申请样品", "已联系供应商，等待样品"),
+        "ready":     ("💰 准备上架", "样品确认，计算落地成本"),
+        "launched":  ("🚀 已上架", "已完成上架"),
+    }
+
     for i, fav in enumerate(favorites):
         title = fav.get("title", "")
         platform = fav.get("platform", "amazon")
@@ -2618,16 +2657,31 @@ def _render_favorites_tab():
         analysis = fav.get("analysis", {})
         verdict = analysis.get("final_verdict", "")
         verdict_label = VERDICT_LABEL_MAP.get(verdict, "⚪")
+        status = fav.get("status", "saved")
+        status_label, status_desc = STATUS_MAP.get(status, ("📋 已收藏", ""))
 
         with st.container(border=True):
-            col_info, col_action = st.columns([5, 1])
+            col_info, col_status, col_action = st.columns([4, 2, 1])
             with col_info:
                 st.markdown(f"{pf_icon} **{verdict_label}** {title}")
                 st.caption(f"💰 ${price} | ⭐ {rating} | 平台：{pf_name}")
+            with col_status:
+                new_status = st.selectbox(
+                    "采购进度",
+                    options=list(STATUS_MAP.keys()),
+                    format_func=lambda k: STATUS_MAP[k][0],
+                    index=list(STATUS_MAP.keys()).index(status) if status in STATUS_MAP else 0,
+                    key=f"fav_status_{i}",
+                    label_visibility="collapsed",
+                )
+                if new_status != status:
+                    from src.database import update_favorite_status
+                    update_favorite_status(title, platform, new_status)
+                    st.rerun()
+                st.caption(status_desc)
             with col_action:
-                if st.button("🗑️ 取消收藏", key=f"del_fav_{i}", width="stretch"):
+                if st.button("🗑️", key=f"del_fav_{i}", help="取消收藏"):
                     remove_favorite(title, platform)
-                    # 清除缓存
                     cache_key = f"_fav_{title}_{platform}"
                     if cache_key in st.session_state:
                         del st.session_state[cache_key]

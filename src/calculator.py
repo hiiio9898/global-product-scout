@@ -241,6 +241,58 @@ def calculate_ebay_profit(
 
 
 # ============================================================
+# AliExpress 利润计算器（Spec 13）
+# ============================================================
+
+@register_calculator("aliexpress")
+def calculate_aliexpress_profit(
+    price: float,
+    defaults: dict,
+    procurement_cny: float = 0.0,
+    **kwargs,
+) -> dict:
+    """
+    AliExpress 卖家利润计算。
+
+    公式：
+        售价(USD) × 汇率 = 售价(CNY)
+        佣金 = 售价(CNY) × commission_pct (5-8%)
+        提现手续费 = 售价(CNY) × withdrawal_fee_pct (2%)
+        总成本 = 采购成本 + 国际运费 + 包装费 + 佣金 + 提现手续费
+        净利 = 售价(CNY) - 总成本
+    """
+    exchange_rate = defaults.get("exchange_rate", 7.24)
+    commission_pct = defaults.get("commission_pct", 0.065)
+    withdrawal_fee_pct = defaults.get("withdrawal_fee_pct", 0.02)
+    shipping_cny = defaults.get("shipping_cny", 15.0)
+    packaging_cny = defaults.get("packaging_cny", 3.0)
+
+    price_cny = price * exchange_rate
+    commission_cny = price_cny * commission_pct
+    withdrawal_cny = price_cny * withdrawal_fee_pct
+    total_cost = procurement_cny + shipping_cny + packaging_cny + commission_cny + withdrawal_cny
+    net_profit_cny = price_cny - total_cost
+    net_profit_usd = net_profit_cny / exchange_rate if exchange_rate > 0 else 0.0
+    margin_pct = (net_profit_cny / price_cny * 100) if price_cny > 0 else 0.0
+
+    return {
+        "price_local": round(price, 2),
+        "price_cny": round(price_cny, 2),
+        "commission_cny": round(commission_cny, 2),
+        "withdrawal_cny": round(withdrawal_cny, 2),
+        "shipping_cny": round(shipping_cny, 2),
+        "packaging_cny": round(packaging_cny, 2),
+        "procurement_cny": round(procurement_cny, 2),
+        "total_cost_cny": round(total_cost, 2),
+        "net_profit_cny": round(net_profit_cny, 2),
+        "net_profit_usd": round(net_profit_usd, 2),
+        "margin_pct": round(margin_pct, 1),
+        "is_profitable": net_profit_cny > 0,
+        "has_procurement": procurement_cny > 0,
+    }
+
+
+# ============================================================
 # 统一利润计算入口（向后兼容）
 # ============================================================
 

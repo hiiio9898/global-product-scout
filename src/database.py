@@ -909,6 +909,14 @@ def _init_favorites_table(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(_CREATE_FAVORITES_SQL)
+        # 兼容：为已有表新增字段（Spec 16 P4 采购流程）
+        for col, default in [
+            ("status", "TEXT DEFAULT 'saved'"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE favorites ADD COLUMN {col} {default}")
+            except sqlite3.OperationalError:
+                pass  # 字段已存在，忽略
         conn.commit()
     finally:
         conn.close()
@@ -947,6 +955,43 @@ def add_favorite(
                 notes=excluded.notes
             """,
             (title, platform, price, rating, num_reviews, analysis_json, notes),
+        )
+        conn.commit()
+        return True
+    except sqlite3.Error:
+        return False
+    finally:
+        conn.close()
+
+
+def update_favorite_status(
+    title: str,
+    platform: str,
+    status: str,
+    db_path: Optional[str] = None,
+) -> bool:
+    """
+    更新收藏产品的采购流程状态。
+
+    Args:
+        title: 产品标题
+        platform: 平台标识
+        status: 新状态 (saved/sourcing/sampling/ready/launched)
+        db_path: 数据库路径
+
+    Returns:
+        True 如果操作成功
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+    _init_favorites_table(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE favorites SET status = ? WHERE title = ? AND platform = ?",
+            (status, title, platform),
         )
         conn.commit()
         return True
@@ -1033,6 +1078,109 @@ def get_favorites(
                 item["analysis"] = {}
             results.append(item)
         return results
+    finally:
+        conn.close()
+
+
+# ============================================================
+# 价格监控（Spec 20）
+# ============================================================
+
+def get_price_history(
+    title: str,
+    platform: str = "amazon",
+    limit: int = 30,
+    db_path: Optional[str] = None,
+) -> list[dict]:
+    """
+    获取某产品的价格历史记录。
+
+    Args:
+        title: 产品标题（模糊匹配）
+        platform: 平台标识
+        limit: 最多返回条数
+        db_path: 数据库路径
+
+    Returns:
+        [{"price": float, "scrape_time": str, "region": str}, ...]
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+    init_db(db_path)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT price, scrape_time, region FROM products "
+            "WHERE title LIKE ? AND platform = ? "
+            "ORDER BY scrape_time DESC LIMIT ?",
+            (f"%{title[:50]}%", platform, limit),
+        ).fetchall()
+        return [
+            {
+                "price": _safe_float(r["price"]),
+                "scrape_time": r["scrape_time"],
+                "region": r["region"],
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+def get_price_alerts(
+    threshold_pct: float = 10.0,
+    db_path: Optional[str] = None,
+) -> list[dict]:
+    """
+    检测最近价格变动超过阈值的产品。
+
+    Args:
+        threshold_pct: 价格变动百分比阈值
+        db_path: 数据库路径
+
+    Returns:
+        [{"title": str, "platform": str, "old_price": float, "new_price": float, "change_pct": float}, ...]
+    """
+    if db_path is None:
+        cfg = get_config()
+        db_path = cfg["database_path"]
+    init_db(db_path)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        # 获取每个产品最近两条记录比较价格
+        rows = conn.execute("""
+            SELECT title, platform, price, scrape_time,
+                   LAG(price) OVER (PARTITION BY title, platform ORDER BY scrape_time) as prev_price,
+                   LAG(scrape_time) OVER (PARTITION BY title, platform ORDER BY scrape_time) as prev_time
+            FROM products
+            ORDER BY scrape_time DESC
+            LIMIT 500
+        """).fetchall()
+
+        alerts = []
+        for r in rows:
+            try:
+                new_price = _safe_float(r["price"])
+                old_price = _safe_float(r["prev_price"])
+                if old_price > 0 and new_price > 0:
+                    change_pct = ((new_price - old_price) / old_price) * 100
+                    if abs(change_pct) >= threshold_pct:
+                        alerts.append({
+                            "title": r["title"],
+                            "platform": r["platform"],
+                            "old_price": old_price,
+                            "new_price": new_price,
+                            "change_pct": round(change_pct, 1),
+                            "scrape_time": r["scrape_time"],
+                        })
+            except (TypeError, ValueError):
+                continue
+        return alerts
     finally:
         conn.close()
 

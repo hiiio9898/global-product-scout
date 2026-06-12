@@ -109,3 +109,53 @@ def get_trend_icon(direction: str) -> str:
         "stable": "➡️ 平稳",
         "declining": "📉 下降",
     }.get(direction, "❓ 未知")
+
+
+def get_trend_timeseries(keyword: str, timeframe: str = "today 12-m") -> dict:
+    """
+    获取关键词的 Google Trends 时间序列数据（Spec 31）。
+
+    Args:
+        keyword: 搜索关键词
+        timeframe: 时间范围（默认12个月）
+
+    Returns:
+        {
+            "dates": [str, ...],      # 日期列表
+            "values": [int, ...],     # 兴趣值列表 (0-100)
+            "available": bool,
+            "error": str | None,
+        }
+    """
+    if not keyword or not keyword.strip():
+        return {"dates": [], "values": [], "available": False, "error": "关键词为空"}
+
+    keyword = keyword.strip()[:50]
+
+    try:
+        from pytrends.request import TrendReq
+
+        time.sleep(_QUERY_DELAY)
+
+        pytrends = TrendReq(hl="en-US", tz=360, timeout=(10, 25))
+        pytrends.build_payload(
+            [keyword],
+            cat=0,
+            timeframe=timeframe,
+            geo="US",
+        )
+
+        df = pytrends.interest_over_time()
+
+        if df is None or df.empty or keyword not in df.columns:
+            return {"dates": [], "values": [], "available": False, "error": f"未找到 '{keyword}' 的趋势数据"}
+
+        dates = [d.strftime("%Y-%m-%d") for d in df.index]
+        values = [int(v) for v in df[keyword].values]
+
+        return {"dates": dates, "values": values, "available": True, "error": None}
+
+    except ImportError:
+        return {"dates": [], "values": [], "available": False, "error": "pytrends 未安装"}
+    except Exception as e:
+        return {"dates": [], "values": [], "available": False, "error": str(e)[:100]}
