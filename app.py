@@ -270,16 +270,26 @@ def render_sidebar(source_info: dict | None = None):
             )
         else:
             ad_pct = 0.0
-        # 运费
-        shipping_label = {
-            "amazon": "FBA 头程运费 (¥/件)",
-            "ebay": "国际运费 (¥/件)",
-            "alibaba": "国际运费 (¥/件)",
-        }.get(active_pf, "国际运费 (¥/件)")
-        shipping_cny = st.number_input(
-            shipping_label, min_value=0.0, max_value=200.0,
-            value=float(profit_defaults.get("shipping_cny", 15.0)), step=1.0,
+        # 运费分档（Spec 29）
+        SHIPPING_TIERS = {
+            "light":  {"label": "轻件 <500g",   "cny": 8.0},
+            "medium": {"label": "中件 500g-2kg", "cny": 20.0},
+            "heavy":  {"label": "重件 >2kg",     "cny": 50.0},
+            "custom": {"label": "自定义",        "cny": None},
+        }
+        shipping_tier = st.selectbox(
+            "📦 运费档位",
+            options=list(SHIPPING_TIERS.keys()),
+            format_func=lambda k: SHIPPING_TIERS[k]["label"],
+            index=1,  # 默认中件
         )
+        if shipping_tier == "custom":
+            shipping_cny = st.number_input(
+                "自定义运费 (¥/件)", min_value=0.0, max_value=200.0,
+                value=float(profit_defaults.get("shipping_cny", 15.0)), step=1.0,
+            )
+        else:
+            shipping_cny = SHIPPING_TIERS[shipping_tier]["cny"]
 
     # 同步到 session_state 供计算器使用
     st.session_state["profit_defaults"] = {
@@ -381,12 +391,15 @@ def _render_1688_result(result_1688: dict):
     if result_1688["success"]:
         pr = result_1688["price_range"]
         source = result_1688.get("source", "unknown")
-        source_label = {
-            "1688_real": "📦 1688 真实价格",
-            "ai_estimate": "🤖 AI 估算参考价",
-            "local_estimate": "📊 本地规则估算",
-        }.get(source, "📦 参考价")
-        st.success(f"{source_label}：¥{pr['min']:.2f} ~ ¥{pr['max']:.2f}")
+        SOURCE_LABELS = {
+            "1688_real": ("📦 1688 真实价格", "数据来自1688实时页面，可信度高"),
+            "ai_estimate": ("🤖 AI 估算参考价", "价格由AI根据产品信息推估，仅供参考"),
+            "local_estimate": ("📊 本地规则估算", "价格基于品类经验倍率计算，仅作参考"),
+        }
+        label, tooltip = SOURCE_LABELS.get(source, ("📦 参考价", ""))
+        st.success(f"{label}：¥{pr['min']:.2f} ~ ¥{pr['max']:.2f}")
+        if tooltip:
+            st.caption(f"ℹ️ {tooltip}")
         for item in result_1688["results"]:
             title_1688 = item.get('title', '')
             price = item.get('price', 0)
@@ -1008,6 +1021,27 @@ def _render_live_page(api_ok: bool):
                             delta_color=dc,
                             help=reason_val,
                         )
+                        # AI估算标注（Spec 28）
+                        if key == "market_capacity" and reason_val:
+                            st.caption("🔍 AI估算")
+
+                # 竞品概览（Spec 25扩展）— 展示同批次其他产品的价格/评分分布
+                with st.expander("📊 竞品概览", expanded=False):
+                    comp_data = []
+                    for j, (cp, cr) in enumerate(zip(st.session_state.products, st.session_state.results)):
+                        if j == i:
+                            continue
+                        cp_verdict = cr.get("final_verdict", "") if isinstance(cr, dict) else ""
+                        comp_data.append({
+                            "产品": cp.get("title", "")[:40],
+                            "价格": f"${cp.get('price', 0):.2f}",
+                            "评分": f"{cp.get('rating', 0):.1f}",
+                            "评论数": f"{cp.get('num_reviews', 0):,}",
+                            "判定": {"recommended": "🟢", "cautious": "🟡", "not_recommended": "🔴"}.get(cp_verdict, "⚪"),
+                        })
+                    if comp_data:
+                        import pandas as pd
+                        st.dataframe(pd.DataFrame(comp_data), width="stretch", hide_index=True)
 
                 # 雷达图（Spec 16 P3）
                 _render_radar_chart(r, title_text[:30])
