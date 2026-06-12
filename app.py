@@ -193,7 +193,7 @@ def render_sidebar(source_info: dict | None = None):
     else:
         st.sidebar.caption(f"🤖 {provider_name} — ⚠️ 未配置")
 
-    with st.sidebar.expander("⚙️ AI 模型设置", expanded=False):
+    with st.sidebar.expander("AI 模型设置", expanded=False):
         # 供应商选择
         provider_names = {k: v["name"] for k, v in LLM_PROVIDERS.items()}
         provider_keys = list(LLM_PROVIDERS.keys())
@@ -236,7 +236,7 @@ def render_sidebar(source_info: dict | None = None):
 
     # ---- 💰 利润参数（可配置，平台自适应） ----
     st.sidebar.divider()
-    with st.sidebar.expander("💰 利润参数（可配置）", expanded=False):
+    with st.sidebar.expander("利润参数（可配置）", expanded=False):
         # 根据当前平台读取默认参数
         active_pf = st.session_state.get("active_platform", "amazon")
         pf_info = get_platform_info(active_pf)
@@ -568,7 +568,7 @@ def _render_dashboard_page():
 
         st.divider()
 
-        with st.expander("💡 数据来源说明", expanded=False):
+        with st.expander("数据来源说明", expanded=False):
             st.markdown(
                 "- **Amazon**：Best Sellers 榜单 + 关键词搜索\n"
                 "- **eBay**：Trending 产品 + 关键词搜索\n"
@@ -794,7 +794,7 @@ def _render_live_page(api_ok: bool):
 
         # 第二步：AI 分析（流式渲染，Spec 21）
         if st.session_state.step == "loaded":
-            with st.status("🤖 AI 正在深度分析产品竞争力与利润潜力...", expanded=False) as status:
+            with st.status("AI 正在深度分析产品竞争力与利润潜力...", expanded=False) as status:
                 progress_bar = st.progress(0, text="准备分析...")
                 total = len(st.session_state.products)
                 # 预创建空容器用于流式渲染
@@ -1374,7 +1374,7 @@ def _render_targeted_page(api_ok: bool):
         pf_info = get_platform_info(platform)
 
         # 并行：五维度分析 + 品类报告
-        with st.status("🤖 AI 正在深度分析...", expanded=False) as status:
+        with st.status("AI 正在深度分析...", expanded=False) as status:
             progress_bar = st.progress(0, text="准备分析...")
 
             def _on_progress(done, total_count):
@@ -1747,7 +1747,7 @@ def _render_market_scanner_page(api_ok: bool):
         platforms = st.session_state.scan_platforms
         regions = st.session_state.scan_regions
 
-        with st.status("🌐 正在扫描市场...", expanded=True) as status:
+        with st.status("正在扫描市场...", expanded=True) as status:
             progress_bar = st.progress(0, text="准备扫描...")
 
             def _on_progress(done, total, label):
@@ -1889,7 +1889,7 @@ def _render_market_scanner_page(api_ok: bool):
             st.caption("基于扫描数据，AI 给出最佳市场推荐和入场策略")
 
             if st.button("🔍 生成 AI 分析报告", key="scan_ai_btn", type="primary"):
-                with st.status("🤖 AI 正在分析...", expanded=False) as status:
+                with st.status("AI 正在分析...", expanded=False) as status:
                     from src.analyzer import analyze_market_comparison
                     report = analyze_market_comparison(keyword, valid_markets)
                     st.session_state.scan_report = report
