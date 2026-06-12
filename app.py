@@ -2560,9 +2560,9 @@ def _render_favorites_tab():
 def _dim_score(analysis: dict, key: str) -> str:
     """从分析结果提取维度评分字符串，如 '7/10'。"""
     dim = analysis.get(key, {})
-    if isinstance(dim, dict):
-        return f"{dim.get('score', '')}/10"
-    return ""
+    if isinstance(dim, dict) and dim.get("score"):
+        return f"{dim['score']}/10"
+    return "N/A"
 
 
 def _verdict_emoji(verdict: str) -> str:

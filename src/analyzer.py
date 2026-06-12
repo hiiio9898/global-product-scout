@@ -384,7 +384,12 @@ def analyze_products(
         base_url=llm_cfg["base_url"],
         timeout=120,
     )
-    BATCH_SIZE = 6
+    # 批次大小：从配置读取，默认6
+    try:
+        from .config import get_config
+        BATCH_SIZE = int(get_config().get("analysis_batch_size", 6))
+    except Exception:
+        BATCH_SIZE = 6
     results = []
 
     for batch_start in range(0, total, BATCH_SIZE):
