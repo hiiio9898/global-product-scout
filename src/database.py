@@ -691,7 +691,7 @@ def get_latest_products(db_path: Optional[str] = None) -> list[dict]:
 
     返回的产品包含以下字段：
         title, price, rating, num_reviews, rank, category, scrape_time,
-        platform, region, currency
+        platform, region, currency, analysis
 
     Returns:
         产品字典列表，按 platform + region + rank 排序。
@@ -706,14 +706,15 @@ def get_latest_products(db_path: Optional[str] = None) -> list[dict]:
     try:
         rows = conn.execute(
             "SELECT title, price, rating, num_reviews, rank, category, "
-            "scrape_time, platform, region, currency "
+            "scrape_time, platform, region, currency, analysis_json "
             "FROM products "
             "WHERE scrape_time >= datetime('now', '-2 hours') "
             "ORDER BY platform, region, rank"
         ).fetchall()
 
-        return [
-            {
+        result = []
+        for p in rows:
+            item = {
                 "title": p["title"],
                 "price": _safe_float(p["price"]),
                 "rating": _safe_float(p["rating"]),
@@ -725,8 +726,18 @@ def get_latest_products(db_path: Optional[str] = None) -> list[dict]:
                 "region": p["region"] or "us",
                 "currency": p["currency"] or "USD",
             }
-            for p in rows
-        ]
+            # 解析 AI 分析结果
+            analysis_raw = p["analysis_json"]
+            if analysis_raw:
+                try:
+                    item["analysis"] = json.loads(analysis_raw)
+                except (json.JSONDecodeError, TypeError):
+                    item["analysis"] = {}
+            else:
+                item["analysis"] = {}
+            result.append(item)
+
+        return result
     finally:
         conn.close()
 
