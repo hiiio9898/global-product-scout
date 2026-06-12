@@ -21,7 +21,7 @@ from unittest.mock import patch, MagicMock
 class TestPlatformRegistry:
     """Spec 8: 平台注册表。"""
 
-    EXPECTED_PLATFORMS = ["amazon", "ebay", "alibaba"]
+    EXPECTED_PLATFORMS = ["amazon", "ebay", "alibaba", "aliexpress"]
 
     def test_all_platforms_registered(self):
         """验证 4 个平台全部注册到 PLATFORMS。"""
@@ -73,7 +73,7 @@ class TestPlatformRegistry:
 class TestProfitCalculators:
     """Spec 8-11: 各平台利润计算器。"""
 
-    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "alibaba"])
+    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "alibaba", "aliexpress"])
     def test_calculator_exists(self, platform_key):
         """验证每个平台的利润计算器已注册。"""
         from src.calculator import get_calculator
@@ -254,6 +254,7 @@ class TestScraperImports:
         ("amazon", "fetch_amazon_best_sellers"),
         ("ebay", "fetch_ebay_best_sellers"),
         ("alibaba", "fetch_alibaba_best_sellers"),
+        ("aliexpress", "fetch_aliexpress_best_sellers"),
     ])
     def test_scraper_module_importable(self, platform_key, expected_func):
         """验证每个平台的抓取模块可导入。"""
@@ -268,7 +269,7 @@ class TestScraperImports:
         assert callable(func)
         assert func_name == expected_func
 
-    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "alibaba"])
+    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "alibaba", "aliexpress"])
     def test_search_function_importable(self, platform_key):
         """验证每个平台的搜索函数可导入。"""
         from src.platforms import PLATFORMS
