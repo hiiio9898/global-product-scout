@@ -180,58 +180,59 @@ def render_sidebar(source_info: dict | None = None):
             if ts:
                 st.sidebar.caption(f"⏰ {ts}")
 
-    # ---- AI 模型选择器 ----
+    # ---- AI 模型选择器（折叠面板，大多数人只设一次） ----
     llm_cfg = get_llm_config()
     st.sidebar.divider()
-    st.sidebar.subheader("🤖 AI 模型")
 
-    # 供应商选择
-    provider_names = {k: v["name"] for k, v in LLM_PROVIDERS.items()}
-    provider_keys = list(LLM_PROVIDERS.keys())
-
-    # 从 session_state 恢复上次 UI 选择，否则从环境变量读取
-    last_provider = st.session_state.get("llm_provider") or llm_cfg["provider"]
-    last_model = st.session_state.get("llm_model") or llm_cfg["model"]
-
-    current_provider_idx = provider_keys.index(last_provider) if last_provider in provider_keys else 0
-
-    selected_provider = st.sidebar.selectbox(
-        "AI 供应商",
-        options=provider_keys,
-        format_func=lambda k: provider_names[k],
-        index=current_provider_idx,
-        key="llm_provider_select",
-    )
-
-    # 模型选择（根据供应商动态更新）
-    available_models = LLM_PROVIDERS[selected_provider]["models"]
-    if last_model not in available_models:
-        last_model = available_models[0]
-
-    selected_model = st.sidebar.selectbox(
-        "模型",
-        options=available_models,
-        index=available_models.index(last_model),
-        key="llm_model_select",
-    )
-
-    # 仅更新 session_state，不做 st.rerun（避免打断按钮点击）
-    st.session_state["llm_provider"] = selected_provider
-    st.session_state["llm_model"] = selected_model
-
-    # API 配置状态显示（直接读取所选供应商的 Key，避免 session_state 时序问题）
-    provider_info = LLM_PROVIDERS[selected_provider]
-    provider_name = provider_info["name"]
-    # 直接从 st.secrets / .env 读取所选供应商的 API Key
-    provider_api_key = _get_secret(provider_info["api_key_key"], "")
+    # 快速状态显示
+    provider_info = LLM_PROVIDERS.get(llm_cfg["provider"], {})
+    provider_name = provider_info.get("name", llm_cfg["provider"])
+    provider_api_key = _get_secret(provider_info.get("api_key_key", ""), "")
     if provider_api_key:
-        st.sidebar.caption(f"✅ {provider_name} {selected_model}")
+        st.sidebar.caption(f"🤖 {provider_name} / {llm_cfg['model']} ✅")
     else:
-        st.sidebar.caption(f"⚠️ {provider_name} 未配置（使用模拟分析）")
-        st.sidebar.info(
-            f"💡 在 **Streamlit Secrets**（云端）或 `.env` 文件（本地）中\n"
-            f"配置 `{provider_info['api_key_key']}` 即可启用 {provider_name} AI 分析。"
+        st.sidebar.caption(f"🤖 {provider_name} — ⚠️ 未配置")
+
+    with st.sidebar.expander("⚙️ AI 模型设置", expanded=False):
+        # 供应商选择
+        provider_names = {k: v["name"] for k, v in LLM_PROVIDERS.items()}
+        provider_keys = list(LLM_PROVIDERS.keys())
+
+        last_provider = st.session_state.get("llm_provider") or llm_cfg["provider"]
+        last_model = st.session_state.get("llm_model") or llm_cfg["model"]
+
+        current_provider_idx = provider_keys.index(last_provider) if last_provider in provider_keys else 0
+
+        selected_provider = st.selectbox(
+            "AI 供应商",
+            options=provider_keys,
+            format_func=lambda k: provider_names[k],
+            index=current_provider_idx,
+            key="llm_provider_select",
         )
+
+        # 模型选择（根据供应商动态更新）
+        available_models = LLM_PROVIDERS[selected_provider]["models"]
+        if last_model not in available_models:
+            last_model = available_models[0]
+
+        selected_model = st.selectbox(
+            "模型",
+            options=available_models,
+            index=available_models.index(last_model),
+            key="llm_model_select",
+        )
+
+        st.session_state["llm_provider"] = selected_provider
+        st.session_state["llm_model"] = selected_model
+
+        # API 配置状态
+        provider_info = LLM_PROVIDERS[selected_provider]
+        provider_api_key = _get_secret(provider_info["api_key_key"], "")
+        if provider_api_key:
+            st.caption(f"✅ {provider_info['name']} API 已配置")
+        else:
+            st.caption(f"⚠️ {provider_info['name']} 未配置（使用模拟分析）")
 
     # ---- 💰 利润参数（可配置，平台自适应） ----
     st.sidebar.divider()
@@ -704,97 +705,92 @@ def _render_live_page(api_ok: bool):
     )
     st.divider()
 
-    # ---- 开始分析按钮 ----
+    # ---- 获取数据按钮（Spec 32：统一入口） ----
     btn_disabled = st.session_state.get("analyzing", False)
 
-    col_json, col_live = st.columns(2)
-    with col_json:
-        btn_json = st.button(
-            "📄 分析 JSON 数据",
+    col_btn, col_hint = st.columns([2, 3])
+    with col_btn:
+        btn_get = st.button(
+            "🔍 获取数据",
             type="primary",
             width="stretch",
             disabled=btn_disabled,
-            help="读取 data/products.json 中已抓取的产品数据进行 AI 分析",
+            help="优先读取每日自动更新数据，无数据时实时抓取",
         )
-    with col_live:
-        btn_live = st.button(
-            f"📡 实时抓取 {pf_name}",
-            type="secondary",
-            width="stretch",
-            disabled=btn_disabled,
-            help=f"从 {pf_name} {region_name} 实时抓取最新热销数据",
-        )
+    with col_hint:
+        json_path = os.path.join(os.path.dirname(__file__), "data", "products.json")
+        json_exists = os.path.exists(json_path)
+        if json_exists:
+            st.caption("📊 优先使用每日自动更新数据（GitHub Actions）")
+        else:
+            st.caption("📡 将实时抓取最新数据")
 
-    if btn_json:
+    if btn_get:
         st.session_state.analyzing = True
-        try:
-            json_path = os.path.join(os.path.dirname(__file__), "data", "products.json")
-            if not os.path.exists(json_path):
-                st.session_state.analyzing = False
-                st.error("❌ data/products.json 不存在")
-                st.info(
-                    "💡 请在本机执行 `python daily_scrape.py` 生成 JSON 文件，"
-                    "然后将 `data/products.json` 提交并推送到 GitHub。"
-                )
-            else:
-                with st.spinner("📄 正在读取 JSON 数据..."):
-                    with open(json_path, "r", encoding="utf-8") as f:
-                        products = json.load(f)
-                    if not products:
+        loaded = False
+
+        # 第一步：尝试读取 products.json（每日自动更新）
+        if json_exists:
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    products = json.load(f)
+                if products:
+                    # 按当前平台+地区筛选
+                    filtered = [
+                        p for p in products
+                        if p.get("platform", "amazon") == platform
+                        and p.get("region", "us") == region
+                    ]
+                    if filtered:
+                        scrape_time = filtered[0].get("scrape_time", "")
+                        st.session_state.products = filtered
+                        st.session_state.source_info = {"source": "daily_update", "timestamp": scrape_time}
+                        st.session_state.step = "loaded"
+                        loaded = True
+                        st.rerun()
+            except Exception:
+                pass
+
+        # 第二步：降级到实时抓取
+        if not loaded:
+            try:
+                with st.spinner(f"📡 正在实时抓取 {pf_name} {region_name} 热销数据..."):
+                    import importlib
+                    scraper_mod = importlib.import_module(pf_info["scraper_module"])
+                    scraper_func = getattr(scraper_mod, pf_info["scraper_func"])
+                    products, source_info = scraper_func(region=region)
+
+                    if source_info.get("source") not in ("live", "cache"):
                         st.session_state.analyzing = False
-                        st.error("❌ JSON 文件中无产品数据")
+                        error_detail = source_info.get("error", "网站反爬拦截或页面不可用")
+                        st.error(f"❌ 实时抓取 {pf_name} 失败")
+                        st.warning(f"原因: {error_detail}")
+                        st.info(
+                            "💡 **推荐方案：**\n"
+                            "1. 使用「🎯 指定选品」通过关键词搜索产品\n"
+                            "2. 在本机运行 `python daily_scrape.py` 更新数据后重新部署"
+                        )
                     else:
-                        scrape_time = products[0].get("scrape_time", "")
                         st.session_state.products = products
-                        st.session_state.source_info = {"source": "json", "timestamp": scrape_time}
+                        st.session_state.source_info = source_info
                         st.session_state.step = "loaded"
                         st.rerun()
-        except Exception as e:
-            st.session_state.analyzing = False
-            st.error(f"❌ 读取 JSON 失败：{str(e)}")
-
-    if btn_live:
-        st.session_state.analyzing = True
-        try:
-            with st.spinner(f"📡 正在实时抓取 {pf_name} {region_name} 热销数据..."):
-                # 动态调用平台对应的抓取函数
-                import importlib
-                scraper_mod = importlib.import_module(pf_info["scraper_module"])
-                scraper_func = getattr(scraper_mod, pf_info["scraper_func"])
-                products, source_info = scraper_func(region=region)
-
-                if source_info.get("source") not in ("live", "cache"):
-                    st.session_state.analyzing = False
-                    error_detail = source_info.get("error", "网站反爬拦截或页面不可用")
-                    st.error(f"❌ 实时抓取 {pf_name} 失败")
-                    st.warning(f"原因: {error_detail}")
-
-                    platform = st.session_state.get("active_platform", "amazon")
-                    st.info(
-                        "💡 **推荐方案：**\n"
-                        "1. 使用「📄 分析 JSON 数据」分析已有的产品数据\n"
-                        "2. 使用「🎯 指定选品」通过关键词搜索产品\n"
-                        "3. 在本机运行 `python daily_scrape.py` 更新数据后重新部署"
-                    )
-                else:
-                    st.session_state.products = products
-                    st.session_state.source_info = source_info
-                    st.session_state.step = "loaded"
-                    st.rerun()
-        except Exception as e:
-            st.session_state.analyzing = False
-            st.error(f"❌ 实时抓取失败：{str(e)}")
-            st.info("🔧 请检查网络连接后重试。")
+            except Exception as e:
+                st.session_state.analyzing = False
+                st.error(f"❌ 实时抓取失败：{str(e)}")
+                st.info("🔧 请检查网络连接后重试。")
 
     # ---- 数据显示（加载完成后显示，此时侧边栏已更新） ----
     if st.session_state.step in ("loaded", "analyzed") and st.session_state.products:
         src_info = st.session_state.source_info or {}
         src_type = src_info.get("source", "")
         ts = src_info.get("timestamp", "")
-        if src_type == "json":
-            st.success(f"📄 已加载 JSON 文件数据！共 {len(st.session_state.products)} 个热销产品\n\n⏰ 抓取时间：{ts}")
+        if src_type in ("json", "daily_update"):
+            st.success(f"📊 已加载每日更新数据！共 {len(st.session_state.products)} 个热销产品\n\n⏰ 抓取时间：{ts}")
         elif src_type == "live":
-            st.success(f"✅ 实时抓取成功！已获取 {len(st.session_state.products)} 个热销产品\n\n⏰ 数据更新时间：{ts}")
+            st.success(f"📡 实时抓取成功！已获取 {len(st.session_state.products)} 个热销产品\n\n⏰ 数据更新时间：{ts}")
+        elif src_type == "cache":
+            st.info(f"💾 使用本地缓存数据！共 {len(st.session_state.products)} 个产品\n\n⏰ 缓存时间：{ts}")
 
         # 第二步：AI 分析（流式渲染，Spec 21）
         if st.session_state.step == "loaded":
