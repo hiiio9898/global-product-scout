@@ -48,6 +48,14 @@ LLM_PROVIDERS = {
 }
 
 
+def _safe_int(value, default: int) -> int:
+    """安全转换为 int，失败时返回默认值。"""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
 def _get_secret(key: str, default: str = "") -> str:
     """
     读取配置项，优先级：st.secrets > os.environ（.env）。
@@ -165,6 +173,8 @@ def get_config() -> dict:
             "DATABASE_PATH",
             os.path.join(_PROJECT_ROOT, "data", "products.db"),
         ),
+        # AI 分析批次大小（Spec 16）
+        "analysis_batch_size": _safe_int(_get_secret("ANALYSIS_BATCH_SIZE", "6"), 6),
     }
 
 

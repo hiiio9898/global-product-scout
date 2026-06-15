@@ -114,6 +114,8 @@ def init_db(db_path: Optional[str] = None) -> None:
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(_CREATE_TABLE_SQL)
+        # 确保 favorites 表存在（索引创建依赖）
+        conn.execute(_CREATE_FAVORITES_SQL)
         # 兼容：为已有表新增字段（如不存在）
         for col, default in [
             ("procurement_cost", "REAL DEFAULT 0.0"),
@@ -1152,13 +1154,15 @@ def get_price_alerts(
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
-        # 获取每个产品最近两条记录比较价格
+        # 获取每个产品最近两条记录比较价格（用子查询兼容旧版SQLite）
         rows = conn.execute("""
-            SELECT title, platform, price, scrape_time,
-                   LAG(price) OVER (PARTITION BY title, platform ORDER BY scrape_time) as prev_price,
-                   LAG(scrape_time) OVER (PARTITION BY title, platform ORDER BY scrape_time) as prev_time
-            FROM products
-            ORDER BY scrape_time DESC
+            SELECT p.title, p.platform, p.price, p.scrape_time,
+                   (SELECT p2.price FROM products p2
+                    WHERE p2.title = p.title AND p2.platform = p.platform
+                      AND p2.scrape_time < p.scrape_time
+                    ORDER BY p2.scrape_time DESC LIMIT 1) as prev_price
+            FROM products p
+            ORDER BY p.scrape_time DESC
             LIMIT 500
         """).fetchall()
 

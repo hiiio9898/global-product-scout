@@ -748,8 +748,11 @@ def _render_live_page(api_ok: bool):
                         st.session_state.step = "loaded"
                         loaded = True
                         st.rerun()
-            except Exception:
-                pass
+                    else:
+                        # JSON中没有该平台/地区的数据，提示用户并降级到实时抓取
+                        st.info(f"每日数据中没有 {pf_name} {region_name} 的产品，尝试实时抓取...")
+            except Exception as e:
+                st.caption(f"读取每日数据失败：{str(e)[:80]}")
 
         # 第二步：降级到实时抓取
         if not loaded:
@@ -794,39 +797,43 @@ def _render_live_page(api_ok: bool):
 
         # 第二步：AI 分析（流式渲染，Spec 21）
         if st.session_state.step == "loaded":
-            with st.status("AI 正在深度分析产品竞争力与利润潜力...", expanded=False) as status:
-                progress_bar = st.progress(0, text="准备分析...")
-                total = len(st.session_state.products)
-                # 预创建空容器用于流式渲染
-                result_containers = [st.empty() for _ in range(total)]
+            total = len(st.session_state.products)
+            if total == 0:
+                st.warning("无产品可分析，请先获取数据。")
+                st.session_state.step = "idle"
+            else:
+                with st.status("AI 正在深度分析产品竞争力与利润潜力...", expanded=False) as status:
+                    progress_bar = st.progress(0, text="准备分析...")
+                    # 预创建空容器用于流式渲染
+                    result_containers = [st.empty() for _ in range(total)]
 
-                def _on_progress(done, total_count):
-                    pct = min(done / total_count, 1.0)
-                    progress_bar.progress(pct, text=f"分析进度：{done}/{total_count}")
+                    def _on_progress(done, total_count):
+                        pct = min(done / total_count, 1.0)
+                        progress_bar.progress(pct, text=f"分析进度：{done}/{total_count}")
 
-                def _on_batch_complete(done, total_count, batch_results):
-                    """每批完成后立即渲染该批产品卡片（Spec 21 流式更新）。"""
-                    start_idx = done - len(batch_results)
-                    for j, r in enumerate(batch_results):
-                        idx = start_idx + j
-                        if idx < len(result_containers):
-                            verdict = r.get("final_verdict", "unknown")
-                            emoji = {"recommended": "🟢", "cautious": "🟡", "not_recommended": "🔴"}.get(verdict, "⚪")
-                            title = r.get("title", f"#{idx+1}")[:40]
-                            result_containers[idx].caption(f"{emoji} {title}")
+                    def _on_batch_complete(done, total_count, batch_results):
+                        """每批完成后立即渲染该批产品卡片（Spec 21 流式更新）。"""
+                        start_idx = done - len(batch_results)
+                        for j, r in enumerate(batch_results):
+                            idx = start_idx + j
+                            if idx < len(result_containers):
+                                verdict = r.get("final_verdict", "unknown")
+                                emoji = {"recommended": "🟢", "cautious": "🟡", "not_recommended": "🔴"}.get(verdict, "⚪")
+                                title = r.get("title", f"#{idx+1}")[:40]
+                                result_containers[idx].caption(f"{emoji} {title}")
 
-                results = analyze_products(
-                    st.session_state.products,
-                    progress_callback=_on_progress,
-                    on_complete_callback=_on_batch_complete,
-                )
-                st.session_state.results = results
-                st.session_state.step = "analyzed"
-                progress_bar.empty()
-                # 清除流式预览容器
-                for c in result_containers:
-                    c.empty()
-                status.update(label="✅ AI 分析完成！", state="complete")
+                    results = analyze_products(
+                        st.session_state.products,
+                        progress_callback=_on_progress,
+                        on_complete_callback=_on_batch_complete,
+                    )
+                    st.session_state.results = results
+                    st.session_state.step = "analyzed"
+                    progress_bar.empty()
+                    # 清除流式预览容器
+                    for c in result_containers:
+                        c.empty()
+                    status.update(label="✅ AI 分析完成！", state="complete")
 
             # 第三步：保存到数据库
             db_ok = True
@@ -967,13 +974,16 @@ def _render_live_page(api_ok: bool):
             with st.expander(expander_label, expanded=(i == 0)):
                 # 产品图片 + 标题（Spec 27）
                 product_data = st.session_state.products[i] if i < len(st.session_state.products) else {}
-                product_url = product_data.get("url", "")
-                product_image = product_data.get("image", "")
+                product_url = product_data.get("url") or ""
+                product_image = product_data.get("image") or ""
 
                 col_img, col_info = st.columns([1, 4])
                 with col_img:
-                    if product_image:
-                        st.image(product_image, width=120)
+                    if product_image and isinstance(product_image, str):
+                        try:
+                            st.image(product_image, width=120)
+                        except Exception:
+                            st.caption("（图片加载失败）")
                 with col_info:
                     if product_url:
                         st.markdown(f"📦 **[{title_text}]({product_url})**")
