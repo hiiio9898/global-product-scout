@@ -848,7 +848,7 @@ def _render_live_page(api_ok: bool):
             db_ok = True
             try:
                 saved_count = save_products(
-                    st.session_state.products, results,
+                    st.session_state.products, st.session_state.results,
                     platform=platform, region=region, currency=currency,
                 )
                 st.caption(f"💾 已保存 {saved_count} 条分析记录到历史数据库")
@@ -857,7 +857,7 @@ def _render_live_page(api_ok: bool):
                 st.caption("⚠️ 数据库保存失败，但分析结果仍可在当前页面查看")
 
             # 同步保存到 session state（Cloud 端 SQLite 不持久化的后备方案）
-            for p, r in zip(st.session_state.products, results):
+            for p, r in zip(st.session_state.products, st.session_state.results):
                 record = dict(p)
                 record["analysis"] = r
                 record["scrape_time"] = r.get("scrape_time", p.get("scrape_time", ""))
