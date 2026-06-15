@@ -134,7 +134,10 @@ def _fetch_stealth(
     wait_seconds: float = 5.0,
 ) -> object:
     """使用 StealthyFetcher 抓取。"""
-    from scrapling import StealthyFetcher
+    try:
+        from scrapling import StealthyFetcher
+    except ImportError as e:
+        raise RuntimeError(f"StealthyFetcher 不可用: {e}")
 
     fetcher_args = {}
     if adaptive:
@@ -150,8 +153,17 @@ def _fetch_stealth(
     if wait_seconds:
         extra_args["wait_seconds"] = wait_seconds
 
-    resp = f.fetch(url, **extra_args)
-    return resp
+    try:
+        resp = f.fetch(url, **extra_args)
+        return resp
+    except Exception as e:
+        # 浏览器未安装等环境问题，给出明确提示而非原始栈
+        err_msg = str(e)
+        if "Executable doesn't exist" in err_msg or "install" in err_msg.lower():
+            raise RuntimeError(
+                "StealthyFetcher 浏览器未安装。请运行: patchright install 或 python -m playwright install chromium"
+            ) from e
+        raise
 
 
 def _fetch_dynamic(

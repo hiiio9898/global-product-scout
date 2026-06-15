@@ -143,6 +143,15 @@ def render_sidebar(source_info: dict | None = None):
             index=platform_keys.index(last_platform),
             key="selected_platform",
         )
+
+        # 检测平台是否变化 → 重置地区到新平台默认值
+        if selected_platform != last_platform:
+            pf_info_new = get_platform_info(selected_platform)
+            st.session_state["active_region"] = pf_info_new.get("default_region", "us")
+            # 清除地区 selectbox 的 widget 状态，强制重渲染
+            if "selected_region" in st.session_state:
+                del st.session_state["selected_region"]
+
         st.session_state["active_platform"] = selected_platform
 
         # 地区选择（联动平台）

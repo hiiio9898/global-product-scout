@@ -46,6 +46,8 @@ _REGION_DOMAINS = {
     "us": "ebay.com",
     "uk": "ebay.co.uk",
     "de": "ebay.de",
+    "au": "ebay.com.au",
+    "ca": "ebay.ca",
 }
 
 # 地区语言映射
@@ -53,6 +55,8 @@ _REGION_LANG = {
     "us": "en-US",
     "uk": "en-GB",
     "de": "de-DE",
+    "au": "en-AU",
+    "ca": "en-CA",
 }
 
 
@@ -101,6 +105,13 @@ def _extract_title(card) -> str:
         if elem:
             text = str(elem.text).strip()
             if text and len(text) > 5 and "shop on ebay" not in text.lower():
+                return text
+    # 兜底：裸 span 文字（trending 页面标题在无class的span里）
+    for span in card.css("span"):
+        text = str(span.text).strip()
+        if text and len(text) > 8 and "shop on ebay" not in text.lower():
+            # 排除明显的非标题文字
+            if not any(kw in text.lower() for kw in ["previous price", "opens in new", "free shipping", "watch"]):
                 return text
     return ""
 
@@ -276,19 +287,25 @@ def _extract_image(card) -> str:
     return ""
 
 
-def _parse_product_card(card, rank: int) -> Optional[dict]:
-    """解析单个产品卡片，返回标准产品字典。"""
+def _parse_product_card(card, rank: int, require_price: bool = True) -> Optional[dict]:
+    """解析单个产品卡片，返回标准产品字典。
+
+    Args:
+        card: 产品卡片元素
+        rank: 排名
+        require_price: 是否要求价格必须>0（trending页面价格可能JS加载）
+    """
     title = _extract_title(card)
     if not title:
         return None
 
     price = _extract_price(card)
-    if not price or price <= 0:
+    if require_price and (not price or price <= 0):
         return None
 
     return {
         "title": title,
-        "price": price,
+        "price": price if price else 0.0,
         "rating": _extract_rating(card),
         "num_reviews": _extract_reviews(card),
         "rank": rank,
@@ -330,11 +347,12 @@ def _scrape_ebay_best_sellers(region: str = "us") -> list[dict]:
                 continue
 
             card_selectors = [
-                "article",
                 "ul.srp-results li.s-item",
-                "div.ebayui-dne-itemtcard",
-                "div.s-item__wrapper",
                 "li.s-item",
+                "div.s-item__wrapper",
+                "div.ebayui-dne-itemtcard",
+                "article.s-item",
+                "article",
             ]
 
             cards = []
@@ -345,11 +363,26 @@ def _scrape_ebay_best_sellers(region: str = "us") -> list[dict]:
 
             if cards:
                 print(f"[scraper_ebay] 找到 {len(cards)} 个产品卡片")
+                # trending页面价格可能JS加载，不强制要求价格
                 products = []
                 for i, card in enumerate(cards[:50], 1):
-                    product = _parse_product_card(card, i)
+                    product = _parse_product_card(card, i, require_price=False)
                     if product:
                         products.append(product)
+                if len(products) >= 3:
+                    return products
+                # 产品数不足，尝试用链接过滤非产品 article 元素
+                print(f"[scraper_ebay] 仅解析出 {len(products)} 个，尝试链接过滤...")
+                filtered_cards = [
+                    c for c in cards
+                    if c.css("a[href*='/itm/']") or c.css("a[href*='itm']")
+                ]
+                if filtered_cards:
+                    products = []
+                    for i, card in enumerate(filtered_cards[:50], 1):
+                        product = _parse_product_card(card, i, require_price=False)
+                        if product:
+                            products.append(product)
                 if products:
                     return products
 

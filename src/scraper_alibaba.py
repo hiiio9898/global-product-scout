@@ -92,11 +92,22 @@ def _extract_title(card) -> str:
     if link:
         text = str(link.text).strip()
         if text and len(text) > 10:
-            # 清理价格和MOQ信息
             text = re.sub(r'CN¥[\d,.]+.*', '', text).strip()
             text = re.sub(r'Min\.\s*order.*', '', text).strip()
             if len(text) > 5:
                 return text
+        # 从 href slug 提取标题（JS渲染页面标题编码在URL中）
+        href = str(link.attrib.get("href", ""))
+        # 格式: /product-detail/Product-Title-Here_123456.html
+        slug_match = re.search(r'/product-detail/([^/]+?)(?:_\d{5,})?\.html', href)
+        if slug_match:
+            slug = slug_match.group(1)
+            # 去除尾部 _数字（产品ID）
+            slug = re.sub(r'_\d+$', '', slug)
+            # 将连字符转空格
+            title = slug.replace("-", " ").strip()
+            if len(title) > 5:
+                return title
     return ""
 
 
@@ -203,19 +214,25 @@ def _extract_image(card) -> str:
     return ""
 
 
-def _parse_product_card(card, rank: int) -> Optional[dict]:
-    """解析单个产品卡片，返回标准产品字典。"""
+def _parse_product_card(card, rank: int, require_price: bool = True) -> Optional[dict]:
+    """解析单个产品卡片，返回标准产品字典。
+
+    Args:
+        card: 产品卡片元素
+        rank: 排名
+        require_price: 是否要求价格必须>0（JS渲染页面价格可能缺失）
+    """
     title = _extract_title(card)
     if not title:
         return None
 
     price = _extract_price(card)
-    if not price or price <= 0:
+    if require_price and (not price or price <= 0):
         return None
 
     return {
         "title": title,
-        "price": price,
+        "price": price if price else 0.0,
         "moq": _extract_moq(card),
         "rating": _extract_rating(card),
         "num_reviews": _extract_reviews(card),
@@ -235,6 +252,7 @@ _CARD_SELECTORS = [
     "div.fy26-product-card-wrapper",
     "div[class*='product-card']",
     "div[class*='organic-list'] > div",
+    "div[class*='offer-item']",
 ]
 
 
@@ -264,11 +282,19 @@ def _scrape_alibaba_search(keyword: str, max_results: int = 30) -> list[dict]:
         if cards:
             break
 
+    # 兜底：如果没有匹配卡片，用产品链接的父元素作为卡片
+    if not cards:
+        link_cards = resp.css("a[href*='/product-detail/']")
+        if link_cards:
+            cards = link_cards
+            print(f"[scraper_alibaba] 用产品链接兜底: {len(cards)} 个")
+
     print(f"[scraper_alibaba] 找到 {len(cards)} 个产品卡片")
 
+    # 价格JS加载，不强制要求价格
     products = []
     for i, card in enumerate(cards[:max_results], 1):
-        product = _parse_product_card(card, i)
+        product = _parse_product_card(card, i, require_price=False)
         if product:
             products.append(product)
 
