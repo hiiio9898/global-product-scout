@@ -17,14 +17,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 /* ---- Global Typography ---- */
-.stApp,
-.stApp *,
-.stApp *::before,
-.stApp *::after {
+.stApp {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
-                 'Helvetica Neue', 'Inter', Arial, sans-serif !important;
-    -webkit-font-smoothing: antialiased !important;
-    -moz-osx-font-smoothing: grayscale !important;
+                 'Helvetica Neue', 'Inter', Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* ---- Main Content ---- */
@@ -131,15 +128,15 @@
 
 /* ---- Expanders — Apple accordion ---- */
 [data-testid="stExpander"] {
-    border-radius: 14px !important;
-    border: 1px solid rgba(0, 0, 0, 0.06) !important;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
+    border-radius: 14px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
     overflow: hidden;
 }
 
 [data-testid="stExpander"] summary {
-    border-radius: 14px !important;
-    font-weight: 600 !important;
+    border-radius: 14px;
+    font-weight: 600;
 }
 
 /* ---- Tabs — Apple segmented control style ---- */
@@ -173,8 +170,8 @@
 
 /* ---- Status Widget ---- */
 [data-testid="stStatus"] {
-    border-radius: 14px !important;
-    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+    border-radius: 14px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 /* ---- Sidebar refinement ---- */
@@ -183,18 +180,18 @@
 }
 
 [data-testid="stSidebar"] .stMarkdown h1 {
-    font-size: 1.2rem !important;
-    font-weight: 700 !important;
-    letter-spacing: -0.02em !important;
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
 }
 
 [data-testid="stSidebar"] .stMarkdown h3 {
-    font-size: 0.72rem !important;
-    font-weight: 600 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.08em !important;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     opacity: 0.5;
-    margin-top: 1.2rem !important;
+    margin-top: 1.2rem;
 }
 
 [data-testid="stSidebar"] [data-testid="stRadio"] label {
