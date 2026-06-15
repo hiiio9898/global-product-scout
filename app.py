@@ -109,12 +109,12 @@ ANALYSIS_DIMS = [
 
 def render_sidebar(source_info: dict | None = None):
     """渲染侧边栏 — 页面导航、数据源状态和 API 配置。"""
-    st.sidebar.title("⚙️ 设置")
+    st.sidebar.title("设置")
 
     # ---- 页面导航 ----
     page = st.sidebar.radio(
         "📌 页面导航",
-        options=["📊 Dashboard", "🔍 实时选品", "🎯 指定选品", "🌐 市场扫描", "📚 历史记录"],
+        options=["Dashboard", "实时选品", "指定选品", "市场扫描", "历史记录"],
         help="Dashboard：数据概览（自动按平台筛选）\n实时选品：抓取并分析当前平台热销产品\n指定选品：输入关键词深度分析特定品类\n市场扫描：批量扫描多平台多地区，找出蓝海市场\n历史记录：查看过去保存的分析结果",
     )
 
@@ -122,12 +122,12 @@ def render_sidebar(source_info: dict | None = None):
 
     # ---- 平台 + 地区联动选择器（仅实时/指定选品页显示） ----
     if "实时选品" in page or "指定选品" in page:
-        st.sidebar.subheader("🛒 平台选择")
+        st.sidebar.subheader("平台选择")
 
         # 平台选择
         platform_keys = get_platform_choices()
         platform_names = {
-            k: f"{get_platform_info(k)['icon']} {get_platform_info(k)['name']}"
+            k: get_platform_info(k)['name']
             for k in platform_keys
         }
 
@@ -137,7 +137,7 @@ def render_sidebar(source_info: dict | None = None):
             last_platform = "amazon"
 
         selected_platform = st.sidebar.selectbox(
-            "🛒 选择平台",
+            "选择平台",
             options=platform_keys,
             format_func=lambda k: platform_names[k],
             index=platform_keys.index(last_platform),
@@ -158,7 +158,7 @@ def render_sidebar(source_info: dict | None = None):
             last_region = default_region
 
         selected_region = st.sidebar.selectbox(
-            "🌍 选择地区",
+            "选择地区",
             options=region_keys,
             format_func=lambda k: region_names.get(k, k),
             index=region_keys.index(last_region),
@@ -170,15 +170,15 @@ def render_sidebar(source_info: dict | None = None):
         if source_info:
             src = source_info.get("source", "unknown")
             ts = source_info.get("timestamp", "")
-            if src == "json":
-                source_label = "📄 JSON 数据（本地采集）"
+            if src in ("json", "daily_update"):
+                source_label = "数据已加载"
             elif src == "live":
-                source_label = "📡 实时数据"
+                source_label = "实时数据"
             else:
-                source_label = "❌ 无数据"
+                source_label = "无数据"
             st.sidebar.caption(f"数据状态：{source_label}")
             if ts:
-                st.sidebar.caption(f"⏰ {ts}")
+                st.sidebar.caption(f"{ts}")
 
     # ---- AI 模型选择器（折叠面板，大多数人只设一次） ----
     llm_cfg = get_llm_config()
@@ -189,9 +189,9 @@ def render_sidebar(source_info: dict | None = None):
     provider_name = provider_info.get("name", llm_cfg["provider"])
     provider_api_key = _get_secret(provider_info.get("api_key_key", ""), "")
     if provider_api_key:
-        st.sidebar.caption(f"🤖 {provider_name} / {llm_cfg['model']} ✅")
+        st.sidebar.caption(f"{provider_name} / {llm_cfg['model']} OK")
     else:
-        st.sidebar.caption(f"🤖 {provider_name} — ⚠️ 未配置")
+        st.sidebar.caption(f"{provider_name} -- 未配置")
 
     with st.sidebar.expander("AI 模型设置", expanded=False):
         # 供应商选择
@@ -230,11 +230,11 @@ def render_sidebar(source_info: dict | None = None):
         provider_info = LLM_PROVIDERS[selected_provider]
         provider_api_key = _get_secret(provider_info["api_key_key"], "")
         if provider_api_key:
-            st.caption(f"✅ {provider_info['name']} API 已配置")
+            st.caption(f"{provider_info['name']} API 已配置")
         else:
-            st.caption(f"⚠️ {provider_info['name']} 未配置（使用模拟分析）")
+            st.caption(f"{provider_info['name']} 未配置（使用模拟分析）")
 
-    # ---- 💰 利润参数（可配置，平台自适应） ----
+    # ---- 利润参数（可配置，平台自适应） ----
     st.sidebar.divider()
     with st.sidebar.expander("利润参数（可配置）", expanded=False):
         # 根据当前平台读取默认参数
@@ -279,7 +279,7 @@ def render_sidebar(source_info: dict | None = None):
             "custom": {"label": "自定义",        "cny": None},
         }
         shipping_tier = st.selectbox(
-            "📦 运费档位",
+            "运费档位",
             options=list(SHIPPING_TIERS.keys()),
             format_func=lambda k: SHIPPING_TIERS[k]["label"],
             index=1,  # 默认中件
@@ -303,7 +303,7 @@ def render_sidebar(source_info: dict | None = None):
 
     # ---- 数据库状态 ----
     count = get_product_count()
-    st.sidebar.caption(f"📦 历史记录：{count} 条产品数据")
+    st.sidebar.caption(f"历史记录：{count} 条产品数据")
 
     # ---- 汇率状态 ----
     try:
@@ -931,11 +931,11 @@ def _render_live_page(api_ok: bool):
         st.caption("五维度量化评估：市场容量 · 竞争程度 · 利润潜力 · 新手友好度 · 季节性风险")
 
         # 速览表（Spec 16 P0）
-        with st.expander("📊 分析结果速览表（点击展开）", expanded=True):
+        with st.expander("分析结果速览表（点击展开）", expanded=True):
             _render_analysis_summary_table(st.session_state.products, st.session_state.results)
 
         # 批量采购成本（Spec 16 P1）
-        with st.expander("💰 批量设置采购成本（可选）", expanded=False):
+        with st.expander("批量设置采购成本（可选）", expanded=False):
             col_bulk, col_apply = st.columns([3, 1])
             with col_bulk:
                 bulk_cost = st.number_input(
@@ -1022,7 +1022,7 @@ def _render_live_page(api_ok: bool):
                             st.caption("🔍 AI估算")
 
                 # 竞品概览（Spec 25扩展）— 展示同批次其他产品的价格/评分分布
-                with st.expander("📊 竞品概览", expanded=False):
+                with st.expander("竞品概览", expanded=False):
                     comp_data = []
                     for j, (cp, cr) in enumerate(zip(st.session_state.products, st.session_state.results)):
                         if j == i:
@@ -1052,7 +1052,7 @@ def _render_live_page(api_ok: bool):
                     analysis_json=analysis_json, key_prefix=f"live_{i}_",
                 )
 
-                with st.expander("📝 查看详细分析文本", expanded=False):
+                with st.expander("查看详细分析文本", expanded=False):
                     for label, key in ANALYSIS_DIMS:
                         dim_data = r.get(key, {})
                         score_val = dim_data.get("score", 0) if isinstance(dim_data, dict) else 0
@@ -1461,7 +1461,7 @@ def _render_targeted_page(api_ok: bool):
             # 风险因素
             risks = category.get("risk_factors", [])
             if risks:
-                with st.expander("⚠️ 风险因素", expanded=False):
+                with st.expander("风险因素", expanded=False):
                     for risk in risks:
                         st.caption(f"• {risk}")
         elif category and category.get("error"):
@@ -1603,7 +1603,7 @@ def _render_targeted_page(api_ok: bool):
             st.subheader("🤖 AI 五维度详细分析")
 
             # 速览表（Spec 16 P0）
-            with st.expander("📊 分析结果速览表（点击展开）", expanded=True):
+            with st.expander("分析结果速览表（点击展开）", expanded=True):
                 _render_analysis_summary_table(products, analysis)
 
             for i, r in enumerate(analysis):
@@ -1929,7 +1929,7 @@ def _render_market_scanner_page(api_ok: bool):
             # 风险因素
             risks = report.get("risk_factors", [])
             if risks:
-                with st.expander("⚠️ 风险因素", expanded=False):
+                with st.expander("风险因素", expanded=False):
                     for risk in risks:
                         st.caption(f"• {risk}")
 
@@ -2380,7 +2380,7 @@ def _render_history_list(total_count: int):
                 _render_comparison_view(products, global_indices)
 
     # ---- 查看单条详情 ----
-    with st.expander("🔍 单条记录详情", expanded=False):
+    with st.expander("单条记录详情", expanded=False):
         selected_idx = st.selectbox(
             "选择产品",
             options=range(len(products)),
@@ -2409,7 +2409,7 @@ def _render_history_list(total_count: int):
                         st.caption(reason)
 
             # 原始 JSON（折叠查看）
-            with st.expander("📄 查看原始 JSON", expanded=False):
+            with st.expander("查看原始 JSON", expanded=False):
                 st.json(a)
 
     # ---- 导出 CSV ----
