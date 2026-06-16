@@ -37,6 +37,13 @@ from src.market_scanner import (
     predict_trend,
     build_retrospective,
 )
+from src.translator import (
+    contains_chinese,
+    is_translation_enabled,
+    translate_keyword,
+    translate_product_titles,
+)
+from src.regional_scanner import scan_all_regions, aggregate_hot_products
 from src.platforms import (
     PLATFORMS,
     get_platform_info,
@@ -114,9 +121,19 @@ def render_sidebar(source_info: dict | None = None):
     # ---- 页面导航 ----
     page = st.sidebar.radio(
         "📌 页面导航",
-        options=["Dashboard", "实时选品", "指定选品", "市场扫描", "历史记录"],
-        help="Dashboard：数据概览（自动按平台筛选）\n实时选品：抓取并分析当前平台热销产品\n指定选品：输入关键词深度分析特定品类\n市场扫描：批量扫描多平台多地区，找出蓝海市场\n历史记录：查看过去保存的分析结果",
+        options=["Dashboard", "实时选品", "指定选品", "全站热扫", "市场扫描", "历史记录"],
+        help="Dashboard：数据概览\n实时选品：抓取并分析当前平台热销产品\n指定选品：输入关键词深度分析特定品类\n全站热扫：一键扫描全平台×全地区热销榜，发现跨地区爆款\n市场扫描：按关键词批量扫描多平台多地区找蓝海\n历史记录：查看过去保存的分析结果",
     )
+
+    # 中文搜索翻译开关（Spec 33）— 仅指定选品页生效
+    if "指定选品" in page:
+        if "translation_enabled" not in st.session_state:
+            st.session_state.translation_enabled = is_translation_enabled()
+        st.session_state.translation_enabled = st.sidebar.checkbox(
+            "🌐 中文搜索翻译",
+            value=st.session_state.translation_enabled,
+            help="开启后：输入中文自动翻译为英文搜索，结果标题翻译为中文",
+        )
 
     st.sidebar.divider()
 
@@ -369,7 +386,7 @@ def _render_analysis_summary_table(products: list, results: list):
         is_raw = r.get("parse_error", False)
         row = {
             "#": i + 1,
-            "产品": (p.get("title", "") or "")[:50],
+            "产品": (p.get("title_zh") or p.get("title", "") or "")[:50],
             "判定": "⚠️ 异常" if is_raw else VERDICT_LABEL_MAP.get(verdict, "⚪"),
             "价格": f"${float(p.get('price', 0) or 0):.2f}",
         }
@@ -1272,8 +1289,8 @@ def _render_targeted_page(api_ok: bool):
             keyword = st.text_input(
                 "🔍 搜索关键词",
                 value=st.session_state.get("targeted_keyword", ""),
-                placeholder="例：portable blender, cat toys, yoga mat",
-                help="输入英文关键词效果最佳，支持多个单词组合",
+                placeholder="例：便携式榨汁机 / portable blender / cat toys",
+                help="支持中文，自动翻译为英文搜索（可在侧边栏关闭翻译）",
             )
         with col_btn:
             st.write("")  # 占位对齐
@@ -1323,10 +1340,23 @@ def _render_targeted_page(api_ok: bool):
         pf_info = get_platform_info(platform)
         pf_name = f"{pf_info['icon']} {pf_info['name']}"
 
+        # 关键词翻译（Spec 33）：含中文且开启翻译 → 翻成英文再搜
+        kw_display = kw   # 展示用（含原中文 → 英文提示）
+        kw_search = kw    # 实际搜索用（英文）
+        if (
+            st.session_state.get("translation_enabled", is_translation_enabled())
+            and contains_chinese(kw)
+        ):
+            with st.status("🌐 正在翻译关键词...", expanded=False):
+                tr = translate_keyword(kw)
+                if tr["success"] and tr.get("translated") and tr["translated"] != kw:
+                    kw_search = tr["translated"]
+                    kw_display = f"{kw} → {kw_search}"
+
         with st.status(f"📡 正在搜索 {pf_name}...", expanded=False) as status:
             search_mod = importlib.import_module(pf_info["search_module"])
             search_func = getattr(search_mod, pf_info["search_func"])
-            search_result = search_func(kw, region=region, max_results=20)
+            search_result = search_func(kw_search, region=region, max_results=20)
 
             if search_result["success"]:
                 products = search_result["results"]
@@ -1357,9 +1387,19 @@ def _render_targeted_page(api_ok: bool):
                 if len(products) < original_count:
                     st.caption(f"🔄 去重：{original_count} → {len(products)} 个产品（按 ASIN 去除重复变体）")
 
+                # 产品标题翻译（Spec 33）：英文标题 → 中文，存 title_zh
+                if st.session_state.get("translation_enabled", is_translation_enabled()) and products:
+                    with st.status("🌐 正在翻译产品标题...", expanded=False):
+                        titles = [p.get("title", "") for p in products]
+                        zh_titles = translate_product_titles(titles)
+                        for p, zh in zip(products, zh_titles):
+                            if zh and zh != p.get("title"):
+                                p["title_zh"] = zh
+
                 st.session_state.targeted_results = products
                 st.session_state.targeted_source = source
                 st.session_state.targeted_scrape_time = search_result.get("scrape_time", "")
+                st.session_state.targeted_keyword_display = kw_display
 
                 status.update(
                     label=f"✅ 搜索完成 — 找到 {len(products)} 个产品",
@@ -1451,7 +1491,7 @@ def _render_targeted_page(api_ok: bool):
             return
 
         # ---- 数据来源提示 ----
-        st.success(f"✅ 搜索「{kw}」找到 {len(products)} 个产品")
+        st.success(f"✅ 搜索「{st.session_state.get('targeted_keyword_display', kw)}」找到 {len(products)} 个产品")
 
         # ---- 品类综合报告 ----
         st.divider()
@@ -1520,6 +1560,10 @@ def _render_targeted_page(api_ok: bool):
 
                         if matched_product:
                             price = matched_product.get("price", 0)
+                            # Spec 33：显示中文标题（若有）
+                            zh = matched_product.get("title_zh")
+                            if zh and zh != title:
+                                st.caption(f"🇨🇳 {zh}")
                             st.caption(f"💰 ${price:.2f} | ⭐ {matched_product.get('rating', 0)} | 💬 {matched_product.get('num_reviews', 0):,}")
 
                             # 1688 比价按钮
@@ -1600,9 +1644,15 @@ def _render_targeted_page(api_ok: bool):
         elif sort_option == "评论数从多到少":
             sorted_products.sort(key=lambda p: int(p.get("num_reviews", 0) or 0), reverse=True)
 
-        df = pd.DataFrame(sorted_products)
+        # 构造展示行（Spec 33：优先用中文标题 title_zh）
+        display_rows = []
+        for p in sorted_products:
+            row = dict(p)
+            row["产品名称"] = p.get("title_zh") or p.get("title", "")
+            display_rows.append(row)
+        df = pd.DataFrame(display_rows)
         df_display = df.rename(columns={
-            "rank": "排名", "title": "产品名称", "price": "价格 (USD)",
+            "rank": "排名", "price": "价格 (USD)",
             "rating": "评分 ⭐", "num_reviews": "评论数", "category": "类目",
         })
         display_columns = ["排名", "产品名称", "价格 (USD)", "评分 ⭐", "评论数"]
@@ -1628,10 +1678,16 @@ def _render_targeted_page(api_ok: bool):
             for i, r in enumerate(analysis):
                 verdict = r.get("final_verdict", "cautious")
                 verdict_label = VERDICT_LABEL_MAP.get(verdict, "⚪ 未知")
-                title_text = r.get("title", f"产品 #{i+1}")
+                # Spec 33：优先显示中文标题（产品上的 title_zh）
+                prod_i = products[i] if i < len(products) else {}
+                title_zh = prod_i.get("title_zh")
+                title_en = r.get("title", f"产品 #{i+1}")
+                title_text = title_zh or title_en
 
                 with st.expander(f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}", expanded=False):
                     st.caption(f"📦 **完整标题：** {title_text}")
+                    if title_zh and title_en != title_zh:
+                        st.caption(f"🔤 *English:* {title_en}")
                     verdict_reason = r.get("verdict_reason", "")
                     if verdict == "recommended":
                         st.success(f"✅ **推荐入手** — {verdict_reason}")
@@ -1668,15 +1724,160 @@ def _render_targeted_page(api_ok: bool):
     elif st.session_state.get("targeted_step", "idle") == "idle":
         st.info(
             "👈 输入关键词开始搜索分析：\n\n"
-            "1. 🔍 输入英文产品关键词（如 `portable blender`）\n"
+            "1. 🔍 输入产品关键词，**中文或英文均可**（如 `便携式榨汁机` 或 `portable blender`）\n"
             "2. 🚀 点击「搜索分析」按钮\n"
             "3. 📊 查看品类综合报告 + Top 3 推荐\n"
             "4. 💰 对推荐产品查看 1688 比价和利润试算\n\n"
-            "**热门品类参考：** bluetooth speaker, yoga mat, cat toys, "
-            "kitchen organizer, phone case, LED strip lights"
+            "**热门品类参考：** 便携式榨汁机、瑜伽垫、猫玩具、蓝牙音箱、手机壳、LED 灯带"
         )
 
 
+
+
+# ============================================================
+# ==================== 全站热扫页面（Spec 34）=================
+# ============================================================
+
+def _render_global_scan_page(api_ok: bool):
+    """渲染全站热扫页面 — 一键扫描全平台×全地区热销榜，聚合跨地区热门产品。"""
+    st.title("🌍 全站热扫 — 跨地区热门产品发现")
+    st.markdown("一键扫描所有平台 × 所有地区（共 18 站点）的 Best Sellers 热销榜，聚合出跨地区通用爆款。")
+    st.divider()
+
+    # ---- 控制区 ----
+    with st.container(border=True):
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            top_n = st.number_input(
+                "返回热门产品数", min_value=10, max_value=100, value=30, step=10,
+                help="聚合后展示热度最高的前 N 个产品",
+            )
+        with col2:
+            save_to_db = st.checkbox(
+                "扫描后保存到数据库", value=False,
+                help="把抓取的产品存入 products 表（供历史记录查看）",
+            )
+
+        st.caption("⏱️ 预估耗时：18 个站点 × ~20-40 秒 ≈ 6-12 分钟（取决于网络和反爬）")
+
+        scan_clicked = st.button("🚀 一键全站扫描", type="primary", width="stretch")
+
+    # ---- 扫描触发 ----
+    if scan_clicked:
+        st.session_state.global_scan_step = "scanning"
+        st.session_state.global_scan_results = None
+        st.rerun()
+
+    # ---- 扫描执行 ----
+    if st.session_state.get("global_scan_step") == "scanning":
+        with st.status("🌍 正在扫描全平台全地区热销榜...", expanded=True) as status:
+            progress_bar = st.progress(0, text="准备扫描...")
+
+            def _on_progress(done, total, label):
+                pct = min(done / total, 1.0) if total > 0 else 0
+                progress_bar.progress(pct, text=f"扫描进度：{done}/{total} — {label}")
+
+            results = scan_all_regions(progress_callback=_on_progress)
+            st.session_state.global_scan_results = results
+
+            progress_bar.empty()
+            status.update(
+                label=f"✅ 扫描完成（{results['success_sites']}/{results['total_sites']} 站点成功）",
+                state="complete",
+            )
+
+        # 可选保存到数据库（按平台地区分组，save_products 要求同平台同地区）
+        if save_to_db and results["products"]:
+            try:
+                from collections import defaultdict
+                groups = defaultdict(list)
+                for p in results["products"]:
+                    key = (p.get("platform", "amazon"), p.get("region", "us"), p.get("currency", "USD"))
+                    groups[key].append(p)
+                saved_total = 0
+                for (pf, rg, cur), plist in groups.items():
+                    saved_total += save_products(
+                        plist, [{}] * len(plist),
+                        source=f"global_scan_{pf}_{rg}", platform=pf, region=rg, currency=cur,
+                    )
+                st.success(f"💾 已保存 {saved_total} 条到数据库")
+            except Exception as e:
+                st.warning(f"保存数据库失败：{e}")
+
+        st.session_state.global_scan_step = "done"
+        st.rerun()
+
+    # ---- 结果展示 ----
+    if st.session_state.get("global_scan_step") == "done":
+        results = st.session_state.get("global_scan_results")
+        if not results:
+            st.info("点击上方按钮开始扫描。")
+            return
+
+        total = results["total_sites"]
+        success = results["success_sites"]
+        errors = results.get("errors", [])
+
+        st.success(
+            f"✅ 扫描完成：{success}/{total} 站点成功，共抓到 {len(results['products'])} 个产品"
+        )
+
+        # 失败站点
+        if errors:
+            with st.expander(f"⚠️ {len(errors)} 个站点扫描失败", expanded=False):
+                for pf, rg, err in errors:
+                    pf_name = PLATFORMS.get(pf, {}).get("name", pf)
+                    st.caption(f"• {pf_name} {rg.upper()}：{err}")
+
+        # 跨地区聚合排行
+        ranked = aggregate_hot_products(results["products"], top_n=int(top_n))
+        if not ranked:
+            st.warning("未能聚合出热门产品（可能抓取均失败，请检查网络/反爬后重试）。")
+            return
+
+        st.divider()
+        st.subheader(f"🔥 跨地区热门产品 Top {len(ranked)}")
+        st.caption("热度 = 上榜地区数 × 10 + log₁₀(累计评论数+1) × 5")
+
+        rows = []
+        for i, item in enumerate(ranked, 1):
+            sample = item.get("sample", {})
+            price = sample.get("price")
+            rows.append({
+                "排名": i,
+                "产品名称": item["title"],
+                "上榜地区数": item["region_count"],
+                "累计评论数": item["total_reviews"],
+                "热度": item["hotness"],
+                "价格": f"${float(price):.2f}" if price else "-",
+                "出现平台": " / ".join(item["platforms"]),
+                "出现地区": " / ".join(r.upper() for r in item["regions"]),
+            })
+        st.dataframe(
+            pd.DataFrame(rows), width="stretch", hide_index=True,
+            column_config={
+                "排名": st.column_config.NumberColumn(format="%d", width="small"),
+                "热度": st.column_config.NumberColumn(format="%.1f", width="small"),
+                "产品名称": st.column_config.TextColumn(width="large"),
+            },
+        )
+
+        st.divider()
+        if st.button("🔄 重新扫描", width="stretch"):
+            st.session_state.global_scan_step = None
+            st.session_state.global_scan_results = None
+            st.rerun()
+
+    # ---- 空闲状态 ----
+    elif st.session_state.get("global_scan_step") in (None, "idle"):
+        st.info(
+            "👈 点击「一键全站扫描」：\n\n"
+            "1. 🌍 自动扫描 Amazon / eBay / Alibaba / AliExpress 全部地区站点（18 个）\n"
+            "2. 🔥 聚合出跨地区通用的热门产品（上榜地区越多越值得关注）\n"
+            "3. 📊 查看热度排行榜，发现全球爆款趋势\n\n"
+            "💡 与「市场扫描」的区别：市场扫描按**关键词**找蓝海；"
+            "全站热扫**不需要关键词**，直接看各地区在卖什么爆款。"
+        )
 
 
 # ============================================================
@@ -2804,6 +3005,8 @@ elif "实时选品" in page:
     _render_live_page(api_ok)
 elif "指定选品" in page:
     _render_targeted_page(api_ok)
+elif "全站热扫" in page:
+    _render_global_scan_page(api_ok)
 elif "市场扫描" in page:
     _render_market_scanner_page(api_ok)
 elif "历史记录" in page:

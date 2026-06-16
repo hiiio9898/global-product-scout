@@ -34,6 +34,7 @@ logs/
 data/cache/
 data/cache.json
 data/debug_*.html
+data/exchange_rates.json
 
 # Database & sidecars (local runtime state, not committed)
 data/products.db
