@@ -1,0 +1,12 @@
+# sync-data.sh 的本机配置 —— 复制本文件为 .sync-config 后填写
+# .sync-config 已加入 .gitignore，不会被提交（含本机路径，两台机器各自一份）
+
+# 同步目录：U盘 或 Syncthing 共享文件夹的绝对路径（Git Bash 风格）
+#   - U盘示例：       /e/GPS-Sync          （对应 Windows 的 E:\GPS-Sync）
+#   - Syncthing 示例：/c/Users/pingc/Sync   （对应 C:\Users\pingc\Sync）
+export SYNC_DIR="/e/GPS-Sync"
+
+# 是否同步抓取缓存 data/cache/（yes / no）
+#   yes：缓存跟着走，省一次抓取的 API 调用与时间（推荐）
+#   no ：省空间/流量，缓存会在下次抓取时自动重建
+export SYNC_CACHE="yes"

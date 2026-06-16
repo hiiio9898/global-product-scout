@@ -1,0 +1,14 @@
+# Syncthing 共享文件夹的忽略规则
+# 使用方法：把本文件复制到 Syncthing 共享文件夹根目录，并重命名为 .stignore
+# （仅当你的同步目录“就是项目的 data/ 目录”时才需要本文件；
+#   如果同步目录是独立的 U盘/Syncthing 文件夹、用 sync-data.sh 搬运，则忽略本文件）
+
+// 只同步运行期数据；products.json 由 Git 管理，交给 Git，避免两边打架
+/products.json
+
+// 本地备份目录，各自保留，不互相覆盖
+/backups
+
+// 临时/崩溃残留（存在即代表 DB 被占用，不应跨机传播）
+/products.db-journal
+/products.db-shm

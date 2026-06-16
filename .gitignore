@@ -35,8 +35,13 @@ data/cache/
 data/cache.json
 data/debug_*.html
 
-# Database (local history, not committed)
+# Database & sidecars (local runtime state, not committed)
 data/products.db
+data/products.db-journal
+data/products.db-wal
+data/products.db-shm
+data/adaptive_elements.db
+data/backups/
 
 # Test
 .pytest_cache/
@@ -58,3 +63,6 @@ Scrapling-main/
 # VS Code Copilot Skills (external, installed via npx skills)
 .agents/
 skills-lock.json
+
+# Local data-sync config (machine-specific path to USB/Syncthing)
+.sync-config
