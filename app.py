@@ -43,7 +43,6 @@ from src.translator import (
     translate_keyword,
     translate_product_titles,
 )
-from src.regional_scanner import scan_all_regions, aggregate_hot_products
 from src.platforms import (
     PLATFORMS,
     get_platform_info,
@@ -115,25 +114,15 @@ ANALYSIS_DIMS = [
 # ============================================================
 
 def render_sidebar(source_info: dict | None = None):
-    """渲染侧边栏 — 页面导航、数据源状态和 API 配置。"""
-    st.sidebar.title("设置")
+    """渲染侧边栏 — 页面导航和数据源状态。"""
+    st.sidebar.title("🌍 Global Product Scout")
 
     # ---- 页面导航 ----
     page = st.sidebar.radio(
-        "📌 页面导航",
-        options=["Dashboard", "实时选品", "指定选品", "全站热扫", "市场扫描", "历史记录"],
-        help="Dashboard：数据概览\n实时选品：抓取并分析当前平台热销产品\n指定选品：输入关键词深度分析特定品类\n全站热扫：一键扫描全平台×全地区热销榜，发现跨地区爆款\n市场扫描：按关键词批量扫描多平台多地区找蓝海\n历史记录：查看过去保存的分析结果",
+        "导航",
+        options=["Dashboard", "实时选品", "指定选品", "市场扫描", "历史记录"],
+        help="Dashboard：数据概览\n实时选品：抓取并分析当前平台热销产品\n指定选品：输入关键词深度分析特定品类\n市场扫描：按关键词批量扫描多平台多地区找蓝海\n历史记录：查看过去保存的分析结果",
     )
-
-    # 中文搜索翻译开关（Spec 33）— 仅指定选品页生效
-    if "指定选品" in page:
-        if "translation_enabled" not in st.session_state:
-            st.session_state.translation_enabled = is_translation_enabled()
-        st.session_state.translation_enabled = st.sidebar.checkbox(
-            "🌐 中文搜索翻译",
-            value=st.session_state.translation_enabled,
-            help="开启后：输入中文自动翻译为英文搜索，结果标题翻译为中文",
-        )
 
     st.sidebar.divider()
 
@@ -206,126 +195,15 @@ def render_sidebar(source_info: dict | None = None):
             if ts:
                 st.sidebar.caption(f"{ts}")
 
-    # ---- AI 模型选择器（折叠面板，大多数人只设一次） ----
+    # ---- AI 模型状态（只读显示） ----
     llm_cfg = get_llm_config()
-    st.sidebar.divider()
-
-    # 快速状态显示
     provider_info = LLM_PROVIDERS.get(llm_cfg["provider"], {})
     provider_name = provider_info.get("name", llm_cfg["provider"])
     provider_api_key = _get_secret(provider_info.get("api_key_key", ""), "")
     if provider_api_key:
-        st.sidebar.caption(f"{provider_name} / {llm_cfg['model']} OK")
+        st.sidebar.caption(f"🤖 {provider_name} / {llm_cfg['model']}")
     else:
-        st.sidebar.caption(f"{provider_name} -- 未配置")
-
-    with st.sidebar.expander("AI 模型设置", expanded=False):
-        # 供应商选择
-        provider_names = {k: v["name"] for k, v in LLM_PROVIDERS.items()}
-        provider_keys = list(LLM_PROVIDERS.keys())
-
-        last_provider = st.session_state.get("llm_provider") or llm_cfg["provider"]
-        last_model = st.session_state.get("llm_model") or llm_cfg["model"]
-
-        current_provider_idx = provider_keys.index(last_provider) if last_provider in provider_keys else 0
-
-        selected_provider = st.selectbox(
-            "AI 供应商",
-            options=provider_keys,
-            format_func=lambda k: provider_names[k],
-            index=current_provider_idx,
-            key="llm_provider_select",
-        )
-
-        # 模型选择（根据供应商动态更新）
-        available_models = LLM_PROVIDERS[selected_provider]["models"]
-        if last_model not in available_models:
-            last_model = available_models[0]
-
-        selected_model = st.selectbox(
-            "模型",
-            options=available_models,
-            index=available_models.index(last_model),
-            key="llm_model_select",
-        )
-
-        st.session_state["llm_provider"] = selected_provider
-        st.session_state["llm_model"] = selected_model
-
-        # API 配置状态
-        provider_info = LLM_PROVIDERS[selected_provider]
-        provider_api_key = _get_secret(provider_info["api_key_key"], "")
-        if provider_api_key:
-            st.caption(f"{provider_info['name']} API 已配置")
-        else:
-            st.caption(f"{provider_info['name']} 未配置（使用模拟分析）")
-
-    # ---- 利润参数（可配置，平台自适应） ----
-    st.sidebar.divider()
-    with st.sidebar.expander("利润参数（可配置）", expanded=False):
-        # 根据当前平台读取默认参数
-        active_pf = st.session_state.get("active_platform", "amazon")
-        pf_info = get_platform_info(active_pf)
-        active_region = st.session_state.get("active_region", pf_info.get("default_region", "us"))
-        region_info = get_region_info(active_pf, active_region)
-        profit_defaults = get_profit_defaults(active_pf)
-
-        # 汇率（按地区站点自动适配）
-        currency_label = region_info.get("currency", "USD")
-        exchange_rate = st.number_input(
-            f"汇率 (CNY/{currency_label})", min_value=0.01, max_value=20.0,
-            value=float(profit_defaults["exchange_rate"]), step=0.01,
-            help=f"1 {currency_label} 兑换多少人民币",
-        )
-        # 佣金比例（各平台标签不同）
-        commission_label = {
-            "amazon": "亚马逊佣金比例",
-            "ebay": "eBay 成交费比例",
-            "alibaba": "阿里巴巴佣金比例",
-        }.get(active_pf, "平台佣金比例")
-        commission_pct = st.slider(
-            commission_label, min_value=0.0, max_value=0.50,
-            value=float(profit_defaults.get("commission_pct", 0.15)), step=0.01,
-            format="%.0f%%",
-        )
-        # 广告预算（Amazon 特有）
-        if active_pf == "amazon":
-            ad_pct = st.slider(
-                "广告预算占比", min_value=0.0, max_value=0.50,
-                value=float(profit_defaults.get("ad_pct", 0.10)), step=0.01,
-                format="%.0f%%",
-            )
-        else:
-            ad_pct = 0.0
-        # 运费分档（Spec 29）
-        SHIPPING_TIERS = {
-            "light":  {"label": "轻件 <500g",   "cny": 8.0},
-            "medium": {"label": "中件 500g-2kg", "cny": 20.0},
-            "heavy":  {"label": "重件 >2kg",     "cny": 50.0},
-            "custom": {"label": "自定义",        "cny": None},
-        }
-        shipping_tier = st.selectbox(
-            "运费档位",
-            options=list(SHIPPING_TIERS.keys()),
-            format_func=lambda k: SHIPPING_TIERS[k]["label"],
-            index=1,  # 默认中件
-        )
-        if shipping_tier == "custom":
-            shipping_cny = st.number_input(
-                "自定义运费 (¥/件)", min_value=0.0, max_value=200.0,
-                value=float(profit_defaults.get("shipping_cny", 15.0)), step=1.0,
-            )
-        else:
-            shipping_cny = SHIPPING_TIERS[shipping_tier]["cny"]
-
-    # 同步到 session_state 供计算器使用
-    st.session_state["profit_defaults"] = {
-        "exchange_rate": exchange_rate,
-        "commission_pct": commission_pct,
-        "ad_pct": ad_pct,
-        "shipping_cny": shipping_cny,
-        "procurement_cny": 0.0,
-    }
+        st.sidebar.caption(f"🤖 {provider_name} — 未配置")
 
     # ---- 数据库状态 ----
     count = get_product_count()
@@ -551,161 +429,90 @@ def _render_comparison_view(products: list, indices: list[int]):
 # ============================================================
 
 def _render_dashboard_page():
-    """渲染 Dashboard 首页 — 数据概览 + TOP5 推荐。"""
+    """渲染 Dashboard 首页 — 纯行动引导页。"""
 
-    st.title("📊 全球产品侦察兵 — 数据概览")
-    st.markdown("一目了然掌握选品全局，快速定位高潜力产品。")
+    st.title("🎯 今日选品")
+    st.markdown("告诉你要卖什么，AI 帮你做决定。")
     st.divider()
 
     # 获取数据
     all_products = get_all_products()
     if not all_products:
-        st.markdown("### 欢迎使用 Global Product Scout")
-        st.markdown(
-            "这是一个 AI 驱动的跨境电商选品工具。"
-            "它会自动抓取 Amazon、eBay、阿里巴巴国际站的热销产品数据，"
-            "并通过多维度 AI 分析帮你评估每个产品的选品潜力。"
-        )
+        st.markdown("### 开始你的第一次选品分析")
+        st.markdown("选择下方任意入口，3 分钟内获得 AI 选品建议。")
 
-        st.divider()
-
-        st.markdown("### 快速开始")
-        col_a, col_b = st.columns(2)
-        with col_a:
+        c1, c2, c3 = st.columns(3)
+        with c1:
             with st.container(border=True):
-                st.markdown("#### 🔍 实时选品")
-                st.markdown(
-                    "选择平台和地区，一键抓取当前热销榜单。"
-                    "系统会自动进行五维度 AI 评估，给出推荐/谨慎/不推荐的明确判定。"
-                )
-                if st.button("前往实时选品", key="goto_live", type="primary", width="stretch"):
-                    st.session_state["nav_page"] = "🔍 实时选品"
+                st.markdown("#### 🔍 热销选品")
+                st.markdown("一键抓取平台热销榜，AI 评估选品潜力")
+                if st.button("开始选品", key="goto_live", type="primary", width="stretch"):
+                    st.session_state["nav_page"] = "实时选品"
                     st.rerun()
-        with col_b:
+        with c2:
             with st.container(border=True):
-                st.markdown("#### 🎯 指定选品")
-                st.markdown(
-                    "输入产品关键词，深度分析特定品类。"
-                    "生成品类综合报告、市场规模评估、竞争格局分析和 Top 3 推荐。"
-                )
-                if st.button("前往指定选品", key="goto_targeted", width="stretch"):
-                    st.session_state["nav_page"] = "🎯 指定选品"
+                st.markdown("#### 🎯 关键词选品")
+                st.markdown("输入关键词，深度分析特定品类")
+                if st.button("搜索品类", key="goto_targeted", width="stretch"):
+                    st.session_state["nav_page"] = "指定选品"
                     st.rerun()
-
-        st.divider()
-
-        with st.expander("数据来源说明", expanded=False):
-            st.markdown(
-                "- **Amazon**：Best Sellers 榜单 + 关键词搜索\n"
-                "- **eBay**：Trending 产品 + 关键词搜索\n"
-                "- **Alibaba**：国际站热销 + 关键词搜索\n"
-                "- 数据每日自动更新（通过 GitHub Actions 定时任务）\n"
-                "- 也可在本地运行 `python daily_scrape.py` 手动更新"
-            )
+        with c3:
+            with st.container(border=True):
+                st.markdown("#### 🌐 市场扫描")
+                st.markdown("对比多个市场和地区的蓝海机会")
+                if st.button("扫描市场", key="goto_scan", width="stretch"):
+                    st.session_state["nav_page"] = "市场扫描"
+                    st.rerun()
         return
 
-    # ---- 指标计算 ----
-    total = len(all_products)
+    # ---- 有数据场景：TOP3 推荐 + 数据摘要 ----
     recommended = [p for p in all_products if p.get("analysis", {}).get("final_verdict") == "recommended"]
     rec_count = len(recommended)
 
-    # Dashboard 平台筛选（Spec 16 P2）
-    platform_set = {p.get("platform", "amazon") for p in all_products}
-    if len(platform_set) > 1:
-        platform_options = sorted(platform_set)
-        platform_names = {
-            k: f"{PLATFORMS.get(k, {}).get('icon', '❓')} {PLATFORMS.get(k, {}).get('name', k)}"
-            for k in platform_options
-        }
-        selected_dash_platforms = st.multiselect(
-            "🛒 筛选平台",
-            options=platform_options,
-            default=platform_options,
-            format_func=lambda k: platform_names.get(k, k),
-            key="dashboard_platforms",
-        )
-        if len(selected_dash_platforms) < len(platform_options):
-            all_products = [p for p in all_products if p.get("platform", "amazon") in selected_dash_platforms]
-            recommended = [p for p in all_products if p.get("analysis", {}).get("final_verdict") == "recommended"]
-            total = len(all_products)
-            rec_count = len(recommended)
+    if recommended:
+        st.markdown(f"### 🏆 系统推荐了 {rec_count} 个值得关注的产品")
+        st.markdown("以下是 AI 综合评估后最值得入手的产品：")
 
-    def _avg_score(key):
-        scores = []
-        for p in all_products:
-            dim = p.get("analysis", {}).get(key, {})
-            if isinstance(dim, dict) and "score" in dim:
-                scores.append(dim["score"])
-        return sum(scores) / len(scores) if scores else 0.0
+        for i, p in enumerate(recommended[:3], 1):
+            analysis = p.get("analysis", {})
+            title = p.get("title", f"产品 #{i}")
+            try:
+                price = float(p.get("price", 0) or 0)
+            except (ValueError, TypeError):
+                price = 0.0
+            try:
+                rating = float(p.get("rating", 0) or 0)
+            except (ValueError, TypeError):
+                rating = 0.0
+            capacity = analysis.get("market_capacity", {})
+            cap_score = capacity.get("score", 0) if isinstance(capacity, dict) else 0
+            verdict_reason = analysis.get("verdict_reason", "")
 
-    avg_capacity = _avg_score("market_capacity")
-    avg_profit = _avg_score("profit_potential")
+            with st.container(border=True):
+                col_title, col_action = st.columns([4, 1])
+                with col_title:
+                    st.markdown(f"**🟢 推荐 #{i}** {title}")
+                    st.caption(f"💰 ${price:.2f} | ⭐ {rating} | 市场容量 {cap_score}/10")
+                    if verdict_reason:
+                        st.caption(f"💡 {verdict_reason}")
+                with col_action:
+                    if st.button("查看详情 →", key=f"detail_{i}", use_container_width=True):
+                        st.session_state["nav_page"] = "历史记录"
+                        st.session_state["goto_product"] = title
+                        st.rerun()
 
-    # ---- 指标卡片 ----
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("📦 总产品数", total)
-    c2.metric("🟢 推荐数", rec_count)
-    c3.metric("📊 平均容量分", f"{avg_capacity:.1f}/10")
-    c4.metric("💰 平均利润分", f"{avg_profit:.1f}/10")
-
-    # 最近抓取时间 + 数据新鲜度
-    latest_time = all_products[0].get("scrape_time", "") if all_products else ""
-    if latest_time:
-        freshness_status, freshness_text = _get_data_freshness(latest_time)
-        if freshness_status == "ok":
-            st.caption(freshness_text)
-        elif freshness_status == "warn":
-            st.warning(freshness_text)
-        elif freshness_status == "error":
-            st.error(freshness_text)
-        else:
-            st.caption(f"最近抓取：{latest_time}")
-
-    st.divider()
-
-    # ---- TOP5 推荐产品 ----
-    st.subheader("🏆 TOP 5 推荐产品")
-
-    top5 = recommended[:5]
-    if not top5:
-        st.warning("暂无推荐产品。")
-        return
-
-    for i, p in enumerate(top5, 1):
-        analysis = p.get("analysis", {})
-        title = p.get("title", f"产品 #{i}")
-        try:
-            price = float(p.get("price", 0) or 0)
-        except (ValueError, TypeError):
-            price = 0.0
-        try:
-            rating = float(p.get("rating", 0) or 0)
-        except (ValueError, TypeError):
-            rating = 0.0
-        capacity = analysis.get("market_capacity", {})
-        cap_score = capacity.get("score", 0) if isinstance(capacity, dict) else 0
-        cap_reason = capacity.get("reason", "") if isinstance(capacity, dict) else ""
-
-        with st.container(border=True):
-            col_title, col_score = st.columns([3, 1])
-            with col_title:
-                st.markdown(f"**🟢 推荐 #{i}** {title}")
-                st.caption(f"💰 ${price:.2f} | ⭐ {rating} | 📊 容量 {cap_score}/10")
-            with col_score:
-                verdict_reason = analysis.get("verdict_reason", "")
-                if verdict_reason:
-                    st.caption(verdict_reason)
-
-    # ---- 数据源分布 ----
-    st.divider()
-    st.subheader("📋 数据源分布")
-    source_counts = {}
-    for p in all_products:
-        src = p.get("source", "unknown")
-        source_counts[src] = source_counts.get(src, 0) + 1
-    cols = st.columns(len(source_counts) or 1)
-    for col, (src, count) in zip(cols, source_counts.items()):
-        col.metric(f"{src}", count)
+        if rec_count > 3:
+            st.button(
+                f"查看全部 {rec_count} 个推荐 →",
+                key="goto_history_all",
+                width="stretch",
+                on_click=lambda: st.session_state.update({"nav_page": "历史记录"}),
+            )
+    else:
+        st.info("📊 已有数据但暂无推荐产品。运行新一轮分析获取建议。")
+        if st.button("🔍 开始新一轮分析", type="primary", key="goto_live_new", width="stretch"):
+            st.session_state["nav_page"] = "实时选品"
+            st.rerun()
 
 
 # ============================================================
@@ -963,10 +770,6 @@ def _render_live_page(api_ok: bool):
         st.subheader("🤖 AI 选品分析结果")
         st.caption("五维度量化评估：市场容量 · 竞争程度 · 利润潜力 · 新手友好度 · 季节性风险")
 
-        # 速览表（Spec 16 P0）
-        with st.expander("分析结果速览表（点击展开）", expanded=True):
-            _render_analysis_summary_table(st.session_state.products, st.session_state.results)
-
         # 批量采购成本（Spec 16 P1）
         with st.expander("批量设置采购成本（可选）", expanded=False):
             col_bulk, col_apply = st.columns([3, 1])
@@ -1018,17 +821,6 @@ def _render_live_page(api_ok: bool):
                 if is_raw:
                     verdict_reason = r.get("verdict_reason", "")
                     st.warning(f"⚠️ AI 返回格式异常 — {verdict_reason}")
-                    raw = r.get("raw_text", "")
-                    if raw:
-                        # 智能截断：过长的原始文本只显示前 2000 字符
-                        display_text = raw[:2000] + ("..." if len(raw) > 2000 else "")
-                        st.text_area(
-                            "原始响应（用于调试）",
-                            value=display_text, height=200,
-                            disabled=True, key=f"raw_{i}",
-                        )
-                    else:
-                        st.info("💡 原始响应为空，可能是 AI 供应商返回了空内容。请检查 API 配置或稍后重试。")
                     continue
 
                 verdict_reason = r.get("verdict_reason", "")
@@ -1057,23 +849,34 @@ def _render_live_page(api_ok: bool):
                         if key == "market_capacity" and reason_val:
                             st.caption("🔍 AI估算")
 
-                # 竞品概览（Spec 25扩展）— 展示同批次其他产品的价格/评分分布
-                with st.expander("竞品概览", expanded=False):
-                    comp_data = []
-                    for j, (cp, cr) in enumerate(zip(st.session_state.products, st.session_state.results)):
-                        if j == i:
-                            continue
-                        cp_verdict = cr.get("final_verdict", "") if isinstance(cr, dict) else ""
-                        comp_data.append({
-                            "产品": cp.get("title", "")[:40],
-                            "价格": f"${cp.get('price', 0):.2f}",
-                            "评分": f"{cp.get('rating', 0):.1f}",
-                            "评论数": f"{cp.get('num_reviews', 0):,}",
-                            "判定": {"recommended": "🟢", "cautious": "🟡", "not_recommended": "🔴"}.get(cp_verdict, "⚪"),
-                        })
-                    if comp_data:
-                        import pandas as pd
-                        st.dataframe(pd.DataFrame(comp_data), width="stretch", hide_index=True)
+                # AI 趋势预判 + 参考采购价（自动嵌入）
+                trend_dir = r.get("trend_direction", "unknown")
+                trend_reason = r.get("trend_reason", "")
+                est_cost = r.get("estimated_cost_cny", 0)
+
+                trend_icon_map = {"rising": "📈", "stable": "➡️", "declining": "📉"}
+                trend_icon = trend_icon_map.get(trend_dir, "❓")
+                trend_label = {
+                    "rising": "上升趋势",
+                    "stable": "稳定",
+                    "declining": "下降趋势",
+                    "unknown": "未知"
+                }.get(trend_dir, "未知")
+
+                if trend_dir != "unknown" or est_cost > 0:
+                    st.divider()
+                    col_trend, col_cost = st.columns(2)
+                    with col_trend:
+                        st.markdown(f"**{trend_icon} 趋势：** {trend_label}")
+                        if trend_reason:
+                            st.caption(f"💡 {trend_reason}")
+                    with col_cost:
+                        if est_cost > 0:
+                            st.markdown(f"**🏭 参考采购价：** ¥{est_cost:.0f}")
+                            st.caption("AI 估算（基于品类分析）")
+                        else:
+                            st.markdown("**🏭 参考采购价：** 未估算")
+                            st.caption("可点击下方验证按钮获取 1688 价格")
 
                 # 雷达图（Spec 16 P3）
                 _render_radar_chart(r, title_text[:30])
@@ -1096,39 +899,110 @@ def _render_live_page(api_ok: bool):
                         st.caption(f"**{label}** ({score_val}/10)")
                         st.text(reason_val)
 
-                # ---- 📈 Google Trends 趋势（Spec 31 增强） ----
-                if st.button("📈 查询 Google Trends 趋势", key=f"trend_{i}", width="stretch"):
-                    trend_keyword = title_text.split(" - ")[0].split(",")[0][:30].strip()
-                    with st.spinner(f"正在查询趋势：{trend_keyword}..."):
-                        trend = get_trend_direction(trend_keyword)
-                    if trend["available"]:
-                        icon = get_trend_icon(trend["direction"])
-                        st.success(f"📈 趋势：{icon} | 当前热度 {trend['interest']} | 平均 {trend['avg_interest']}")
-                        # 展示12个月趋势图（Spec 31）
-                        from src.trends import get_trend_timeseries
-                        ts = get_trend_timeseries(trend_keyword)
-                        if ts["available"] and ts["dates"]:
-                            import plotly.express as px
-                            fig = px.line(
-                                x=ts["dates"], y=ts["values"],
-                                title=f"Google Trends: {trend_keyword}",
-                                labels={"x": "日期", "y": "搜索热度"},
-                            )
-                            fig.update_layout(height=250, margin=dict(l=40, r=20, t=40, b=40))
-                            st.plotly_chart(fig, width="stretch")
-                    else:
-                        st.warning(f"⚠️ {trend['error']}")
+                # ---- 📈 Google Trends 验证（降为二级操作） ----
+                with st.expander("🔍 验证趋势（可选）", expanded=False):
+                    if st.button("📈 查询 Google Trends 详细数据", key=f"trend_{i}", width="stretch"):
+                        trend_keyword = title_text.split(" - ")[0].split(",")[0][:30].strip()
+                        with st.spinner(f"正在查询趋势：{trend_keyword}..."):
+                            trend = get_trend_direction(trend_keyword)
+                        if trend["available"]:
+                            icon = get_trend_icon(trend["direction"])
+                            st.success(f"📈 趋势：{icon} | 当前热度 {trend['interest']} | 平均 {trend['avg_interest']}")
+                            # 展示12个月趋势图（Spec 31）
+                            from src.trends import get_trend_timeseries
+                            ts = get_trend_timeseries(trend_keyword)
+                            if ts["available"] and ts["dates"]:
+                                import plotly.express as px
+                                fig = px.line(
+                                    x=ts["dates"], y=ts["values"],
+                                    title=f"Google Trends: {trend_keyword}",
+                                    labels={"x": "日期", "y": "搜索热度"},
+                                )
+                                fig.update_layout(height=250, margin=dict(l=40, r=20, t=40, b=40))
+                                st.plotly_chart(fig, width="stretch")
+                        else:
+                            st.warning(f"⚠️ {trend['error']}")
 
                 # ---- 💰 利润试算 ----
                 st.divider()
                 st.markdown("**💰 利润试算**")
+
+                # 利润参数配置（内联折叠）
+                with st.expander("⚙️ 利润参数配置", expanded=False):
+                    active_pf = st.session_state.get("active_platform", "amazon")
+                    pf_info = get_platform_info(active_pf)
+                    active_region = st.session_state.get("active_region", pf_info.get("default_region", "us"))
+                    region_info = get_region_info(active_pf, active_region)
+                    profit_defaults = get_profit_defaults(active_pf)
+
+                    # 汇率
+                    currency_label = region_info.get("currency", "USD")
+                    exchange_rate = st.number_input(
+                        f"汇率 (CNY/{currency_label})", min_value=0.01, max_value=20.0,
+                        value=float(profit_defaults["exchange_rate"]), step=0.01,
+                        key=f"exchange_rate_{i}",
+                        help=f"1 {currency_label} 兑换多少人民币",
+                    )
+                    # 佣金比例
+                    commission_label = {
+                        "amazon": "亚马逊佣金比例",
+                        "ebay": "eBay 成交费比例",
+                        "alibaba": "阿里巴巴佣金比例",
+                    }.get(active_pf, "平台佣金比例")
+                    commission_pct = st.slider(
+                        commission_label, min_value=0.0, max_value=0.50,
+                        value=float(profit_defaults.get("commission_pct", 0.15)), step=0.01,
+                        format="%.0f%%",
+                        key=f"commission_{i}",
+                    )
+                    # 广告预算（Amazon 特有）
+                    if active_pf == "amazon":
+                        ad_pct = st.slider(
+                            "广告预算占比", min_value=0.0, max_value=0.50,
+                            value=float(profit_defaults.get("ad_pct", 0.10)), step=0.01,
+                            format="%.0f%%",
+                            key=f"ad_pct_{i}",
+                        )
+                    else:
+                        ad_pct = 0.0
+                    # 运费分档
+                    SHIPPING_TIERS = {
+                        "light":  {"label": "轻件 <500g",   "cny": 8.0},
+                        "medium": {"label": "中件 500g-2kg", "cny": 20.0},
+                        "heavy":  {"label": "重件 >2kg",     "cny": 50.0},
+                        "custom": {"label": "自定义",        "cny": None},
+                    }
+                    shipping_tier = st.selectbox(
+                        "运费档位",
+                        options=list(SHIPPING_TIERS.keys()),
+                        format_func=lambda k: SHIPPING_TIERS[k]["label"],
+                        index=1,
+                        key=f"shipping_tier_{i}",
+                    )
+                    if shipping_tier == "custom":
+                        shipping_cny = st.number_input(
+                            "自定义运费 (¥/件)", min_value=0.0, max_value=200.0,
+                            value=float(profit_defaults.get("shipping_cny", 15.0)), step=1.0,
+                            key=f"shipping_cny_{i}",
+                        )
+                    else:
+                        shipping_cny = SHIPPING_TIERS[shipping_tier]["cny"]
+
+                    # 同步到 session_state
+                    st.session_state["profit_defaults"] = {
+                        "exchange_rate": exchange_rate,
+                        "commission_pct": commission_pct,
+                        "ad_pct": ad_pct,
+                        "shipping_cny": shipping_cny,
+                        "procurement_cny": 0.0,
+                    }
 
                 defaults = st.session_state.get("profit_defaults", get_profit_defaults())
                 product_price = st.session_state.products[i].get("price", 0) or 0
                 product_title = st.session_state.products[i].get("title", "")
                 product_scrape_time = st.session_state.products[i].get("scrape_time", "")
 
-                # 从数据库恢复已保存的采购成本
+                # 从数据库恢复已保存的采购成本，如果没有则使用 AI 估算价
                 saved_cost = 0.0
                 if product_title and product_scrape_time:
                     try:
@@ -1136,12 +1010,16 @@ def _render_live_page(api_ok: bool):
                     except Exception:
                         pass  # 数据库不可用时忽略
 
+                # 如果没有保存的成本，使用 AI 估算价作为默认值
+                ai_est_cost = r.get("estimated_cost_cny", 0)
+                default_procurement = saved_cost if saved_cost > 0 else ai_est_cost
+
                 col_input, col_result = st.columns([1, 2])
                 with col_input:
                     procurement = st.number_input(
                         "预估采购成本 (¥/件)",
                         min_value=0.0, max_value=1000.0,
-                        value=saved_cost, step=1.0,
+                        value=default_procurement, step=1.0,
                         key=f"procurement_{i}",
                         help="从 1688 等平台采购的单件成本，输入后自动保存",
                     )
@@ -1199,25 +1077,26 @@ def _render_live_page(api_ok: bool):
                     else:
                         st.caption("👆 请输入采购成本以计算利润")
 
-                # ---- 🔍 1688 比价（混合策略：AI 估算 + 真实抓取） ----
+                # ---- 🔍 1688 验证（降为二级操作） ----
                 _1688_cache_key = f"price_1688_{product_title}"
                 cached_1688 = st.session_state.get(_1688_cache_key)
 
-                if st.button("🔍 查看1688参考价", key=f"1688_{i}", width="stretch"):
-                    search_keyword = product_title[:30]
-                    price_usd = float(product_price) if product_price else 0.0
-                    with st.spinner(f"正在获取参考价：{search_keyword}..."):
-                        result_1688 = search_1688_hybrid(product_title, price_usd)
-                    st.session_state[_1688_cache_key] = result_1688
-                    cached_1688 = result_1688
-                    # 自动回填采购成本（Spec 26）
-                    if result_1688.get("success") and result_1688.get("price_range"):
-                        pr = result_1688["price_range"]
-                        mid_price = (pr.get("min", 0) + pr.get("max", 0)) / 2
-                        if mid_price > 0:
-                            st.session_state[f"procurement_{i}"] = mid_price
-                            st.toast(f"✅ 已自动填入采购成本: ¥{mid_price:.2f}", icon="✅")
-                            st.rerun()
+                with st.expander("🔍 验证1688价格（可选）", expanded=False):
+                    if st.button("🔍 用1688真实价格验证", key=f"1688_{i}", width="stretch"):
+                        search_keyword = product_title[:30]
+                        price_usd = float(product_price) if product_price else 0.0
+                        with st.spinner(f"正在获取参考价：{search_keyword}..."):
+                            result_1688 = search_1688_hybrid(product_title, price_usd)
+                        st.session_state[_1688_cache_key] = result_1688
+                        cached_1688 = result_1688
+                        # 自动回填采购成本（Spec 26）
+                        if result_1688.get("success") and result_1688.get("price_range"):
+                            pr = result_1688["price_range"]
+                            mid_price = (pr.get("min", 0) + pr.get("max", 0)) / 2
+                            if mid_price > 0:
+                                st.session_state[f"procurement_{i}"] = mid_price
+                                st.toast(f"✅ 已自动填入采购成本: ¥{mid_price:.2f}", icon="✅")
+                                st.rerun()
 
                 # 显示 1688 结果（新查询或缓存）
                 if cached_1688:
@@ -1761,396 +1640,6 @@ def _render_targeted_page(api_ok: bool):
 
 
 
-
-# ============================================================
-# 全站热扫分析仪表盘（Spec 34 增强）
-# ============================================================
-
-def _filter_scan_products(ranked, platforms, regions, price_range):
-    """按平台/地区/价格筛选聚合后的热门产品。"""
-    result = []
-    for item in ranked:
-        # 平台筛选（交集非空）
-        if platforms and not (set(item.get("platforms", [])) & set(platforms)):
-            continue
-        # 地区筛选
-        if regions and not (set(item.get("regions", [])) & set(regions)):
-            continue
-        # 价格筛选
-        price = 0.0
-        try:
-            price = float(item.get("sample", {}).get("price", 0) or 0)
-        except (ValueError, TypeError):
-            price = 0.0
-        if price_range and price > 0:
-            if price < price_range[0] or price > price_range[1]:
-                continue
-        result.append(item)
-    return result
-
-
-def _render_scan_dashboard(ranked, raw_products=None):
-    """渲染全站热扫分析仪表盘：筛选器 + Tabs分维度图表。"""
-    import plotly.express as px
-
-    if not ranked:
-        st.info("暂无数据，请先执行全站扫描。")
-        return
-
-    # ---- 收集所有平台/地区选项 ----
-    all_platforms = sorted({p for item in ranked for p in item.get("platforms", []) if p})
-    all_regions = sorted({r for item in ranked for r in item.get("regions", []) if r})
-
-    # ---- 全局筛选器 ----
-    with st.container(border=True):
-        st.markdown("#### 🔍 数据筛选")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            sel_platforms = st.multiselect("平台", all_platforms, default=all_platforms, key="scan_dash_pf")
-        with col2:
-            sel_regions = st.multiselect("地区", all_regions, default=all_regions, key="scan_dash_rg")
-        with col3:
-            prices = []
-            for item in ranked:
-                try:
-                    pr = float(item.get("sample", {}).get("price", 0) or 0)
-                    if pr > 0:
-                        prices.append(pr)
-                except (ValueError, TypeError):
-                    pass
-            if prices:
-                pmin, pmax = min(prices), max(prices)
-                price_range = st.slider("价格范围 ($)", pmin, pmax, (pmin, pmax), key="scan_dash_price")
-            else:
-                price_range = None
-
-    filtered = _filter_scan_products(ranked, sel_platforms, sel_regions, price_range)
-    st.caption(f"筛选后：{len(filtered)} / {len(ranked)} 个产品")
-
-    if not filtered:
-        st.warning("筛选后无产品，请放宽条件。")
-        return
-
-    # 准备 DataFrame
-    rows = []
-    for item in filtered:
-        try:
-            price = float(item.get("sample", {}).get("price", 0) or 0)
-        except (ValueError, TypeError):
-            price = 0.0
-        rows.append({
-            "title": item["title"][:40],
-            "hotness": item["hotness"],
-            "region_count": item["region_count"],
-            "total_reviews": item["total_reviews"],
-            "price": price,
-            "platforms": " / ".join(item["platforms"]),
-            "regions": " / ".join(r.upper() for r in item["regions"]),
-            "primary_platform": item["platforms"][0] if item["platforms"] else "unknown",
-            "primary_region": item["regions"][0].upper() if item["regions"] else "??",
-        })
-    df = pd.DataFrame(rows)
-
-    # ---- Tabs 分维度图表 ----
-    tab_region, tab_pf, tab_price, tab_hot = st.tabs([
-        "🌍 按地区", "🛒 按平台", "💰 按价格", "🔥 按热度"
-    ])
-
-    # Tab 按地区
-    with tab_region:
-        c1, c2 = st.columns(2)
-        with c1:
-            reg_count = df["primary_region"].value_counts().reset_index()
-            reg_count.columns = ["地区", "热门产品数"]
-            fig = px.bar(reg_count, x="地区", y="热门产品数", title="各地区热门产品数")
-            fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-            st.plotly_chart(fig, width="stretch")
-        with c2:
-            # 地区平均热度
-            reg_hot = df.groupby("primary_region")["hotness"].mean().reset_index()
-            reg_hot.columns = ["地区", "平均热度"]
-            fig = px.bar(reg_hot, x="地区", y="平均热度", title="各地区平均热度", color="平均热度")
-            fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-            st.plotly_chart(fig, width="stretch")
-
-    # Tab 按平台
-    with tab_pf:
-        c1, c2 = st.columns(2)
-        with c1:
-            pf_count = df["primary_platform"].value_counts().reset_index()
-            pf_count.columns = ["平台", "产品数"]
-            fig = px.pie(pf_count, names="平台", values="产品数", title="各平台热门产品占比")
-            fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-            st.plotly_chart(fig, width="stretch")
-        with c2:
-            pf_stat = df.groupby("primary_platform").agg(
-                产品数=("title", "count"),
-                平均热度=("hotness", "mean"),
-                平均价格=("price", "mean"),
-            ).reset_index()
-            pf_stat.columns = ["平台", "产品数", "平均热度", "平均价格"]
-            fig = px.bar(pf_stat, x="平台", y=["产品数", "平均热度"], barmode="group",
-                         title="平台对比：产品数 / 平均热度")
-            fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-            st.plotly_chart(fig, width="stretch")
-
-    # Tab 按价格
-    with tab_price:
-        price_df = df[df["price"] > 0]
-        if price_df.empty:
-            st.info("无有效价格数据（部分站点价格需JS加载）。")
-        else:
-            c1, c2 = st.columns(2)
-            with c1:
-                fig = px.histogram(price_df, x="price", nbins=20, title="价格分布")
-                fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20), xaxis_title="价格 ($)")
-                st.plotly_chart(fig, width="stretch")
-            with c2:
-                # 价格 vs 热度散点（找低价高热度）
-                fig = px.scatter(price_df, x="price", y="hotness", size="region_count",
-                                 hover_name="title", title="价格 vs 热度（气泡=上榜地区数）",
-                                 color="hotness", color_continuous_scale="Viridis")
-                fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20),
-                                  xaxis_title="价格 ($)", yaxis_title="热度")
-                st.plotly_chart(fig, width="stretch")
-            # 各地区价格箱线图
-            if len(price_df["primary_region"].unique()) > 1:
-                fig = px.box(price_df, x="primary_region", y="price", title="各地区价格分布")
-                fig.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
-                st.plotly_chart(fig, width="stretch")
-
-    # Tab 按热度
-    with tab_hot:
-        top20 = df.nlargest(min(20, len(df)), "hotness")
-        c1, c2 = st.columns(2)
-        with c1:
-            fig = px.bar(top20.sort_values("hotness"), x="hotness", y="title", orientation="h",
-                         title=f"Top {len(top20)} 热度排行", hover_data=["region_count", "price"])
-            fig.update_layout(height=max(350, len(top20) * 20), margin=dict(l=20, r=20, t=40, b=20),
-                              yaxis_title="", xaxis_title="热度")
-            st.plotly_chart(fig, width="stretch")
-        with c2:
-            fig = px.histogram(df, x="hotness", nbins=20, title="热度分布")
-            fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20), xaxis_title="热度")
-            st.plotly_chart(fig, width="stretch")
-        # 评论数 vs 热度气泡图
-        fig = px.scatter(df, x="total_reviews", y="hotness", size="region_count",
-                         hover_name="title", title="评论数 vs 热度（气泡=上榜地区数）",
-                         color="hotness", color_continuous_scale="Inferno")
-        fig.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20),
-                          xaxis_title="累计评论数", yaxis_title="热度")
-        st.plotly_chart(fig, width="stretch")
-
-
-# ============================================================
-# ==================== 全站热扫页面（Spec 34）=================
-# ============================================================
-
-def _render_global_scan_page(api_ok: bool):
-    """渲染全站热扫页面 — 一键扫描全平台×全地区热销榜，聚合跨地区热门产品。"""
-    st.title("🌍 全站热扫 — 跨地区热门产品发现")
-    st.markdown("一键扫描所有平台 × 所有地区（共 18 站点）的 Best Sellers 热销榜，聚合出跨地区通用爆款。")
-    st.divider()
-
-    # ---- 控制区 ----
-    with st.container(border=True):
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            top_n = st.number_input(
-                "返回热门产品数", min_value=10, max_value=100, value=30, step=10,
-                help="聚合后展示热度最高的前 N 个产品",
-            )
-        with col2:
-            save_to_db = st.checkbox(
-                "扫描后保存到数据库", value=False,
-                help="把抓取的产品存入 products 表（供历史记录查看）",
-            )
-
-        st.caption("⏱️ 预估耗时：18 个站点 × ~20-40 秒 ≈ 6-12 分钟（取决于网络和反爬）")
-
-        scan_clicked = st.button("🚀 一键全站扫描", type="primary", width="stretch")
-
-    # ---- 扫描触发 ----
-    if scan_clicked:
-        st.session_state.global_scan_step = "scanning"
-        st.session_state.global_scan_results = None
-        st.rerun()
-
-    # ---- 扫描执行 ----
-    if st.session_state.get("global_scan_step") == "scanning":
-        with st.status("🌍 正在扫描全平台全地区热销榜...", expanded=True) as status:
-            progress_bar = st.progress(0, text="准备扫描...")
-
-            def _on_progress(done, total, label):
-                pct = min(done / total, 1.0) if total > 0 else 0
-                progress_bar.progress(pct, text=f"扫描进度：{done}/{total} — {label}")
-
-            results = scan_all_regions(progress_callback=_on_progress)
-            st.session_state.global_scan_results = results
-
-            progress_bar.empty()
-            status.update(
-                label=f"✅ 扫描完成（{results['success_sites']}/{results['total_sites']} 站点成功）",
-                state="complete",
-            )
-
-        # 可选保存到数据库（按平台地区分组，save_products 要求同平台同地区）
-        if save_to_db and results["products"]:
-            try:
-                from collections import defaultdict
-                groups = defaultdict(list)
-                for p in results["products"]:
-                    key = (p.get("platform", "amazon"), p.get("region", "us"), p.get("currency", "USD"))
-                    groups[key].append(p)
-                saved_total = 0
-                for (pf, rg, cur), plist in groups.items():
-                    saved_total += save_products(
-                        plist, [{}] * len(plist),
-                        source=f"global_scan_{pf}_{rg}", platform=pf, region=rg, currency=cur,
-                    )
-                st.success(f"💾 已保存 {saved_total} 条到数据库")
-            except Exception as e:
-                st.warning(f"保存数据库失败：{e}")
-
-        st.session_state.global_scan_step = "done"
-        st.rerun()
-
-    # ---- 结果展示 ----
-    if st.session_state.get("global_scan_step") == "done":
-        results = st.session_state.get("global_scan_results")
-        if not results:
-            st.info("点击上方按钮开始扫描。")
-            return
-
-        total = results["total_sites"]
-        success = results["success_sites"]
-        errors = results.get("errors", [])
-
-        st.success(
-            f"✅ 扫描完成：{success}/{total} 站点成功，共抓到 {len(results['products'])} 个产品"
-        )
-
-        # 失败站点
-        if errors:
-            with st.expander(f"⚠️ {len(errors)} 个站点扫描失败", expanded=False):
-                for pf, rg, err in errors:
-                    pf_name = PLATFORMS.get(pf, {}).get("name", pf)
-                    st.caption(f"• {pf_name} {rg.upper()}：{err}")
-
-        # 跨地区聚合排行
-        ranked = aggregate_hot_products(results["products"], top_n=int(top_n))
-        if not ranked:
-            st.warning("未能聚合出热门产品（可能抓取均失败，请检查网络/反爬后重试）。")
-            return
-
-        st.divider()
-        st.subheader(f"🔥 跨地区热门产品 Top {len(ranked)}")
-        st.caption("热度 = 上榜地区数 × 10 + log₁₀(累计评论数+1) × 5")
-
-        rows = []
-        for i, item in enumerate(ranked, 1):
-            sample = item.get("sample", {})
-            price = sample.get("price")
-            rows.append({
-                "排名": i,
-                "产品名称": item["title"],
-                "上榜地区数": item["region_count"],
-                "累计评论数": item["total_reviews"],
-                "热度": item["hotness"],
-                "价格": f"${float(price):.2f}" if price else "-",
-                "出现平台": " / ".join(item["platforms"]),
-                "出现地区": " / ".join(r.upper() for r in item["regions"]),
-            })
-        st.dataframe(
-            pd.DataFrame(rows), width="stretch", hide_index=True,
-            column_config={
-                "排名": st.column_config.NumberColumn(format="%d", width="small"),
-                "热度": st.column_config.NumberColumn(format="%.1f", width="small"),
-                "产品名称": st.column_config.TextColumn(width="large"),
-            },
-        )
-
-        # ---- AI 深度分析 Top10（Spec 34 增强） ----
-        st.divider()
-        st.subheader("🤖 AI 深度选品分析")
-        st.caption("对热度 Top10 产品做五维度评分 + 蓝海指数计算，发现真正值得入手的爆款")
-
-        col_ai1, col_ai2 = st.columns([2, 3])
-        with col_ai1:
-            if st.button("🔍 分析 Top10 热门产品", type="primary", key="global_scan_ai_btn"):
-                # 构造传给 analyzer 的产品列表
-                top_products = []
-                for i, item in enumerate(ranked[:10], 1):
-                    s = item.get("sample", {})
-                    top_products.append({
-                        "title": item["title"],
-                        "price": s.get("price", 0) or 0,
-                        "rating": s.get("rating", 0) or 0,
-                        "num_reviews": item["total_reviews"],
-                        "rank": i,
-                        "category": s.get("category", ""),
-                    })
-                with st.spinner("🤖 AI 正在分析 Top10 产品..."):
-                    ai_results = analyze_products(top_products)
-                    # 计算蓝海指数
-                    for r in ai_results:
-                        r["blue_ocean"] = calculate_blue_ocean_score(r) if not r.get("parse_error") else 0
-                    st.session_state.global_scan_analysis = list(zip(top_products, ai_results))
-                st.toast("AI 分析完成", icon="🤖")
-                st.rerun()
-
-        with col_ai2:
-            analysis_pairs = st.session_state.get("global_scan_analysis")
-            if analysis_pairs:
-                st.success(f"✅ 已分析 {len(analysis_pairs)} 个产品")
-
-        # 展示 AI 分析结果（蓝海指数排行）
-        analysis_pairs = st.session_state.get("global_scan_analysis")
-        if analysis_pairs:
-            # 按蓝海指数排序
-            sorted_pairs = sorted(analysis_pairs, key=lambda x: x[1].get("blue_ocean", 0), reverse=True)
-            rows = []
-            for prod, r in sorted_pairs:
-                verdict = r.get("final_verdict", "")
-                verdict_label = {"recommended": "🟢推荐", "cautious": "🟡谨慎", "not_recommended": "🔴不推荐"}.get(verdict, "⚪")
-                rows.append({
-                    "产品": prod["title"][:35],
-                    "蓝海指数": r.get("blue_ocean", 0),
-                    "判定": verdict_label,
-                    "市场容量": _dim_score(r, "market_capacity"),
-                    "竞争": _dim_score(r, "competition"),
-                    "利润": _dim_score(r, "profit_potential"),
-                    "新手友好": _dim_score(r, "beginner_friendly"),
-                    "理由": r.get("verdict_reason", "")[:30],
-                })
-            st.dataframe(
-                pd.DataFrame(rows), width="stretch", hide_index=True,
-                column_config={"蓝海指数": st.column_config.NumberColumn(format="%.1f")},
-            )
-
-        # ---- 分析仪表盘（Spec 34 增强） ----
-        st.divider()
-        st.subheader("📊 多维度分析仪表盘")
-        _render_scan_dashboard(ranked, results.get("products"))
-
-        st.divider()
-        if st.button("🔄 重新扫描", width="stretch"):
-            st.session_state.global_scan_step = None
-            st.session_state.global_scan_results = None
-            st.rerun()
-
-    # ---- 空闲状态 ----
-    elif st.session_state.get("global_scan_step") in (None, "idle"):
-        st.info(
-            "👈 点击「一键全站扫描」：\n\n"
-            "1. 🌍 自动扫描 Amazon / eBay / Alibaba / AliExpress 全部地区站点（18 个）\n"
-            "2. 🔥 聚合出跨地区通用的热门产品（上榜地区越多越值得关注）\n"
-            "3. 📊 查看热度排行榜，发现全球爆款趋势\n\n"
-            "💡 与「市场扫描」的区别：市场扫描按**关键词**找蓝海；"
-            "全站热扫**不需要关键词**，直接看各地区在卖什么爆款。"
-        )
-
-
 # ============================================================
 # ==================== 市场扫描页面 ===========================
 # ============================================================
@@ -2159,9 +1648,25 @@ def _render_market_scanner_page(api_ok: bool):
     """渲染市场扫描页面 — 批量扫描多平台×多地区，找出蓝海市场。"""
 
     st.title("🌐 市场机会扫描")
-    st.markdown("输入关键词，同时扫描多个平台和地区，找到蓝海市场和最佳入场时机。")
+    st.markdown("输入关键词扫描多平台多地区蓝海市场，或聚合热销榜单发现爆款趋势。")
     st.divider()
 
+    # ---- 扫描模式选择 ----
+    scan_mode = st.radio(
+        "扫描模式",
+        ["🔍 关键词扫描", "🔥 热销聚合"],
+        horizontal=True,
+        key="scan_mode_select",
+    )
+
+    if scan_mode == "🔍 关键词扫描":
+        _render_keyword_scan_mode(api_ok)
+    else:
+        _render_hot_aggregation_mode(api_ok)
+
+
+def _render_keyword_scan_mode(api_ok: bool):
+    """关键词扫描模式 — 输入关键词扫描多平台多地区。"""
     # ---- 输入区域 ----
     with st.container(border=True):
         col_kw, col_btn = st.columns([3, 1])
@@ -2235,6 +1740,183 @@ def _render_market_scanner_page(api_ok: bool):
     # ---- 扫描执行 ----
     if st.session_state.get("scan_step") == "scanning":
         kw = st.session_state.scan_keyword
+
+
+def _render_hot_aggregation_mode(api_ok: bool):
+    """热销聚合模式 — 扫描常用平台/地区的热销榜单，发现爆款趋势。"""
+    st.markdown("### 🔥 热销聚合模式")
+    st.markdown("基于你常用的平台和地区，聚合热销榜单发现跨市场爆款。")
+
+    with st.container(border=True):
+        # 自动推荐常用平台/地区（基于上次选择或默认）
+        last_platforms = st.session_state.get("hot_agg_platforms", ["amazon", "ebay"])
+        platform_keys = get_platform_choices()
+        platform_names = {k: f"{PLATFORMS[k]['icon']} {PLATFORMS[k]['name']}" for k in platform_keys}
+
+        selected_platforms = st.multiselect(
+            "🛒 聚合平台（建议 2-4 个）",
+            options=platform_keys,
+            default=[p for p in last_platforms if p in platform_keys] or platform_keys[:2],
+            format_func=lambda k: platform_names[k],
+            key="hot_agg_platforms_select",
+        )
+        st.session_state.hot_agg_platforms = selected_platforms
+
+        # 地区选择（限制在常用地区）
+        all_regions = set()
+        for pf in selected_platforms:
+            pf_info = get_platform_info(pf)
+            for rk in pf_info.get("regions", {}).keys():
+                all_regions.add(rk)
+        region_options = sorted(all_regions)
+        region_labels = {}
+        for pf in selected_platforms:
+            for rk, rv in get_platform_info(pf).get("regions", {}).items():
+                label = f"{rv['name']} ({rk})"
+                if label not in region_labels:
+                    region_labels[rk] = label
+
+        last_regions = st.session_state.get("hot_agg_regions", region_options[:3])
+        selected_regions = st.multiselect(
+            "🌍 聚合地区（建议 2-5 个，过多会耗时）",
+            options=region_options,
+            default=[r for r in last_regions if r in region_options] or region_options[:3],
+            format_func=lambda k: region_labels.get(k, k.upper()),
+            key="hot_agg_regions_select",
+        )
+        st.session_state.hot_agg_regions = selected_regions
+
+        # 返回热门产品数
+        top_n = st.number_input(
+            "返回热门产品数",
+            min_value=10, max_value=50, value=20, step=10,
+            help="聚合后展示热度最高的前 N 个产品",
+        )
+
+        save_to_db = st.checkbox(
+            "扫描后保存到数据库",
+            value=False,
+            help="把抓取的产品存入 products 表（供历史记录查看）",
+        )
+
+        combo_count = len(selected_platforms) * len(selected_regions)
+        if combo_count > 0:
+            est_seconds = combo_count * 30
+            st.caption(f"⏱️ 预估耗时：{combo_count} 个市场 × ~30秒 ≈ {est_seconds // 60} 分钟")
+
+        scan_clicked = st.button(
+            "🚀 开始聚合扫描",
+            type="primary",
+            width="stretch",
+            key="hot_agg_scan_btn",
+        )
+
+    # ---- 扫描触发 ----
+    if scan_clicked and selected_platforms and selected_regions:
+        st.session_state.hot_agg_platforms = selected_platforms
+        st.session_state.hot_agg_regions = selected_regions
+        st.session_state.hot_agg_top_n = top_n
+        st.session_state.hot_agg_save_db = save_to_db
+        st.session_state.hot_agg_step = "scanning"
+        st.rerun()
+
+    # ---- 扫描执行 ----
+    if st.session_state.get("hot_agg_step") == "scanning":
+        platforms = st.session_state.hot_agg_platforms
+        regions = st.session_state.hot_agg_regions
+        top_n = st.session_state.hot_agg_top_n
+        save_to_db = st.session_state.hot_agg_save_db
+
+        from src.regional_scanner import scan_all_regions
+
+        with st.status("🌍 正在聚合扫描热销榜单...", expanded=True) as status:
+            progress_bar = st.progress(0, text="准备扫描...")
+
+            def _on_progress(done, total, label):
+                pct = min(done / total, 1.0) if total > 0 else 0
+                progress_bar.progress(pct, text=f"扫描进度：{done}/{total} — {label}")
+
+            # 只扫描用户选择的平台和地区
+            from src.regional_scanner import scan_single_market
+            from collections import defaultdict
+
+            all_products = []
+            combo_count = len(platforms) * len(regions)
+            done_count = 0
+
+            for pf in platforms:
+                pf_info = get_platform_info(pf)
+                for rg in regions:
+                    if rg not in pf_info.get("regions", {}):
+                        continue
+                    try:
+                        result = scan_single_market(pf, rg)
+                        if result["success"]:
+                            all_products.extend(result.get("products", []))
+                    except Exception:
+                        pass
+                    done_count += 1
+                    _on_progress(done_count, combo_count, f"{pf}-{rg}")
+
+            # 聚合热度
+            from src.regional_scanner import aggregate_hot_products
+            ranked = aggregate_hot_products(all_products, top_n=top_n)
+
+            progress_bar.empty()
+            status.update(
+                label=f"✅ 聚合完成（{len(all_products)} 个产品 → {len(ranked)} 个热门）",
+                state="complete",
+            )
+
+        # 可选保存到数据库
+        if save_to_db and all_products:
+            try:
+                from collections import defaultdict
+                groups = defaultdict(list)
+                for p in all_products:
+                    key = (p.get("platform", "amazon"), p.get("region", "us"), p.get("currency", "USD"))
+                    groups[key].append(p)
+                saved_total = 0
+                for (pf, rg, cur), plist in groups.items():
+                    saved_total += save_products(
+                        plist, [{}] * len(plist),
+                        source=f"hot_agg_{pf}_{rg}", platform=pf, region=rg, currency=cur,
+                    )
+                st.success(f"💾 已保存 {saved_total} 条到数据库")
+            except Exception as e:
+                st.warning(f"保存数据库失败：{e}")
+
+        st.session_state.hot_agg_step = "done"
+        st.session_state.hot_agg_results = ranked
+        st.rerun()
+
+    # ---- 结果展示 ----
+    if st.session_state.get("hot_agg_step") == "done":
+        ranked = st.session_state.get("hot_agg_results", [])
+        if not ranked:
+            st.info("未找到热门产品。请尝试调整平台/地区选择。")
+            return
+
+        st.markdown(f"### 🏆 Top {len(ranked)} 热门产品")
+        st.caption("按热度评分排序 = 上榜地区数 × 10 + log10(累计评论数) × 5")
+
+        # 构建展示数据
+        display_data = []
+        for item in ranked:
+            sample = item.get("sample", {})
+            display_data.append({
+                "排名": len(display_data) + 1,
+                "产品": item.get("title", "")[:40],
+                "热度": item.get("hotness", 0),
+                "上榜地区数": item.get("region_count", 0),
+                "平台": ", ".join(item.get("platforms", [])),
+                "参考价": f"${sample.get('price', 0):.2f}" if sample.get("price") else "-",
+            })
+
+        import pandas as pd
+        df = pd.DataFrame(display_data)
+        st.dataframe(df, width="stretch", hide_index=True)
+
         platforms = st.session_state.scan_platforms
         regions = st.session_state.scan_regions
 
@@ -2594,127 +2276,16 @@ def _render_history_page():
             "并将 `data/products.json` 提交到 GitHub。"
         )
 
-    # 价格监控告警（Spec 20）
-    try:
-        from src.database import get_price_alerts
-        alerts = get_price_alerts(threshold_pct=10.0)
-        if alerts:
-            with st.expander(f"🔔 价格变动告警（{len(alerts)} 条）", expanded=False):
-                for alert in alerts[:10]:
-                    change = alert["change_pct"]
-                    icon = "📉" if change < 0 else "📈"
-                    color = "red" if change < 0 else "green"
-                    st.markdown(
-                        f"{icon} **{alert['title'][:40]}** — "
-                        f"${alert['old_price']:.2f} → ${alert['new_price']:.2f} "
-                        f"(**{change:+.1f}%**)"
-                    )
-    except Exception:
-        pass  # 数据库不可用时忽略
-
     # ---- Tabs ----
-    tab_list, tab_trend, tab_compare, tab_fav = st.tabs([
-        "📚 历史记录", "📈 产品趋势", "⚖️ 跨平台对比", "⭐ 已收藏"
+    tab_list, tab_fav = st.tabs([
+        "📚 分析记录", "⭐ 已收藏"
     ])
 
     with tab_list:
         _render_history_list(total_count)
 
-    with tab_trend:
-        _render_trend_page()
-
-    with tab_compare:
-        _render_cross_platform_tab()
-
     with tab_fav:
         _render_favorites_tab()
-
-
-def _render_trend_page():
-    """渲染产品趋势页面。"""
-    st.markdown("### 📈 产品趋势分析")
-    st.caption("对比同一产品在不同抓取时间的排名、价格、评论数变化")
-
-    total_count = get_product_count()
-    if total_count == 0:
-        st.info("暂无数据，请先运行分析。")
-        return
-
-    # 获取唯一产品列表
-    products = get_all_products()
-    unique_titles = sorted({p.get("title", "") for p in products if p.get("title")})
-
-    if not unique_titles:
-        st.info("暂无可追踪的产品。")
-        return
-
-    selected_title = st.selectbox(
-        "选择产品",
-        options=unique_titles,
-        format_func=lambda t: t[:50] + "…" if len(t) > 50 else t,
-        help="选择一个产品查看其历史趋势变化",
-    )
-
-    if not selected_title:
-        return
-
-    # 获取趋势数据
-    trend_data = get_trend_data(title=selected_title)
-
-    if len(trend_data) < 2:
-        st.warning("该产品仅有一次抓取记录，至少需要两次抓取才能显示趋势。")
-        if trend_data:
-            st.json(dict(trend_data[0]))
-        return
-
-    # 转为 DataFrame
-    df = pd.DataFrame(trend_data)
-    df["scrape_time"] = pd.to_datetime(df["scrape_time"])
-    df["rank"] = pd.to_numeric(df["rank"], errors="coerce")
-    df["price"] = pd.to_numeric(df["price"], errors="coerce")
-    df["num_reviews"] = pd.to_numeric(df["num_reviews"], errors="coerce")
-
-    # 排名变化曲线
-    st.markdown("#### 📊 排名变化")
-    st.line_chart(df.set_index("scrape_time")["rank"])
-
-    # 价格变化曲线
-    st.markdown("#### 💰 价格变化")
-    st.line_chart(df.set_index("scrape_time")["price"])
-
-    # 评论数变化曲线
-    st.markdown("#### 💬 评论数变化")
-    st.line_chart(df.set_index("scrape_time")["num_reviews"])
-
-    # 趋势总结（数值从 SQLite 返回为字符串，需转换为数字）
-    first = trend_data[0]
-    last = trend_data[-1]
-    first_rank = float(first.get("rank") or 0)
-    last_rank = float(last.get("rank") or 0)
-    first_price = float(first.get("price") or 0)
-    last_price = float(last.get("price") or 0)
-    first_reviews = float(first.get("num_reviews") or 0)
-    last_reviews = float(last.get("num_reviews") or 0)
-
-    rank_change = first_rank - last_rank
-    price_change = last_price - first_price
-    review_change = last_reviews - first_reviews
-
-    st.markdown("#### 📋 趋势总结")
-    c1, c2, c3 = st.columns(3)
-    c1.metric(
-        "排名变化", f"#{int(last_rank)}",
-        delta=f"{'↑' if rank_change > 0 else '↓'} {abs(int(rank_change))} 位" if rank_change != 0 else "无变化",
-        delta_color="normal" if rank_change > 0 else "inverse",
-    )
-    c2.metric(
-        "价格变化", f"${last_price:.2f}",
-        delta=f"{'↑' if price_change > 0 else '↓'} ${abs(price_change):.2f}",
-    )
-    c3.metric(
-        "评论数变化", f"{int(last_reviews):,}",
-        delta=f"{'↑' if review_change > 0 else '↓'} {abs(int(review_change)):,}",
-    )
 
 
 def _render_history_list(total_count: int):
@@ -2838,11 +2409,6 @@ def _render_history_list(total_count: int):
     if not products:
         st.warning("没有符合当前筛选条件的历史记录。请调整筛选条件后重试。")
         return
-
-    # ---- 统计仪表盘 ----
-    _render_stats_dashboard(products, selected_platforms)
-
-    st.divider()
 
     # ---- 统计摘要 ----
     st.caption(f"筛选结果：{len(products)} 条记录")
@@ -3014,153 +2580,6 @@ def _match_filters_simple(product: dict, filters: dict) -> bool:
     return True
 
 
-def _render_stats_dashboard(products: list[dict], selected_platforms: list[str]):
-    """渲染数据统计仪表盘。"""
-    st.subheader("📈 数据统计")
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.metric("总产品数", len(products))
-
-    with col2:
-        platform_counts = {}
-        for p in products:
-            pf = p.get("platform", "amazon")
-            platform_counts[pf] = platform_counts.get(pf, 0) + 1
-        st.metric("平台覆盖", f"{len(platform_counts)} 个平台")
-
-    with col3:
-        margins = []
-        for p in products:
-            analysis = p.get("analysis", {})
-            m = analysis.get("margin_pct")
-            if m is not None:
-                margins.append(m)
-        if margins:
-            avg_margin = sum(margins) / len(margins)
-            st.metric("平均毛利率", f"{avg_margin:.1f}%")
-        else:
-            st.metric("平均毛利率", "N/A", help="输入采购成本后才能计算毛利率")
-
-    with col4:
-        profitable = sum(
-            1 for p in products
-            if p.get("analysis", {}).get("is_profitable", False)
-        )
-        if profitable > 0:
-            pct = (profitable / len(products) * 100) if products else 0
-            st.metric("盈利产品占比", f"{pct:.0f}%")
-        else:
-            st.metric("盈利产品占比", "N/A", help="输入采购成本后才能计算盈利情况")
-
-    # 各平台产品数量柱状图
-    if platform_counts:
-        chart_data = pd.DataFrame(
-            list(platform_counts.items()),
-            columns=["平台", "产品数"],
-        )
-        # 添加平台名称
-        chart_data["平台名"] = chart_data["平台"].apply(
-            lambda k: f"{PLATFORMS.get(k, {}).get('icon', '❓')} {PLATFORMS.get(k, {}).get('name', k)}"
-        )
-        st.bar_chart(chart_data.set_index("平台名")["产品数"])
-
-
-def _render_cross_platform_tab():
-    """渲染跨平台对比 Tab。"""
-    st.subheader("⚖️ 跨平台对比")
-    st.caption("对比各平台的平均售价、利润率、费用结构等指标")
-
-    # 获取所有产品数据
-    all_products = query_products()
-    if not all_products:
-        st.info("📭 暂无数据，请先运行分析。")
-        return
-
-    # 检测是否只有一个平台数据（Spec 16 P2）
-    platform_set = {p.get("platform", "amazon") for p in all_products}
-    if len(platform_set) < 2:
-        st.warning(
-            f"💡 当前仅有 **{len(platform_set)} 个平台** 的数据，跨平台对比效果有限。\n\n"
-            "请先在「🔍 实时选品」页面抓取其他平台的数据，"
-            "或运行 `python daily_scrape.py` 一次性抓取所有平台。"
-        )
-
-    # 按平台分组统计
-    platform_stats = {}
-    for p in all_products:
-        pf = p.get("platform", "amazon")
-        analysis = p.get("analysis", {})
-        if pf not in platform_stats:
-            platform_stats[pf] = {
-                "prices": [], "margins": [], "commissions": [],
-                "shippings": [], "count": 0,
-            }
-        try:
-            price = float(p.get("price", 0) or 0)
-        except (ValueError, TypeError):
-            price = 0.0
-        platform_stats[pf]["prices"].append(price)
-        margin = analysis.get("margin_pct")
-        if margin is not None:
-            platform_stats[pf]["margins"].append(margin)
-        platform_stats[pf]["count"] += 1
-
-    # 构建对比表格
-    comparison_data = []
-    for pf, stats in platform_stats.items():
-        pf_info = PLATFORMS.get(pf, {})
-        avg_price = sum(stats["prices"]) / len(stats["prices"]) if stats["prices"] else 0
-        avg_margin = sum(stats["margins"]) / len(stats["margins"]) if stats["margins"] else 0
-        comparison_data.append({
-            "平台": f"{pf_info.get('icon', '❓')} {pf_info.get('name', pf)}",
-            "产品数": stats["count"],
-            "平均售价(USD)": round(avg_price, 2),
-            "平均毛利率%": round(avg_margin, 1),
-        })
-
-    if comparison_data:
-        df = pd.DataFrame(comparison_data)
-        st.dataframe(
-            df, width="stretch", hide_index=True,
-            column_config={
-                "平均售价(USD)": st.column_config.NumberColumn(format="$%.2f"),
-                "平均毛利率%": st.column_config.NumberColumn(format="%.1f%%"),
-            },
-        )
-
-        # 毛利率对比柱状图
-        if len(comparison_data) >= 2:
-            st.subheader("📊 毛利率对比")
-            chart_df = pd.DataFrame(comparison_data)
-            st.bar_chart(chart_df.set_index("平台")["平均毛利率%"])
-
-    # 产品详情表格
-    st.subheader("📋 全平台产品列表")
-    table_data = []
-    for p in all_products:
-        pf = p.get("platform", "amazon")
-        pf_info = PLATFORMS.get(pf, {})
-        analysis = p.get("analysis", {})
-        table_data.append({
-            "平台": f"{pf_info.get('icon', '')} {pf_info.get('name', pf)}",
-            "标题": (p.get("title", "") or "")[:60],
-            "价格": p.get("price", ""),
-            "判定": _verdict_emoji(analysis.get("final_verdict", "")),
-            "分析时间": p.get("scrape_time", ""),
-        })
-
-    if table_data:
-        st.dataframe(
-            pd.DataFrame(table_data), width="stretch", hide_index=True,
-        )
-
-
-# ============================================================
-# 已收藏 Tab（Spec 16 P3）
-# ============================================================
-
 def _render_favorites_tab():
     """渲染已收藏产品 Tab。"""
     st.subheader("⭐ 已收藏产品")
@@ -3171,15 +2590,6 @@ def _render_favorites_tab():
         return
 
     st.caption(f"共 {len(favorites)} 个收藏产品")
-
-    # 采购流程状态定义
-    STATUS_MAP = {
-        "saved":     ("📋 已收藏", "仅收藏，待评估"),
-        "sourcing":  ("🔍 找供应商", "正在1688/阿里巴巴寻找供应商"),
-        "sampling":  ("📦 申请样品", "已联系供应商，等待样品"),
-        "ready":     ("💰 准备上架", "样品确认，计算落地成本"),
-        "launched":  ("🚀 已上架", "已完成上架"),
-    }
 
     for i, fav in enumerate(favorites):
         title = fav.get("title", "")
@@ -3192,28 +2602,12 @@ def _render_favorites_tab():
         analysis = fav.get("analysis", {})
         verdict = analysis.get("final_verdict", "")
         verdict_label = VERDICT_LABEL_MAP.get(verdict, "⚪")
-        status = fav.get("status", "saved")
-        status_label, status_desc = STATUS_MAP.get(status, ("📋 已收藏", ""))
 
         with st.container(border=True):
-            col_info, col_status, col_action = st.columns([4, 2, 1])
+            col_info, col_action = st.columns([5, 1])
             with col_info:
                 st.markdown(f"{pf_icon} **{verdict_label}** {title}")
                 st.caption(f"💰 ${price} | ⭐ {rating} | 平台：{pf_name}")
-            with col_status:
-                new_status = st.selectbox(
-                    "采购进度",
-                    options=list(STATUS_MAP.keys()),
-                    format_func=lambda k: STATUS_MAP[k][0],
-                    index=list(STATUS_MAP.keys()).index(status) if status in STATUS_MAP else 0,
-                    key=f"fav_status_{i}",
-                    label_visibility="collapsed",
-                )
-                if new_status != status:
-                    from src.database import update_favorite_status
-                    update_favorite_status(title, platform, new_status)
-                    st.rerun()
-                st.caption(status_desc)
             with col_action:
                 if st.button("🗑️", key=f"del_fav_{i}", help="取消收藏"):
                     remove_favorite(title, platform)
@@ -3257,76 +2651,3 @@ def _verdict_emoji(verdict: str) -> str:
     }.get(verdict, verdict)
 
 
-def _load_products():
-    """
-    两级数据策略：
-    1. 优先读取 data/products.json（适用于 Streamlit Cloud 离线部署）
-    2. 失败则实时抓取 Amazon，仅接受 source='live' 的结果
-    3. 实时抓取返回 cache/unavailable 时丢弃数据并抛出异常
-
-    Returns:
-        (products, source_info) 元组
-
-    Raises:
-        RuntimeError: JSON 和实时抓取均不可用时
-    """
-    json_path = os.path.join(os.path.dirname(__file__), "data", "products.json")
-
-    # ---- 第一级：JSON 文件 ----
-    if os.path.exists(json_path):
-        try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                products = json.load(f)
-            if products and len(products) > 0:
-                scrape_time = products[0].get("scrape_time", "")
-                return products, {"source": "json", "timestamp": scrape_time}
-        except Exception:
-            pass  # 读取失败，降级到实时抓取
-
-    # ---- 第二级：实时抓取（仅接受 live） ----
-    products, source_info = fetch_amazon_best_sellers()
-    if source_info.get("source") == "live":
-        return products, source_info
-
-    # 实时抓取也失败 → 丢弃 cache/unavailable，提示用户
-    raise RuntimeError(
-        "实时抓取失败，请先运行 daily_scrape.py 并推送 products.json"
-    )
-
-
-# ============================================================
-# 模块入口 — Session State 初始化 + 页面路由
-# ============================================================
-
-if "products" not in st.session_state:
-    st.session_state.products = []
-if "results" not in st.session_state:
-    st.session_state.results = []
-if "source_info" not in st.session_state:
-    st.session_state.source_info = None
-if "step" not in st.session_state:
-    st.session_state.step = "idle"  # idle → loaded → analyzed
-if "analyzing" not in st.session_state:
-    st.session_state.analyzing = False  # 分析中锁定按钮
-if "history_data" not in st.session_state:
-    st.session_state.history_data = []  # 当前会话的历史记录（Cloud 端替代 SQLite）
-
-# 初始化数据库（幂等）
-init_db()
-
-# 渲染侧边栏并获取页面选择
-api_ok, page = render_sidebar(st.session_state.source_info)
-
-# 页面路由
-if "Dashboard" in page:
-    _render_dashboard_page()
-elif "实时选品" in page:
-    _render_live_page(api_ok)
-elif "指定选品" in page:
-    _render_targeted_page(api_ok)
-elif "全站热扫" in page:
-    _render_global_scan_page(api_ok)
-elif "市场扫描" in page:
-    _render_market_scanner_page(api_ok)
-elif "历史记录" in page:
-    _render_history_page()

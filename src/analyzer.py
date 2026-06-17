@@ -293,6 +293,9 @@ BATCH_SYSTEM_PROMPT = """你是一位拥有 10 年经验的资深跨境电商选
 最后给出：
 - final_verdict：取值为 "recommended"（推荐）、"cautious"（谨慎）或 "not_recommended"（不推荐）
 - verdict_reason：一句话总结判断依据（50 字以内）
+- trend_direction：取值为 "rising" "stable" "declining" 或 "unknown"，基于你对品类的了解判断该产品近6个月的搜索热度趋势
+- trend_reason：一句话解释趋势判断依据
+- estimated_cost_cny：你推测的1688/阿里采购成本（人民币），给出一个近似整数
 
 以严格 JSON **数组** 格式返回，数组中每个元素对应一个产品。示例格式：
 [
@@ -304,7 +307,10 @@ BATCH_SYSTEM_PROMPT = """你是一位拥有 10 年经验的资深跨境电商选
     "beginner_friendly": {"score": 9, "reason": "轻小件物流简单，无需特殊认证，启动资金<$2000"},
     "seasonality_risk": {"score": 2, "reason": "全年稳定需求，无明显淡旺季波动"},
     "final_verdict": "recommended",
-    "verdict_reason": "高需求低门槛低风险，适合新手入门选品"
+    "verdict_reason": "高需求低门槛低风险，适合新手入门选品",
+    "trend_direction": "rising",
+    "trend_reason": "近6个月搜索热度持续上升，季节性品类扩容",
+    "estimated_cost_cny": 25
   }
 ]
 只返回 JSON 数组。"""
