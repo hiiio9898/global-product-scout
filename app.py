@@ -1343,15 +1343,19 @@ def _render_targeted_page(api_ok: bool):
         # 关键词翻译（Spec 33）：含中文且开启翻译 → 翻成英文再搜
         kw_display = kw   # 展示用（含原中文 → 英文提示）
         kw_search = kw    # 实际搜索用（英文）
+        translated_keyword_info = None  # 记录翻译信息供摘要卡片用
         if (
             st.session_state.get("translation_enabled", is_translation_enabled())
             and contains_chinese(kw)
         ):
-            with st.status("🌐 正在翻译关键词...", expanded=False):
+            with st.status("🌐 正在翻译关键词...", expanded=True):
                 tr = translate_keyword(kw)
                 if tr["success"] and tr.get("translated") and tr["translated"] != kw:
                     kw_search = tr["translated"]
                     kw_display = f"{kw} → {kw_search}"
+                    translated_keyword_info = (kw, kw_search)
+                    st.success(f"✅ 关键词已翻译：{kw} → **{kw_search}**")
+                    st.toast(f"已翻译: {kw} → {kw_search}", icon="🌐")
 
         with st.status(f"📡 正在搜索 {pf_name}...", expanded=False) as status:
             search_mod = importlib.import_module(pf_info["search_module"])
@@ -1388,13 +1392,24 @@ def _render_targeted_page(api_ok: bool):
                     st.caption(f"🔄 去重：{original_count} → {len(products)} 个产品（按 ASIN 去除重复变体）")
 
                 # 产品标题翻译（Spec 33）：英文标题 → 中文，存 title_zh
+                translated_titles_count = 0
                 if st.session_state.get("translation_enabled", is_translation_enabled()) and products:
-                    with st.status("🌐 正在翻译产品标题...", expanded=False):
+                    with st.status("🌐 正在翻译产品标题...", expanded=True):
                         titles = [p.get("title", "") for p in products]
                         zh_titles = translate_product_titles(titles)
                         for p, zh in zip(products, zh_titles):
                             if zh and zh != p.get("title"):
                                 p["title_zh"] = zh
+                                translated_titles_count += 1
+                        if translated_titles_count > 0:
+                            st.success(f"✅ 已将 {translated_titles_count} 个产品标题翻译为中文")
+                            st.toast(f"已翻译 {translated_titles_count} 个标题为中文", icon="📝")
+
+                # 记录翻译摘要信息（供结果区摘要卡片展示）
+                st.session_state.targeted_translation_info = {
+                    "keyword": translated_keyword_info,
+                    "titles_count": translated_titles_count,
+                }
 
                 st.session_state.targeted_results = products
                 st.session_state.targeted_source = source
@@ -1492,6 +1507,19 @@ def _render_targeted_page(api_ok: bool):
 
         # ---- 数据来源提示 ----
         st.success(f"✅ 搜索「{st.session_state.get('targeted_keyword_display', kw)}」找到 {len(products)} 个产品")
+
+        # ---- 翻译摘要卡片（Spec 33 增强） ----
+        tr_info = st.session_state.get("targeted_translation_info")
+        if tr_info and (tr_info.get("keyword") or tr_info.get("titles_count")):
+            with st.container(border=True):
+                kw_tr = tr_info.get("keyword")
+                tc = tr_info.get("titles_count", 0)
+                parts = []
+                if kw_tr:
+                    parts.append(f"🌐 搜索词已翻译：**{kw_tr[0]}** → **{kw_tr[1]}**")
+                if tc > 0:
+                    parts.append(f"📝 已将 **{tc}** 个产品标题翻译为中文")
+                st.markdown("  \n".join(parts))
 
         # ---- 品类综合报告 ----
         st.divider()
@@ -1735,6 +1763,186 @@ def _render_targeted_page(api_ok: bool):
 
 
 # ============================================================
+# 全站热扫分析仪表盘（Spec 34 增强）
+# ============================================================
+
+def _filter_scan_products(ranked, platforms, regions, price_range):
+    """按平台/地区/价格筛选聚合后的热门产品。"""
+    result = []
+    for item in ranked:
+        # 平台筛选（交集非空）
+        if platforms and not (set(item.get("platforms", [])) & set(platforms)):
+            continue
+        # 地区筛选
+        if regions and not (set(item.get("regions", [])) & set(regions)):
+            continue
+        # 价格筛选
+        price = 0.0
+        try:
+            price = float(item.get("sample", {}).get("price", 0) or 0)
+        except (ValueError, TypeError):
+            price = 0.0
+        if price_range and price > 0:
+            if price < price_range[0] or price > price_range[1]:
+                continue
+        result.append(item)
+    return result
+
+
+def _render_scan_dashboard(ranked, raw_products=None):
+    """渲染全站热扫分析仪表盘：筛选器 + Tabs分维度图表。"""
+    import plotly.express as px
+
+    if not ranked:
+        st.info("暂无数据，请先执行全站扫描。")
+        return
+
+    # ---- 收集所有平台/地区选项 ----
+    all_platforms = sorted({p for item in ranked for p in item.get("platforms", []) if p})
+    all_regions = sorted({r for item in ranked for r in item.get("regions", []) if r})
+
+    # ---- 全局筛选器 ----
+    with st.container(border=True):
+        st.markdown("#### 🔍 数据筛选")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            sel_platforms = st.multiselect("平台", all_platforms, default=all_platforms, key="scan_dash_pf")
+        with col2:
+            sel_regions = st.multiselect("地区", all_regions, default=all_regions, key="scan_dash_rg")
+        with col3:
+            prices = []
+            for item in ranked:
+                try:
+                    pr = float(item.get("sample", {}).get("price", 0) or 0)
+                    if pr > 0:
+                        prices.append(pr)
+                except (ValueError, TypeError):
+                    pass
+            if prices:
+                pmin, pmax = min(prices), max(prices)
+                price_range = st.slider("价格范围 ($)", pmin, pmax, (pmin, pmax), key="scan_dash_price")
+            else:
+                price_range = None
+
+    filtered = _filter_scan_products(ranked, sel_platforms, sel_regions, price_range)
+    st.caption(f"筛选后：{len(filtered)} / {len(ranked)} 个产品")
+
+    if not filtered:
+        st.warning("筛选后无产品，请放宽条件。")
+        return
+
+    # 准备 DataFrame
+    rows = []
+    for item in filtered:
+        try:
+            price = float(item.get("sample", {}).get("price", 0) or 0)
+        except (ValueError, TypeError):
+            price = 0.0
+        rows.append({
+            "title": item["title"][:40],
+            "hotness": item["hotness"],
+            "region_count": item["region_count"],
+            "total_reviews": item["total_reviews"],
+            "price": price,
+            "platforms": " / ".join(item["platforms"]),
+            "regions": " / ".join(r.upper() for r in item["regions"]),
+            "primary_platform": item["platforms"][0] if item["platforms"] else "unknown",
+            "primary_region": item["regions"][0].upper() if item["regions"] else "??",
+        })
+    df = pd.DataFrame(rows)
+
+    # ---- Tabs 分维度图表 ----
+    tab_region, tab_pf, tab_price, tab_hot = st.tabs([
+        "🌍 按地区", "🛒 按平台", "💰 按价格", "🔥 按热度"
+    ])
+
+    # Tab 按地区
+    with tab_region:
+        c1, c2 = st.columns(2)
+        with c1:
+            reg_count = df["primary_region"].value_counts().reset_index()
+            reg_count.columns = ["地区", "热门产品数"]
+            fig = px.bar(reg_count, x="地区", y="热门产品数", title="各地区热门产品数")
+            fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig, width="stretch")
+        with c2:
+            # 地区平均热度
+            reg_hot = df.groupby("primary_region")["hotness"].mean().reset_index()
+            reg_hot.columns = ["地区", "平均热度"]
+            fig = px.bar(reg_hot, x="地区", y="平均热度", title="各地区平均热度", color="平均热度")
+            fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig, width="stretch")
+
+    # Tab 按平台
+    with tab_pf:
+        c1, c2 = st.columns(2)
+        with c1:
+            pf_count = df["primary_platform"].value_counts().reset_index()
+            pf_count.columns = ["平台", "产品数"]
+            fig = px.pie(pf_count, names="平台", values="产品数", title="各平台热门产品占比")
+            fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig, width="stretch")
+        with c2:
+            pf_stat = df.groupby("primary_platform").agg(
+                产品数=("title", "count"),
+                平均热度=("hotness", "mean"),
+                平均价格=("price", "mean"),
+            ).reset_index()
+            pf_stat.columns = ["平台", "产品数", "平均热度", "平均价格"]
+            fig = px.bar(pf_stat, x="平台", y=["产品数", "平均热度"], barmode="group",
+                         title="平台对比：产品数 / 平均热度")
+            fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig, width="stretch")
+
+    # Tab 按价格
+    with tab_price:
+        price_df = df[df["price"] > 0]
+        if price_df.empty:
+            st.info("无有效价格数据（部分站点价格需JS加载）。")
+        else:
+            c1, c2 = st.columns(2)
+            with c1:
+                fig = px.histogram(price_df, x="price", nbins=20, title="价格分布")
+                fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20), xaxis_title="价格 ($)")
+                st.plotly_chart(fig, width="stretch")
+            with c2:
+                # 价格 vs 热度散点（找低价高热度）
+                fig = px.scatter(price_df, x="price", y="hotness", size="region_count",
+                                 hover_name="title", title="价格 vs 热度（气泡=上榜地区数）",
+                                 color="hotness", color_continuous_scale="Viridis")
+                fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20),
+                                  xaxis_title="价格 ($)", yaxis_title="热度")
+                st.plotly_chart(fig, width="stretch")
+            # 各地区价格箱线图
+            if len(price_df["primary_region"].unique()) > 1:
+                fig = px.box(price_df, x="primary_region", y="price", title="各地区价格分布")
+                fig.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
+                st.plotly_chart(fig, width="stretch")
+
+    # Tab 按热度
+    with tab_hot:
+        top20 = df.nlargest(min(20, len(df)), "hotness")
+        c1, c2 = st.columns(2)
+        with c1:
+            fig = px.bar(top20.sort_values("hotness"), x="hotness", y="title", orientation="h",
+                         title=f"Top {len(top20)} 热度排行", hover_data=["region_count", "price"])
+            fig.update_layout(height=max(350, len(top20) * 20), margin=dict(l=20, r=20, t=40, b=20),
+                              yaxis_title="", xaxis_title="热度")
+            st.plotly_chart(fig, width="stretch")
+        with c2:
+            fig = px.histogram(df, x="hotness", nbins=20, title="热度分布")
+            fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20), xaxis_title="热度")
+            st.plotly_chart(fig, width="stretch")
+        # 评论数 vs 热度气泡图
+        fig = px.scatter(df, x="total_reviews", y="hotness", size="region_count",
+                         hover_name="title", title="评论数 vs 热度（气泡=上榜地区数）",
+                         color="hotness", color_continuous_scale="Inferno")
+        fig.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20),
+                          xaxis_title="累计评论数", yaxis_title="热度")
+        st.plotly_chart(fig, width="stretch")
+
+
+# ============================================================
 # ==================== 全站热扫页面（Spec 34）=================
 # ============================================================
 
@@ -1861,6 +2069,69 @@ def _render_global_scan_page(api_ok: bool):
                 "产品名称": st.column_config.TextColumn(width="large"),
             },
         )
+
+        # ---- AI 深度分析 Top10（Spec 34 增强） ----
+        st.divider()
+        st.subheader("🤖 AI 深度选品分析")
+        st.caption("对热度 Top10 产品做五维度评分 + 蓝海指数计算，发现真正值得入手的爆款")
+
+        col_ai1, col_ai2 = st.columns([2, 3])
+        with col_ai1:
+            if st.button("🔍 分析 Top10 热门产品", type="primary", key="global_scan_ai_btn"):
+                # 构造传给 analyzer 的产品列表
+                top_products = []
+                for i, item in enumerate(ranked[:10], 1):
+                    s = item.get("sample", {})
+                    top_products.append({
+                        "title": item["title"],
+                        "price": s.get("price", 0) or 0,
+                        "rating": s.get("rating", 0) or 0,
+                        "num_reviews": item["total_reviews"],
+                        "rank": i,
+                        "category": s.get("category", ""),
+                    })
+                with st.spinner("🤖 AI 正在分析 Top10 产品..."):
+                    ai_results = analyze_products(top_products)
+                    # 计算蓝海指数
+                    for r in ai_results:
+                        r["blue_ocean"] = calculate_blue_ocean_score(r) if not r.get("parse_error") else 0
+                    st.session_state.global_scan_analysis = list(zip(top_products, ai_results))
+                st.toast("AI 分析完成", icon="🤖")
+                st.rerun()
+
+        with col_ai2:
+            analysis_pairs = st.session_state.get("global_scan_analysis")
+            if analysis_pairs:
+                st.success(f"✅ 已分析 {len(analysis_pairs)} 个产品")
+
+        # 展示 AI 分析结果（蓝海指数排行）
+        analysis_pairs = st.session_state.get("global_scan_analysis")
+        if analysis_pairs:
+            # 按蓝海指数排序
+            sorted_pairs = sorted(analysis_pairs, key=lambda x: x[1].get("blue_ocean", 0), reverse=True)
+            rows = []
+            for prod, r in sorted_pairs:
+                verdict = r.get("final_verdict", "")
+                verdict_label = {"recommended": "🟢推荐", "cautious": "🟡谨慎", "not_recommended": "🔴不推荐"}.get(verdict, "⚪")
+                rows.append({
+                    "产品": prod["title"][:35],
+                    "蓝海指数": r.get("blue_ocean", 0),
+                    "判定": verdict_label,
+                    "市场容量": _dim_score(r, "market_capacity"),
+                    "竞争": _dim_score(r, "competition"),
+                    "利润": _dim_score(r, "profit_potential"),
+                    "新手友好": _dim_score(r, "beginner_friendly"),
+                    "理由": r.get("verdict_reason", "")[:30],
+                })
+            st.dataframe(
+                pd.DataFrame(rows), width="stretch", hide_index=True,
+                column_config={"蓝海指数": st.column_config.NumberColumn(format="%.1f")},
+            )
+
+        # ---- 分析仪表盘（Spec 34 增强） ----
+        st.divider()
+        st.subheader("📊 多维度分析仪表盘")
+        _render_scan_dashboard(ranked, results.get("products"))
 
         st.divider()
         if st.button("🔄 重新扫描", width="stretch"):
@@ -2101,6 +2372,54 @@ def _render_market_scanner_page(api_ok: bool):
 
             df_matrix = pd.DataFrame(matrix_data)
             st.dataframe(df_matrix, width="stretch", hide_index=True)
+
+        # ---- 可视化图表（Spec 34 增强市场扫描） ----
+        if len(valid_markets) >= 2:
+            st.divider()
+            st.subheader("📈 市场机会可视化")
+            import plotly.express as px
+
+            chart_rows = []
+            for m in valid_markets:
+                pf_name = PLATFORMS.get(m["platform"], {}).get("name", m["platform"])
+                region_name = m.get("region_name", m["region"].upper())
+                chart_rows.append({
+                    "市场": f"{pf_name} {region_name}",
+                    "蓝海指数": m.get("blue_ocean_score", 0) or 0,
+                    "产品数": m.get("product_count", 0),
+                    "平均价格": m.get("avg_price", 0) or 0,
+                    "平均评分": m.get("avg_rating", 0) or 0,
+                    "竞争度": m.get("competition_level", "unknown"),
+                })
+            cdf = pd.DataFrame(chart_rows)
+
+            c1, c2 = st.columns(2)
+            with c1:
+                # 蓝海指数排行柱状图
+                ranked_cdf = cdf.sort_values("蓝海指数", ascending=True)
+                fig = px.bar(ranked_cdf, x="蓝海指数", y="市场", orientation="h",
+                             title="蓝海指数排行", color="蓝海指数",
+                             color_continuous_scale="Viridis")
+                fig.update_layout(height=max(300, len(ranked_cdf) * 28),
+                                  margin=dict(l=20, r=20, t=40, b=20), yaxis_title="")
+                st.plotly_chart(fig, width="stretch")
+            with c2:
+                # 竞争程度分布饼图
+                comp_count = cdf["竞争度"].value_counts().reset_index()
+                comp_count.columns = ["竞争度", "市场数"]
+                fig = px.pie(comp_count, names="竞争度", values="市场数",
+                             title="竞争程度分布")
+                fig.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
+                st.plotly_chart(fig, width="stretch")
+
+            # 价格 vs 蓝海指数散点图
+            price_cdf = cdf[cdf["平均价格"] > 0]
+            if not price_cdf.empty:
+                fig = px.scatter(price_cdf, x="平均价格", y="蓝海指数", size="产品数",
+                                 hover_name="市场", title="价格 vs 蓝海指数（气泡=产品数）",
+                                 color="蓝海指数", color_continuous_scale="Plasma")
+                fig.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
+                st.plotly_chart(fig, width="stretch")
 
         # ---- 跨市场 AI 分析 ----
         if len(valid_markets) >= 2 and api_ok:
