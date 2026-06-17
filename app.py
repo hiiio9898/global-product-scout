@@ -2651,3 +2651,37 @@ def _verdict_emoji(verdict: str) -> str:
     }.get(verdict, verdict)
 
 
+# ============================================================
+# 模块入口 — Session State 初始化 + 页面路由
+# ============================================================
+
+if "products" not in st.session_state:
+    st.session_state.products = []
+if "results" not in st.session_state:
+    st.session_state.results = []
+if "source_info" not in st.session_state:
+    st.session_state.source_info = None
+if "step" not in st.session_state:
+    st.session_state.step = "idle"
+if "analyzing" not in st.session_state:
+    st.session_state.analyzing = False
+if "history_data" not in st.session_state:
+    st.session_state.history_data = []
+
+# 初始化数据库（幂等）
+init_db()
+
+# 渲染侧边栏并获取页面选择
+api_ok, page = render_sidebar(st.session_state.source_info)
+
+# 页面路由
+if "Dashboard" in page:
+    _render_dashboard_page()
+elif "实时选品" in page:
+    _render_live_page(api_ok)
+elif "指定选品" in page:
+    _render_targeted_page(api_ok)
+elif "市场扫描" in page:
+    _render_market_scanner_page(api_ok)
+elif "历史记录" in page:
+    _render_history_page()
