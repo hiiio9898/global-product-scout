@@ -1,6 +1,6 @@
 streamlit>=1.41.0
 python-dotenv
-openai
+httpx
 scrapling>=0.4.8
 curl_cffi>=0.15.0
 rich>=14.0.0

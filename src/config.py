@@ -38,13 +38,6 @@ LLM_PROVIDERS = {
         "models": ["mimo-v2.5", "mimo-v2.5-pro"],
         "default_model": "mimo-v2.5",
     },
-    "openai": {
-        "name": "OpenAI",
-        "base_url_key": "OPENAI_BASE_URL",
-        "api_key_key": "OPENAI_API_KEY",
-        "models": ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"],
-        "default_model": "gpt-4o-mini",
-    },
 }
 
 

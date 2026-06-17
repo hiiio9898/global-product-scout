@@ -49,8 +49,6 @@ jobs:
           DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}
           MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
           MIMO_BASE_URL: ${{ secrets.MIMO_BASE_URL }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           AMAZON_BEST_SELLERS_URL: ${{ secrets.AMAZON_BEST_SELLERS_URL }}
           SCRAPE_DELAY_SECONDS: '2'
           SCRAPLING_BROWSER_TIMEOUT: '30000'

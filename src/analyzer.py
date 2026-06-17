@@ -5,18 +5,88 @@
 分析维度：市场容量、竞争程度、利润潜力、新手友好度、季节性风险。
 每个维度 1-10 分 + 解释，最终给出推荐/谨慎/不推荐 verdict。
 
-支持多模型供应商（DeepSeek、MiMo、OpenAI 等），
-通过 OpenAI SDK 兼容模式调用。API Key 未配置时返回错误提示。
-JSON 解析失败时回退为纯文本展示。
+支持多模型供应商（DeepSeek、MiMo 等），
+通过 OpenAI 兼容 API 调用（使用 httpx 直接请求）。
+API Key 未配置时返回错误提示。JSON 解析失败时回退为纯文本展示。
 """
 
 from __future__ import annotations
 
 import json
 import time
-from openai import OpenAI
+import httpx
 
 from .config import get_llm_config
+
+
+# ============================================================
+# LLM API 调用（httpx 直连，OpenAI 兼容接口）
+# ============================================================
+
+def _call_llm(
+    llm_cfg: dict,
+    messages: list[dict],
+    temperature: float = 0.7,
+    max_tokens: int = 8000,
+    timeout: int = 120,
+) -> str:
+    """
+    调用 OpenAI 兼容的 chat completions API，返回文本内容。
+
+    自动处理思考模型（MiMo 等）的 reasoning_content：当 content 为空时，
+    从 reasoning_content 中提取 JSON 或直接使用推理文本。
+
+    Args:
+        llm_cfg:     get_llm_config() 返回的配置（含 api_key/base_url/model）
+        messages:    消息列表 [{"role": ..., "content": ...}, ...]
+        temperature: 采样温度
+        max_tokens:  最大输出 token
+        timeout:     超时秒数
+
+    Returns:
+        AI 返回的文本内容
+
+    Raises:
+        Exception: API 调用失败（含 429 限流）
+    """
+    base_url = llm_cfg["base_url"].rstrip("/")
+    url = f"{base_url}/chat/completions"
+
+    payload = {
+        "model": llm_cfg["model"],
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+    resp = httpx.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {llm_cfg['api_key']}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=timeout,
+    )
+
+    # 非 2xx → 抛异常（上层做指数退避重试）
+    if resp.status_code != 200:
+        raise RuntimeError(f"API 返回 {resp.status_code}: {resp.text[:200]}")
+
+    data = resp.json()
+    message = data["choices"][0]["message"]
+    content = message.get("content") or ""
+
+    # 思考模型（MiMo 等）：content 可能为空，推理结果在 reasoning_content 中
+    if not content.strip() and message.get("reasoning_content"):
+        reasoning = message["reasoning_content"] or ""
+        extracted = _extract_json_from_reasoning(reasoning)
+        if extracted:
+            content = extracted
+        else:
+            content = reasoning
+
+    return content
 
 # ============================================================
 # 系统 Prompt — 资深跨境电商选品顾问
@@ -296,13 +366,13 @@ def _parse_batch_response(content: str, batch_products: list[dict]) -> list[dict
     return results
 
 
-def _analyze_batch(batch: list[dict], client, llm_cfg: dict) -> list[dict]:
+def _analyze_batch(batch: list[dict], llm_cfg: dict) -> list[dict]:
     """调用 LLM API 分析一批产品。"""
     prompt = _build_batch_prompt(batch)
     for attempt in range(3):
         try:
-            resp = client.chat.completions.create(
-                model=llm_cfg["model"],
+            content = _call_llm(
+                llm_cfg,
                 messages=[
                     {"role": "system", "content": BATCH_SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
@@ -310,16 +380,6 @@ def _analyze_batch(batch: list[dict], client, llm_cfg: dict) -> list[dict]:
                 temperature=0.7,
                 max_tokens=8000,
             )
-            content = resp.choices[0].message.content or ""
-            # 思考模型（MiMo 等）可能将内容放在 reasoning_content 中
-            if not content.strip() and hasattr(resp.choices[0].message, "reasoning_content"):
-                reasoning = resp.choices[0].message.reasoning_content or ""
-                extracted = _extract_json_from_reasoning(reasoning)
-                if extracted:
-                    content = extracted
-                else:
-                    # reasoning 中也提取不出 JSON，直接用 reasoning 原文
-                    content = reasoning
             content = content.strip()
             batch_results = _parse_batch_response(content, batch)
             if batch_results:
@@ -379,11 +439,6 @@ def analyze_products(
                 progress_callback(i + 1, total)
         return results
 
-    client = OpenAI(
-        api_key=api_key,
-        base_url=llm_cfg["base_url"],
-        timeout=120,
-    )
     # 批次大小：从配置读取，默认6
     try:
         from .config import get_config
@@ -394,7 +449,7 @@ def analyze_products(
 
     for batch_start in range(0, total, BATCH_SIZE):
         batch = products[batch_start:batch_start + BATCH_SIZE]
-        batch_results = _analyze_batch(batch, client, llm_cfg)
+        batch_results = _analyze_batch(batch, llm_cfg)
         results.extend(batch_results)
 
         # 进度回调
@@ -487,30 +542,19 @@ def analyze_category_report(keyword: str, products: list[dict]) -> dict:
         products_json=json.dumps(summary, ensure_ascii=False, indent=1),
     )
 
-    client = OpenAI(
-        api_key=api_key,
-        base_url=llm_cfg["base_url"],
-        timeout=60,
-    )
-
     last_error = None
     for attempt in range(3):
         try:
-            resp = client.chat.completions.create(
-                model=llm_cfg["model"],
+            content = _call_llm(
+                llm_cfg,
                 messages=[
                     {"role": "system", "content": "你是资深跨境电商选品顾问。只返回 JSON。"},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.7,
                 max_tokens=8000,
+                timeout=60,
             )
-            # MiMo 等思考模型：content 可能为空，推理结果在 reasoning_content 中
-            content = resp.choices[0].message.content or ""
-            if not content.strip() and hasattr(resp.choices[0].message, "reasoning_content"):
-                reasoning = resp.choices[0].message.reasoning_content or ""
-                # 尝试从推理内容中提取 JSON
-                content = _extract_json_from_reasoning(reasoning)
             return _parse_category_report_response(content, keyword, products)
         except Exception as e:
             last_error = e
@@ -664,12 +708,6 @@ def analyze_market_comparison(keyword: str, markets: list[dict]) -> dict:
             "parse_error": False,
         }
 
-    client = OpenAI(
-        api_key=api_key,
-        base_url=llm_cfg["base_url"],
-        timeout=120,
-    )
-
     prompt = CROSS_MARKET_PROMPT.format(
         keyword=keyword,
         n=len(market_summaries),
@@ -680,8 +718,8 @@ def analyze_market_comparison(keyword: str, markets: list[dict]) -> dict:
     last_error = None
     for attempt in range(3):
         try:
-            resp = client.chat.completions.create(
-                model=llm_cfg["model"],
+            content = _call_llm(
+                llm_cfg,
                 messages=[
                     {"role": "system", "content": "你是资深跨境电商选品顾问。只返回 JSON。"},
                     {"role": "user", "content": prompt},
@@ -689,9 +727,6 @@ def analyze_market_comparison(keyword: str, markets: list[dict]) -> dict:
                 temperature=0.7,
                 max_tokens=4000,
             )
-            content = resp.choices[0].message.content or ""
-            if not content.strip() and hasattr(resp.choices[0].message, "reasoning_content"):
-                content = resp.choices[0].message.reasoning_content or ""
             return _parse_cross_market_response(content)
         except Exception as e:
             last_error = e

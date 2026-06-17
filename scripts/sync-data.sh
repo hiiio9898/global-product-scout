@@ -31,8 +31,31 @@ PROJECT_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
 CONFIG_FILE="$PROJECT_DIR/.sync-config"
 [ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"
 
-: "${SYNC_DIR:?未设置 SYNC_DIR：请创建 .sync-config（参考 .sync-config.example）或 export SYNC_DIR=/your/path}"
 : "${SYNC_CACHE:=yes}"   # yes/no：是否同步 data/cache
+# 同步文件夹名（跨机器用盘符不同但文件夹名一致来识别）
+: "${SYNC_FOLDER_NAME:=GPS-Sync}"
+
+# ---------- 自动探测同步目录（解决U盘盘符不一致：家E盘/公司H盘） ----------
+# SYNC_DIR=auto 或未设置时，扫描所有盘符找 SYNC_FOLDER_NAME 文件夹
+if [ -z "${SYNC_DIR:-}" ] || [ "${SYNC_DIR:-}" = "auto" ]; then
+  DETECTED=""
+  # 扫描 C-Z 所有盘符（Git Bash 风格 /c /d ... /z）
+  for drive in {c..z}; do
+    candidate="/$drive/$SYNC_FOLDER_NAME"
+    if [ -d "$candidate" ]; then
+      DETECTED="$candidate"
+      break
+    fi
+  done
+  if [ -n "$DETECTED" ]; then
+    SYNC_DIR="$DETECTED"
+    export SYNC_DIR
+  else
+    red "未找到同步文件夹 $SYNC_FOLDER_NAME（已扫描所有盘符）"
+    yellow "请检查U盘是否插入，或手动设置 SYNC_DIR"
+    exit 1
+  fi
+fi
 
 DATA_DIR="$PROJECT_DIR/data"
 REMOTE_DIR="$SYNC_DIR"   # 同步目录直接当作远端 data 根

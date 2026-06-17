@@ -21,7 +21,7 @@ import time
 import random
 from typing import Optional
 
-from openai import OpenAI
+import httpx
 
 
 # ============================================================
@@ -201,30 +201,37 @@ def estimate_1688_price(title: str, price_usd: float = 0.0) -> dict:
         return _local_estimate(title, price_usd)
 
     try:
-        client = OpenAI(
-            api_key=llm_config["api_key"],
-            base_url=llm_config.get("base_url") or None,
-            timeout=60,
-        )
-
         prompt = _PRICE_ESTIMATE_PROMPT.format(
             title=title[:80],
             price_usd=price_usd,
         )
 
-        response = client.chat.completions.create(
-            model=llm_config["model"],
-            messages=[
-                {"role": "system", "content": "你是跨境采购价格估算专家。只返回JSON。"},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.3,
-            max_tokens=2000,
+        base_url = (llm_config.get("base_url") or "").rstrip("/")
+        resp = httpx.post(
+            f"{base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {llm_config['api_key']}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": llm_config["model"],
+                "messages": [
+                    {"role": "system", "content": "你是跨境采购价格估算专家。只返回JSON。"},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.3,
+                "max_tokens": 2000,
+            },
+            timeout=60,
         )
 
-        content = response.choices[0].message.content or ""
-        if not content.strip() and hasattr(response.choices[0].message, "reasoning_content"):
-            reasoning = response.choices[0].message.reasoning_content or ""
+        if resp.status_code != 200:
+            raise RuntimeError(f"API {resp.status_code}")
+
+        message = resp.json()["choices"][0]["message"]
+        content = message.get("content") or ""
+        if not content.strip() and message.get("reasoning_content"):
+            reasoning = message["reasoning_content"] or ""
             # 从推理内容中提取 JSON
             last_brace = reasoning.rfind("}")
             if last_brace != -1:

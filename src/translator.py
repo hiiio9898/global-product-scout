@@ -15,7 +15,7 @@ from __future__ import annotations
 import random
 import time
 
-from openai import OpenAI
+import httpx
 
 from .analyzer import _strip_markdown_json, _extract_json_array
 from .config import _get_secret, _safe_int, get_llm_config
@@ -49,7 +49,7 @@ def _get_batch_size() -> int:
 # ============================================================
 
 def _call_llm_once(
-    client, model: str, system_prompt: str, user_prompt: str,
+    llm_cfg: dict, system_prompt: str, user_prompt: str,
     temperature: float = 0.3, max_tokens: int = 4000,
 ) -> str:
     """
@@ -60,21 +60,33 @@ def _call_llm_once(
         - 限流（429）时退避更长
         - 思考模型（MiMo 等）content 为空时回退 reasoning_content
     """
+    base_url = (llm_cfg.get("base_url") or "").rstrip("/")
     for attempt in range(3):
         try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature,
-                max_tokens=max_tokens,
+            resp = httpx.post(
+                f"{base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {llm_cfg['api_key']}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": llm_cfg["model"],
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                },
+                timeout=60,
             )
-            content = resp.choices[0].message.content or ""
+            if resp.status_code != 200:
+                raise RuntimeError(f"API {resp.status_code}")
+            message = resp.json()["choices"][0]["message"]
+            content = message.get("content") or ""
             # 思考模型：content 可能为空，回退 reasoning_content
-            if not content.strip() and hasattr(resp.choices[0].message, "reasoning_content"):
-                content = resp.choices[0].message.reasoning_content or ""
+            if not content.strip() and message.get("reasoning_content"):
+                content = message["reasoning_content"] or ""
             return content.strip()
         except Exception as e:
             if attempt < 2:
@@ -132,8 +144,7 @@ def translate_keyword(text: str) -> dict:
         result["error"] = "AI API 未配置，跳过关键词翻译"
         return result
 
-    client = OpenAI(api_key=llm_cfg["api_key"], base_url=llm_cfg["base_url"], timeout=60)
-    content = _call_llm_once(client, llm_cfg["model"], _KEYWORD_SYSTEM_PROMPT, original)
+    content = _call_llm_once(llm_cfg, _KEYWORD_SYSTEM_PROMPT, original)
 
     if not content:
         result["error"] = "关键词翻译调用失败，使用原文"
@@ -183,15 +194,13 @@ def translate_product_titles(titles: list[str], batch_size: int = None) -> list[
     if not llm_cfg.get("configured"):
         return translated
 
-    client = OpenAI(api_key=llm_cfg["api_key"], base_url=llm_cfg["base_url"], timeout=90)
-
     for start in range(0, n, batch_size):
         batch = titles[start:start + batch_size]
         lines = [f"{i}. {t}" for i, t in enumerate(batch, 1)]
         user_prompt = "请翻译以下英文产品标题为中文：\n" + "\n".join(lines)
 
         content = _call_llm_once(
-            client, llm_cfg["model"], _TITLES_SYSTEM_PROMPT, user_prompt,
+            llm_cfg, _TITLES_SYSTEM_PROMPT, user_prompt,
             temperature=0.3, max_tokens=4000,
         )
         if not content:
