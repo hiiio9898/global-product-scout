@@ -649,7 +649,7 @@ def _render_dashboard_page():
     c4.metric("💰 平均利润分", f"{avg_profit:.1f}/10")
 
     # 最近抓取时间 + 数据新鲜度
-    latest_time = all_products[0].get("scrape_time", "")
+    latest_time = all_products[0].get("scrape_time", "") if all_products else ""
     if latest_time:
         freshness_status, freshness_text = _get_data_freshness(latest_time)
         if freshness_status == "ok":
