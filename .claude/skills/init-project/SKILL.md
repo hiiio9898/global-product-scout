@@ -25,21 +25,24 @@
 ├── daily_scrape.py
 ├── src/
 │   ├── __init__.py
-│   ├── config.py
-│   ├── platforms.py          # 平台注册表（PLATFORMS 字典）
-│   ├── scrapling_adapter.py  # Scrapling 适配层
-│   ├── scraper.py            # Amazon 爬虫
-│   ├── scraper_ebay.py       # eBay 爬虫（每平台独立文件）
-│   ├── scraper_alibaba.py    # Alibaba 爬虫
-│   ├── scraper_search.py     # 关键词搜索
-│   ├── scraper_1688.py       # 1688 比价
-│   ├── analyzer.py           # AI 分析引擎
-│   ├── calculator.py         # 利润计算器（工厂模式）
-│   ├── database.py           # SQLite 数据库
-│   ├── exchange_rate.py      # 实时汇率
-│   ├── market_scanner.py     # 市场扫描引擎
-│   ├── trends.py             # Google Trends
-│   └── utils.py              # 工具函数
+│   ├── config.py              # 配置加载（st.secrets > .env 双源）
+│   ├── platforms.py           # 平台注册表（PLATFORMS 字典）
+│   ├── scrapling_adapter.py   # Scrapling 适配层
+│   ├── scraper.py             # Amazon 爬虫
+│   ├── scraper_ebay.py        # eBay 爬虫（每平台独立文件）
+│   ├── scraper_alibaba.py     # Alibaba 爬虫
+│   ├── scraper_aliexpress.py  # AliExpress 爬虫
+│   ├── scraper_search.py      # 关键词搜索
+│   ├── scraper_1688.py        # 1688 比价
+│   ├── analyzer.py            # AI 分析引擎
+│   ├── calculator.py          # 利润计算器（工厂模式）
+│   ├── database.py            # SQLite 数据库
+│   ├── exchange_rate.py       # 实时汇率
+│   ├── market_scanner.py      # 市场扫描引擎
+│   ├── regional_scanner.py    # 区域化扫描
+│   ├── translator.py          # 产品标题多语言翻译
+│   ├── trends.py              # Google Trends
+│   └── utils.py               # 工具函数
 ├── tests/
 │   ├── __init__.py
 │   ├── test_basic.py

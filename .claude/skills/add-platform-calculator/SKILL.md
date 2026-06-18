@@ -132,3 +132,10 @@ pytest tests/
 - `calculate_profit()` 会自动补充 `price_usd` 字段（向后兼容）
 - `defaults` 中的 `exchange_rate` 由 `src/platforms.py` 的 `get_region_info()` 提供，支持实时汇率覆盖硬编码值
 - 不修改其他平台的计算器逻辑
+
+## 现有计算器参考
+`src/calculator.py` 中已注册的计算器（可作为实现参考）：
+- **@register_calculator("amazon")** — 第 58 行，基础利润计算模板
+- **@register_calculator("alibaba")** — 第 127 行，增加了信保费等特有费用
+- **@register_calculator("ebay")** — 第 180 行，增加了成交费(FVF)和刊登费
+- **@register_calculator("aliexpress")** — 第 247 行，最新实现，可作为标准参考

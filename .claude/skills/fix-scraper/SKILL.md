@@ -17,6 +17,7 @@
 | Amazon搜索 | `src/scraper_search.py` | `search_amazon()` |
 | eBay | `src/scraper_ebay.py` | `fetch_ebay_best_sellers()` |
 | Alibaba | `src/scraper_alibaba.py` | `fetch_alibaba_best_sellers()` |
+| AliExpress | `src/scraper_aliexpress.py` | `fetch_aliexpress_best_sellers()` |
 | 1688比价 | `src/scraper_1688.py` | `search_1688_hybrid()` |
 
 函数命名模式：公开 `fetch_<platform>_best_sellers()` → 私有 `_scrape_<platform>_best_sellers()`

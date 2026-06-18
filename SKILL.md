@@ -17,6 +17,7 @@
 | **add-streamlit-page** | 新增Streamlit页面 | 创建_render函数 → 侧边栏radio选项 → 底部路由elif → session_state |
 | **migrate-database** | 数据库Schema迁移 | ALTER TABLE ADD COLUMN + try/except → CREATE TABLE → CREATE INDEX |
 | **fix-scraper** | 网站改版导致抓取失效 | 查platforms.py定位文件 → 分析变更 → 更新选择器 → 增强容错 |
+| **minimalist-architect** | 代码重构、功能审查、UX优化、砍功能 | 功能冗余检测 → UX毒性分析 → 生存价值评估(Kill/Keep/Merge) → 极简优化方案 |
 
 ### 🌐 外部通用技能 (`skills-lock.json`)
 
@@ -53,11 +54,13 @@
 
 ```
 app.py              Streamlit 主程序入口（侧边栏 + 页面路由 + Session State）
-├── render_sidebar()           侧边栏：平台/地区选择、AI 模型、利润参数
-├── _render_dashboard_page()   Dashboard：数据概览 + TOP5 推荐
-├── _render_live_page()        实时选品页：数据加载 → AI 分析 → 展示结果
-├── _render_targeted_page()    指定选品页：关键词搜索 → 品类报告
-└── _render_history_page()     历史记录页：多平台筛选、趋势、跨平台对比
+├── render_sidebar()              侧边栏：平台/地区选择、AI 模型、利润参数
+├── _render_dashboard_page()      Dashboard：数据概览 + TOP5 推荐
+├── _render_live_page()           实时选品页：数据加载 → AI 分析 → 展示结果
+├── _render_targeted_page()       指定选品页：关键词搜索 → 品类报告
+├── _render_market_scanner_page() 市场扫描页：关键词扫描 / 热品聚合 / 趋势分析
+├── _render_favorites_tab()       收藏夹：已收藏产品管理
+└── _render_history_page()        历史记录页：多平台筛选、趋势、跨平台对比
 
 src/config.py           配置加载（st.secrets > .env 双源）
 src/platforms.py        平台注册表（PLATFORMS 字典 + 工具函数）
@@ -66,12 +69,15 @@ src/scraper.py          Amazon Best Sellers 抓取（Scrapling）
 src/scraper_search.py   Amazon 关键词搜索（Scrapling）
 src/scraper_ebay.py     eBay 抓取（Scrapling）
 src/scraper_alibaba.py  阿里巴巴国际站抓取（Scrapling StealthyFetcher）
+src/scraper_aliexpress.py  速卖通抓取（Scrapling）
 src/scraper_1688.py     1688 比价（StealthyFetcher 真实抓取 + AI 估算兜底）
 src/analyzer.py         AI 分析引擎（OpenAI SDK 兼容，批量分组 6 个/批）
-src/calculator.py       利润计算器（工厂模式，3 个平台）
+src/calculator.py       利润计算器（工厂模式，4 个平台：Amazon/Alibaba/eBay/AliExpress）
 src/database.py         SQLite 数据库（多平台 Schema + 收藏表 + 市场扫描表）
 src/exchange_rate.py    实时汇率模块（open.er-api.com + 24h缓存）
 src/market_scanner.py   市场扫描引擎（蓝海指数、趋势预测、跨平台对比）
+src/regional_scanner.py 区域化扫描（按国家/地区聚合分析）
+src/translator.py       产品标题多语言翻译工具
 src/trends.py           Google Trends 趋势查询
 src/utils.py            工具函数（UA 池、反爬检测、价格解析）
 daily_scrape.py         独立定时抓取脚本（CLI 运行，多平台支持 --platforms 参数）

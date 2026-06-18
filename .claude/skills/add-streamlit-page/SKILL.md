@@ -79,18 +79,41 @@ if "new_state_var" not in st.session_state:
 | `step` | str | 当前步骤：`idle` → `loaded` → `analyzed` |
 | `analyzing` | bool | 分析中锁定按钮 |
 | `history_data` | list | 当前会话历史记录 |
+| `selected_products` | list | 选中的产品索引 |
+| `comparison_indices` | list | 对比模式下的产品索引 |
+| `favorite_asins` | set | 已收藏产品 ASIN 集合 |
+| `active_platform` | str | 当前激活的平台 |
+| `active_region` | str | 当前激活的地区 |
+| `active_tab` | str | 当前子标签页 |
+| `market_scan_results` | dict/None | 市场扫描结果 |
+| `page_config` | dict | 页面配置缓存 |
 
 ### 5. 复用共享组件
 页面中可复用的现有组件函数：
 
 | 函数 | 用途 | 位置 |
 |------|------|------|
-| `_render_analysis_summary_table(products, results)` | 五维分析摘要表格 | ~line 344 |
-| `_render_1688_result(result_1688)` | 1688 比价结果卡片 | ~line 379 |
-| `_render_radar_chart(dim_data, title)` | Plotly 五维雷达图 | ~line 406 |
-| `_render_favorite_button(product, platform, key)` | 收藏按钮 | ~line 438 |
-| `_render_comparison_view(products, indices)` | 产品对比视图 | ~line 463 |
-| `_render_stats_dashboard(products, platforms)` | 数据统计面板 | ~line 2357 |
+| `_render_analysis_summary_table(products, results)` | 五维分析摘要表格 | ~line 296 |
+| `_render_1688_result(result_1688)` | 1688 比价结果卡片 | ~line 331 |
+| `_render_radar_chart(dim_data, title)` | Plotly 五维雷达图 | ~line 361 |
+| `_render_favorite_button(product, platform, key)` | 收藏按钮 | ~line 393 |
+| `_render_comparison_view(products, indices)` | 产品对比视图 | ~line 418 |
+| `_render_history_list(total_count)` | 历史记录列表 | ~line 2347 |
+
+### 可用页面函数
+
+当前已存在的页面函数（参考命名和 `api_ok` 用法）：
+
+| 函数 | 说明 |
+|------|------|
+| `_render_dashboard_page()` | Dashboard：数据概览 + TOP5 推荐 |
+| `_render_live_page(api_ok)` | 实时选品页 |
+| `_render_targeted_page(api_ok)` | 指定选品页 |
+| `_render_market_scanner_page(api_ok)` | 市场扫描页（含子模式路由） |
+| `_render_keyword_scan_mode(api_ok)` | 关键词扫描子模式 |
+| `_render_hot_aggregation_mode(api_ok)` | 热品聚合子模式 |
+| `_render_history_page()` | 历史记录页 |
+| `_render_favorites_tab()` | 收藏夹页 |
 
 ### 6. 测试验证
 ```bash

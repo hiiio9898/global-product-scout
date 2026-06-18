@@ -119,3 +119,9 @@ streamlit run app.py
 - 不修改与当前任务无关的现有代码
 - 产品字段使用 `dict`，不要创建 dataclass
 - 抓取函数签名统一为 `fetch_<platform>_best_sellers(region, max_products) -> tuple[list[dict], dict]`
+
+## 现有平台参考
+- **AliExpress** (`src/scraper_aliexpress.py`) — 最新实现的平台，可作为最佳参考模板
+- **eBay** (`src/scraper_ebay.py`) — 独立平台爬虫的标准实现
+- **Alibaba** (`src/scraper_alibaba.py`) — 使用 StealthyFetcher 的示例
+- **1688** (`src/scraper_1688.py`) — 三级降级架构示例（真实抓取 → AI 估算 → 本地规则）
