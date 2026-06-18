@@ -40,6 +40,16 @@
 | **web-design-guidelines** | vercel-labs/agent-skills | Web设计规范 |
 | **xlsx** | anthropics/skills | Excel文档处理 |
 
+### 🔧 手动安装的全局技能（`~/.claude/skills/`）
+
+以下技能手动安装到用户全局目录，与 `skills-lock.json` 注册表独立，所有项目通用：
+
+| 技能 | 来源 | 用途 |
+|------|------|------|
+| **frontend-design** | anthropics/skills（已重装修复） | 生成有辨识度的生产级前端界面，避免 AI 套路审美 |
+| **interaction-design** | wshobson/agents | 微交互、动效、过渡动画、用户反馈模式设计 |
+| **github-skill-forge** | YuJunZhiXue/github-skill-forge（已适配 Claude Code） | 元技能：把任意 GitHub 仓库一键转成 Claude Code 技能 |
+
 ---
 
 每个技能文件夹内包含 `SKILL.md` 详细工作流。
