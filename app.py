@@ -120,6 +120,7 @@ def render_sidebar(source_info: dict | None = None):
     page = st.sidebar.radio(
         "导航",
         options=["Dashboard", "实时选品", "指定选品", "市场扫描", "历史记录"],
+        key="nav_page",
         help="Dashboard：数据概览\n实时选品：抓取并分析当前平台热销产品\n指定选品：输入关键词深度分析特定品类\n市场扫描：按关键词批量扫描多平台多地区找蓝海\n历史记录：查看过去保存的分析结果",
     )
 
@@ -194,15 +195,52 @@ def render_sidebar(source_info: dict | None = None):
             if ts:
                 st.sidebar.caption(f"{ts}")
 
-    # ---- AI 模型状态（只读显示） ----
+    # ---- AI 模型选择器（折叠面板，大多数人只设一次） ----
     llm_cfg = get_llm_config()
     provider_info = LLM_PROVIDERS.get(llm_cfg["provider"], {})
     provider_name = provider_info.get("name", llm_cfg["provider"])
     provider_api_key = _get_secret(provider_info.get("api_key_key", ""), "")
-    if provider_api_key:
-        st.sidebar.caption(f"🤖 {provider_name} / {llm_cfg['model']}")
-    else:
-        st.sidebar.caption(f"🤖 {provider_name} — 未配置")
+    status_text = f"🤖 {provider_name} / {llm_cfg['model']}" if provider_api_key else f"🤖 {provider_name} — 未配置"
+
+    with st.sidebar.expander(status_text, expanded=False):
+        provider_names = {k: v["name"] for k, v in LLM_PROVIDERS.items()}
+        provider_keys = list(LLM_PROVIDERS.keys())
+
+        last_provider = st.session_state.get("llm_provider") or llm_cfg["provider"]
+        last_model = st.session_state.get("llm_model") or llm_cfg["model"]
+
+        current_provider_idx = provider_keys.index(last_provider) if last_provider in provider_keys else 0
+
+        selected_provider = st.selectbox(
+            "AI 供应商",
+            options=provider_keys,
+            format_func=lambda k: provider_names[k],
+            index=current_provider_idx,
+            key="llm_provider_select",
+        )
+
+        # 模型选择（根据供应商动态更新）
+        available_models = LLM_PROVIDERS[selected_provider]["models"]
+        if last_model not in available_models:
+            last_model = available_models[0]
+
+        st.selectbox(
+            "模型",
+            options=available_models,
+            index=available_models.index(last_model),
+            key="llm_model_select",
+        )
+
+        st.session_state["llm_provider"] = selected_provider
+        st.session_state["llm_model"] = st.session_state.get("llm_model_select", last_model)
+
+        # API 配置状态
+        provider_info_cur = LLM_PROVIDERS[selected_provider]
+        provider_api_key_cur = _get_secret(provider_info_cur["api_key_key"], "")
+        if provider_api_key_cur:
+            st.caption(f"✅ {provider_info_cur['name']} API 已配置")
+        else:
+            st.caption(f"⚠️ {provider_info_cur['name']} 未配置（使用模拟分析）")
 
     # ---- 数据库状态 ----
     count = get_product_count()
@@ -1204,7 +1242,7 @@ def _render_targeted_page(api_ok: bool):
                 "🔍 搜索关键词",
                 value=st.session_state.get("targeted_keyword", ""),
                 placeholder="例：便携式榨汁机 / portable blender / cat toys",
-                help="支持中文，自动翻译为英文搜索（可在侧边栏关闭翻译）",
+                help="支持中文，自动翻译为英文搜索；搜索后可用价格滑块筛选",
             )
         with col_btn:
             st.write("")  # 占位对齐
@@ -1214,19 +1252,6 @@ def _render_targeted_page(api_ok: bool):
                 type="primary",
                 width="stretch",
                 disabled=not keyword.strip(),
-            )
-
-        # 可选筛选
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            filter_min_price = st.number_input(
-                "💰 最低价格 (USD)", min_value=0.0, value=0.0, step=5.0,
-                help="过滤低于此价格的产品（0 = 不限）",
-            )
-        with col_f2:
-            filter_max_price = st.number_input(
-                "💰 最高价格 (USD)", min_value=0.0, value=0.0, step=5.0,
-                help="过滤高于此价格的产品（0 = 不限）",
             )
 
         # 搜索前提示
@@ -1239,9 +1264,6 @@ def _render_targeted_page(api_ok: bool):
         st.session_state.targeted_results = None
         st.session_state.targeted_category = None
         st.session_state.targeted_analysis = None
-        # 保存价格筛选参数
-        st.session_state.targeted_min_price = filter_min_price
-        st.session_state.targeted_max_price = filter_max_price
         st.rerun()
 
     # ---- 搜索执行 ----
@@ -1279,25 +1301,6 @@ def _render_targeted_page(api_ok: bool):
             if search_result["success"]:
                 products = search_result["results"]
                 source = search_result["source"]
-
-                # 价格筛选（搜索后过滤）
-                min_p = st.session_state.get("targeted_min_price", 0.0)
-                max_p = st.session_state.get("targeted_max_price", 0.0)
-                if min_p > 0 or max_p > 0:
-                    filtered = []
-                    for p in products:
-                        try:
-                            price = float(p.get("price", 0) or 0)
-                        except (ValueError, TypeError):
-                            price = 0.0
-                        if min_p > 0 and price < min_p:
-                            continue
-                        if max_p > 0 and price > max_p:
-                            continue
-                        filtered.append(p)
-                    if len(filtered) < len(products):
-                        st.caption(f"💰 价格筛选：{len(products)} → {len(filtered)} 个产品（${min_p:.0f}-${max_p:.0f}）")
-                    products = filtered
 
                 # 去重：按 ASIN 保留评分最高的变体
                 original_count = len(products)
@@ -1565,6 +1568,37 @@ def _render_targeted_page(api_ok: bool):
         # ---- 搜索结果完整列表 ----
         st.divider()
         st.subheader("📋 搜索结果列表")
+
+        # 价格滑块筛选（搜索后，Spec：先搜后筛）
+        prices = []
+        for p in products:
+            try:
+                pr = float(p.get("price", 0) or 0)
+                if pr > 0:
+                    prices.append(pr)
+            except (ValueError, TypeError):
+                pass
+        filtered_products = products
+        if prices and len(prices) >= 2:
+            p_min, p_max = min(prices), max(prices)
+            # 向上取整到 5 的倍数，滑块更顺手
+            ceil_max = int((p_max // 5 + 1) * 5)
+            price_range = st.slider(
+                "💰 价格范围 (USD)",
+                min_value=0.0, max_value=float(ceil_max),
+                value=(0.0, float(ceil_max)), step=1.0,
+                help="拖动筛选价格区间，实时过滤结果列表",
+            )
+            filtered_products = [
+                p for p in products
+                if price_range[0] <= float(p.get("price", 0) or 0) <= price_range[1]
+            ]
+            if len(filtered_products) < len(products):
+                st.caption(f"💰 价格筛选：{len(products)} → {len(filtered_products)} 个产品")
+        elif prices:
+            st.caption(f"💰 价格范围：${min(prices):.2f} - ${max(prices):.2f}")
+
+        products = filtered_products
 
         # 排序选项（Spec 16 P1）
         col_sort, _ = st.columns([1, 3])
@@ -2502,10 +2536,21 @@ def _render_history_list(total_count: int):
                 _render_comparison_view(products, global_indices)
 
     # ---- 查看单条详情 ----
-    with st.expander("单条记录详情", expanded=False):
+    # 来自 Dashboard 的跳转：自动展开并定位产品
+    goto_title = st.session_state.pop("goto_product", None)
+    goto_idx = None
+    if goto_title:
+        for idx, p in enumerate(products):
+            if p.get("title", "") == goto_title:
+                goto_idx = idx
+                break
+
+    with st.expander("单条记录详情", expanded=goto_idx is not None):
+        default_idx = goto_idx if goto_idx is not None else 0
         selected_idx = st.selectbox(
             "选择产品",
             options=range(len(products)),
+            index=min(default_idx, len(products) - 1) if products else 0,
             format_func=lambda i: f"#{i+1} {(products[i].get('title', '') or '')[:45]}",
             help="选择产品查看详情分析",
             key="history_detail_select",
