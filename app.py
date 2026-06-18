@@ -2,7 +2,7 @@
 Streamlit 主程序入口 — 外贸 AI 选品助手（Global Product Scout）。
 
 提供"数据获取 → AI 分析 → 结果展示"一站式选品体验。
-数据源采用两级策略：优先读取 data/products.json → 降级到实时抓取（仅接受 live 数据）。
+数据源采用两级策略：优先实时抓取（仅接受 live 数据）→ 失败时降级到 data/products.json（每日自动更新）。
 
 用法：
     streamlit run app.py
@@ -547,13 +547,13 @@ def _render_live_page(api_ok: bool):
             type="primary",
             width="stretch",
             disabled=btn_disabled,
-            help="优先读取每日自动更新数据，无数据时实时抓取",
+            help="优先实时抓取最新数据，失败时降级到每日自动更新数据",
         )
     with col_hint:
         json_path = os.path.join(os.path.dirname(__file__), "data", "products.json")
         json_exists = os.path.exists(json_path)
         if json_exists:
-            st.caption("📊 优先使用每日自动更新数据（GitHub Actions）")
+            st.caption("📡 优先实时抓取（失败时用每日更新数据兜底）")
         else:
             st.caption("📡 将实时抓取最新数据")
 
@@ -561,8 +561,29 @@ def _render_live_page(api_ok: bool):
         st.session_state.analyzing = True
         loaded = False
 
-        # 第一步：尝试读取 products.json（每日自动更新）
-        if json_exists:
+        # 第一步：优先实时抓取（最新数据）
+        try:
+            with st.spinner(f"📡 正在实时抓取 {pf_name} {region_name} 热销数据..."):
+                import importlib
+                scraper_mod = importlib.import_module(pf_info["scraper_module"])
+                scraper_func = getattr(scraper_mod, pf_info["scraper_func"])
+                products, source_info = scraper_func(region=region)
+
+            if source_info.get("source") in ("live", "cache"):
+                st.session_state.products = products
+                st.session_state.source_info = source_info
+                st.session_state.step = "loaded"
+                loaded = True
+                st.rerun()
+            else:
+                # 实时抓取失败 → 降级到每日数据
+                error_detail = source_info.get("error", "网站反爬拦截或页面不可用")
+                st.caption(f"实时抓取失败（{str(error_detail)[:60]}），尝试每日更新数据...")
+        except Exception as e:
+            st.caption(f"实时抓取异常（{str(e)[:60]}），尝试每日更新数据...")
+
+        # 第二步：降级到每日自动更新数据（products.json）
+        if not loaded and json_exists:
             try:
                 with open(json_path, "r", encoding="utf-8") as f:
                     products = json.load(f)
@@ -581,39 +602,20 @@ def _render_live_page(api_ok: bool):
                         loaded = True
                         st.rerun()
                     else:
-                        # JSON中没有该平台/地区的数据，提示用户并降级到实时抓取
-                        st.info(f"每日数据中没有 {pf_name} {region_name} 的产品，尝试实时抓取...")
+                        st.info(f"每日数据中也没有 {pf_name} {region_name} 的产品。")
             except Exception as e:
                 st.caption(f"读取每日数据失败：{str(e)[:80]}")
 
-        # 第二步：降级到实时抓取
+        # 两种方式都失败
         if not loaded:
-            try:
-                with st.spinner(f"📡 正在实时抓取 {pf_name} {region_name} 热销数据..."):
-                    import importlib
-                    scraper_mod = importlib.import_module(pf_info["scraper_module"])
-                    scraper_func = getattr(scraper_mod, pf_info["scraper_func"])
-                    products, source_info = scraper_func(region=region)
-
-                    if source_info.get("source") not in ("live", "cache"):
-                        st.session_state.analyzing = False
-                        error_detail = source_info.get("error", "网站反爬拦截或页面不可用")
-                        st.error(f"❌ 实时抓取 {pf_name} 失败")
-                        st.warning(f"原因: {error_detail}")
-                        st.info(
-                            "💡 **推荐方案：**\n"
-                            "1. 使用「🎯 指定选品」通过关键词搜索产品\n"
-                            "2. 在本机运行 `python daily_scrape.py` 更新数据后重新部署"
-                        )
-                    else:
-                        st.session_state.products = products
-                        st.session_state.source_info = source_info
-                        st.session_state.step = "loaded"
-                        st.rerun()
-            except Exception as e:
-                st.session_state.analyzing = False
-                st.error(f"❌ 实时抓取失败：{str(e)}")
-                st.info("🔧 请检查网络连接后重试。")
+            st.session_state.analyzing = False
+            st.error(f"❌ 获取 {pf_name} {region_name} 数据失败")
+            st.info(
+                "💡 **推荐方案：**\n"
+                "1. 稍后重试（可能是网站反爬临时拦截）\n"
+                "2. 使用「🎯 指定选品」通过关键词搜索产品\n"
+                "3. 在本机运行 `python daily_scrape.py` 更新数据"
+            )
 
     # ---- 数据显示（加载完成后显示，此时侧边栏已更新） ----
     if st.session_state.step in ("loaded", "analyzed") and st.session_state.products:
