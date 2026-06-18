@@ -560,6 +560,8 @@ def _render_live_page(api_ok: bool):
     if btn_get:
         st.session_state.analyzing = True
         loaded = False
+        # 重置标题翻译标记（新数据需要重新翻译）
+        st.session_state["live_titles_translated"] = False
 
         # 第一步：优先实时抓取（最新数据）
         try:
@@ -636,6 +638,28 @@ def _render_live_page(api_ok: bool):
                 st.warning("无产品可分析，请先获取数据。")
                 st.session_state.step = "idle"
             else:
+                # 标题翻译：英文标题 → 中文（仅一次，Spec 33）
+                if not st.session_state.get("live_titles_translated"):
+                    titles = [p.get("title", "") for p in st.session_state.products]
+                    need_translation = any(contains_chinese(t) is False and t.strip() for t in titles)
+                    if need_translation:
+                        with st.status("🌐 正在翻译产品标题...", expanded=False) as tstatus:
+                            zh_titles = translate_product_titles(titles)
+                            translated_count = 0
+                            for p, zh in zip(st.session_state.products, zh_titles):
+                                if zh and zh != p.get("title"):
+                                    p["title_zh"] = zh
+                                    translated_count += 1
+                            st.session_state["live_titles_translated"] = True
+                            if translated_count > 0:
+                                st.toast(f"已翻译 {translated_count} 个产品标题为中文", icon="🌐")
+                            tstatus.update(
+                                label=f"✅ 已翻译 {translated_count} 个产品标题",
+                                state="complete",
+                            )
+                    else:
+                        st.session_state["live_titles_translated"] = True
+
                 with st.status("AI 正在深度分析产品竞争力与利润潜力...", expanded=False) as status:
                     progress_bar = st.progress(0, text="准备分析...")
                     # 预创建空容器用于流式渲染
@@ -731,6 +755,9 @@ def _render_live_page(api_ok: bool):
         st.caption(caption)
 
         df = pd.DataFrame(st.session_state.products)
+        # Spec 33：优先用中文标题 title_zh 显示
+        if "title_zh" in df.columns:
+            df["title"] = df["title_zh"].where(df["title_zh"].notna() & (df["title_zh"] != ""), df.get("title"))
         df_display = df.rename(columns={
             "rank": "排名", "title": "产品名称", "price": "价格 (USD)",
             "rating": "评分 ⭐", "num_reviews": "评论数", "category": "类目",
@@ -795,7 +822,11 @@ def _render_live_page(api_ok: bool):
             verdict_label = VERDICT_LABEL_MAP.get(verdict, "⚪ 未知")
 
             is_raw = r.get("parse_error", False)
-            title_text = r.get("title", f"产品 #{i+1}")
+            # Spec 33：优先显示中文标题 title_zh
+            product_data_t = st.session_state.products[i] if i < len(st.session_state.products) else {}
+            title_zh = product_data_t.get("title_zh")
+            title_en = r.get("title", f"产品 #{i+1}")
+            title_text = title_zh or title_en
             expander_label = (
                 f"⚠️ 解析异常 #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}"
                 if is_raw else f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}"
@@ -819,6 +850,9 @@ def _render_live_page(api_ok: bool):
                         st.markdown(f"📦 **[{title_text}]({product_url})**")
                     else:
                         st.caption(f"📦 **完整标题：** {title_text}")
+                    # 中英对照（Spec 33）
+                    if title_zh and title_en != title_zh:
+                        st.caption(f"🌐 {title_en}")
                 if is_raw:
                     verdict_reason = r.get("verdict_reason", "")
                     st.warning(f"⚠️ AI 返回格式异常 — {verdict_reason}")
