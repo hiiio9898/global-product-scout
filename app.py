@@ -465,6 +465,17 @@ def _render_comparison_view(products: list, indices: list[int]):
 # ==================== Dashboard 首页 ============================
 # ============================================================
 
+def _navigate_to(page: str, product: str = None):
+    """按钮回调：切换页面。
+
+    widget 绑定的 key（nav_page）只能在 on_click 回调中写入，
+    回调在 widget 渲染前执行，因此这里是合法的。
+    """
+    st.session_state["nav_page"] = page
+    if product is not None:
+        st.session_state["goto_product"] = product
+
+
 def _render_dashboard_page():
     """渲染 Dashboard 首页 — 纯行动引导页。"""
 
@@ -483,23 +494,20 @@ def _render_dashboard_page():
             with st.container(border=True):
                 st.markdown("#### 🔍 热销选品")
                 st.markdown("一键抓取平台热销榜，AI 评估选品潜力")
-                if st.button("开始选品", key="goto_live", type="primary", width="stretch"):
-                    st.session_state["nav_page"] = "实时选品"
-                    st.rerun()
+                st.button("开始选品", key="goto_live", type="primary", width="stretch",
+                          on_click=_navigate_to, args=("实时选品",))
         with c2:
             with st.container(border=True):
                 st.markdown("#### 🎯 关键词选品")
                 st.markdown("输入关键词，深度分析特定品类")
-                if st.button("搜索品类", key="goto_targeted", width="stretch"):
-                    st.session_state["nav_page"] = "指定选品"
-                    st.rerun()
+                st.button("搜索品类", key="goto_targeted", width="stretch",
+                          on_click=_navigate_to, args=("指定选品",))
         with c3:
             with st.container(border=True):
                 st.markdown("#### 🌐 市场扫描")
                 st.markdown("对比多个市场和地区的蓝海机会")
-                if st.button("扫描市场", key="goto_scan", width="stretch"):
-                    st.session_state["nav_page"] = "市场扫描"
-                    st.rerun()
+                st.button("扫描市场", key="goto_scan", width="stretch",
+                          on_click=_navigate_to, args=("市场扫描",))
         return
 
     # ---- 有数据场景：TOP3 推荐 + 数据摘要 ----
@@ -533,23 +541,20 @@ def _render_dashboard_page():
                     if verdict_reason:
                         st.caption(f"💡 {verdict_reason}")
                 with col_action:
-                    if st.button("查看详情 →", key=f"detail_{i}", use_container_width=True):
-                        st.session_state["nav_page"] = "历史记录"
-                        st.session_state["goto_product"] = title
-                        st.rerun()
+                    st.button("查看详情 →", key=f"detail_{i}", use_container_width=True,
+                              on_click=_navigate_to, args=("历史记录", title))
 
         if rec_count > 3:
             st.button(
                 f"查看全部 {rec_count} 个推荐 →",
                 key="goto_history_all",
                 width="stretch",
-                on_click=lambda: st.session_state.update({"nav_page": "历史记录"}),
+                on_click=_navigate_to, args=("历史记录",),
             )
     else:
         st.info("📊 已有数据但暂无推荐产品。运行新一轮分析获取建议。")
-        if st.button("🔍 开始新一轮分析", type="primary", key="goto_live_new", width="stretch"):
-            st.session_state["nav_page"] = "实时选品"
-            st.rerun()
+        st.button("🔍 开始新一轮分析", type="primary", key="goto_live_new", width="stretch",
+                  on_click=_navigate_to, args=("实时选品",))
 
 
 # ============================================================
