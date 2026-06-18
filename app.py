@@ -30,7 +30,6 @@ from src.trends import get_trend_direction, get_trend_icon
 from src.utils import deduplicate_products
 from src.market_scanner import (
     scan_market,
-    scan_single_market,
     calculate_blue_ocean_score,
     classify_competition,
     classify_demand,
@@ -1740,183 +1739,6 @@ def _render_keyword_scan_mode(api_ok: bool):
     # ---- 扫描执行 ----
     if st.session_state.get("scan_step") == "scanning":
         kw = st.session_state.scan_keyword
-
-
-def _render_hot_aggregation_mode(api_ok: bool):
-    """热销聚合模式 — 扫描常用平台/地区的热销榜单，发现爆款趋势。"""
-    st.markdown("### 🔥 热销聚合模式")
-    st.markdown("基于你常用的平台和地区，聚合热销榜单发现跨市场爆款。")
-
-    with st.container(border=True):
-        # 自动推荐常用平台/地区（基于上次选择或默认）
-        last_platforms = st.session_state.get("hot_agg_platforms", ["amazon", "ebay"])
-        platform_keys = get_platform_choices()
-        platform_names = {k: f"{PLATFORMS[k]['icon']} {PLATFORMS[k]['name']}" for k in platform_keys}
-
-        selected_platforms = st.multiselect(
-            "🛒 聚合平台（建议 2-4 个）",
-            options=platform_keys,
-            default=[p for p in last_platforms if p in platform_keys] or platform_keys[:2],
-            format_func=lambda k: platform_names[k],
-            key="hot_agg_platforms_select",
-        )
-        st.session_state.hot_agg_platforms = selected_platforms
-
-        # 地区选择（限制在常用地区）
-        all_regions = set()
-        for pf in selected_platforms:
-            pf_info = get_platform_info(pf)
-            for rk in pf_info.get("regions", {}).keys():
-                all_regions.add(rk)
-        region_options = sorted(all_regions)
-        region_labels = {}
-        for pf in selected_platforms:
-            for rk, rv in get_platform_info(pf).get("regions", {}).items():
-                label = f"{rv['name']} ({rk})"
-                if label not in region_labels:
-                    region_labels[rk] = label
-
-        last_regions = st.session_state.get("hot_agg_regions", region_options[:3])
-        selected_regions = st.multiselect(
-            "🌍 聚合地区（建议 2-5 个，过多会耗时）",
-            options=region_options,
-            default=[r for r in last_regions if r in region_options] or region_options[:3],
-            format_func=lambda k: region_labels.get(k, k.upper()),
-            key="hot_agg_regions_select",
-        )
-        st.session_state.hot_agg_regions = selected_regions
-
-        # 返回热门产品数
-        top_n = st.number_input(
-            "返回热门产品数",
-            min_value=10, max_value=50, value=20, step=10,
-            help="聚合后展示热度最高的前 N 个产品",
-        )
-
-        save_to_db = st.checkbox(
-            "扫描后保存到数据库",
-            value=False,
-            help="把抓取的产品存入 products 表（供历史记录查看）",
-        )
-
-        combo_count = len(selected_platforms) * len(selected_regions)
-        if combo_count > 0:
-            est_seconds = combo_count * 30
-            st.caption(f"⏱️ 预估耗时：{combo_count} 个市场 × ~30秒 ≈ {est_seconds // 60} 分钟")
-
-        scan_clicked = st.button(
-            "🚀 开始聚合扫描",
-            type="primary",
-            width="stretch",
-            key="hot_agg_scan_btn",
-        )
-
-    # ---- 扫描触发 ----
-    if scan_clicked and selected_platforms and selected_regions:
-        st.session_state.hot_agg_platforms = selected_platforms
-        st.session_state.hot_agg_regions = selected_regions
-        st.session_state.hot_agg_top_n = top_n
-        st.session_state.hot_agg_save_db = save_to_db
-        st.session_state.hot_agg_step = "scanning"
-        st.rerun()
-
-    # ---- 扫描执行 ----
-    if st.session_state.get("hot_agg_step") == "scanning":
-        platforms = st.session_state.hot_agg_platforms
-        regions = st.session_state.hot_agg_regions
-        top_n = st.session_state.hot_agg_top_n
-        save_to_db = st.session_state.hot_agg_save_db
-
-        from src.regional_scanner import scan_all_regions
-
-        with st.status("🌍 正在聚合扫描热销榜单...", expanded=True) as status:
-            progress_bar = st.progress(0, text="准备扫描...")
-
-            def _on_progress(done, total, label):
-                pct = min(done / total, 1.0) if total > 0 else 0
-                progress_bar.progress(pct, text=f"扫描进度：{done}/{total} — {label}")
-
-            # 只扫描用户选择的平台和地区
-            from src.regional_scanner import scan_single_market
-            from collections import defaultdict
-
-            all_products = []
-            combo_count = len(platforms) * len(regions)
-            done_count = 0
-
-            for pf in platforms:
-                pf_info = get_platform_info(pf)
-                for rg in regions:
-                    if rg not in pf_info.get("regions", {}):
-                        continue
-                    try:
-                        result = scan_single_market(pf, rg)
-                        if result["success"]:
-                            all_products.extend(result.get("products", []))
-                    except Exception:
-                        pass
-                    done_count += 1
-                    _on_progress(done_count, combo_count, f"{pf}-{rg}")
-
-            # 聚合热度
-            from src.regional_scanner import aggregate_hot_products
-            ranked = aggregate_hot_products(all_products, top_n=top_n)
-
-            progress_bar.empty()
-            status.update(
-                label=f"✅ 聚合完成（{len(all_products)} 个产品 → {len(ranked)} 个热门）",
-                state="complete",
-            )
-
-        # 可选保存到数据库
-        if save_to_db and all_products:
-            try:
-                from collections import defaultdict
-                groups = defaultdict(list)
-                for p in all_products:
-                    key = (p.get("platform", "amazon"), p.get("region", "us"), p.get("currency", "USD"))
-                    groups[key].append(p)
-                saved_total = 0
-                for (pf, rg, cur), plist in groups.items():
-                    saved_total += save_products(
-                        plist, [{}] * len(plist),
-                        source=f"hot_agg_{pf}_{rg}", platform=pf, region=rg, currency=cur,
-                    )
-                st.success(f"💾 已保存 {saved_total} 条到数据库")
-            except Exception as e:
-                st.warning(f"保存数据库失败：{e}")
-
-        st.session_state.hot_agg_step = "done"
-        st.session_state.hot_agg_results = ranked
-        st.rerun()
-
-    # ---- 结果展示 ----
-    if st.session_state.get("hot_agg_step") == "done":
-        ranked = st.session_state.get("hot_agg_results", [])
-        if not ranked:
-            st.info("未找到热门产品。请尝试调整平台/地区选择。")
-            return
-
-        st.markdown(f"### 🏆 Top {len(ranked)} 热门产品")
-        st.caption("按热度评分排序 = 上榜地区数 × 10 + log10(累计评论数) × 5")
-
-        # 构建展示数据
-        display_data = []
-        for item in ranked:
-            sample = item.get("sample", {})
-            display_data.append({
-                "排名": len(display_data) + 1,
-                "产品": item.get("title", "")[:40],
-                "热度": item.get("hotness", 0),
-                "上榜地区数": item.get("region_count", 0),
-                "平台": ", ".join(item.get("platforms", [])),
-                "参考价": f"${sample.get('price', 0):.2f}" if sample.get("price") else "-",
-            })
-
-        import pandas as pd
-        df = pd.DataFrame(display_data)
-        st.dataframe(df, width="stretch", hide_index=True)
-
         platforms = st.session_state.scan_platforms
         regions = st.session_state.scan_regions
 
@@ -2246,6 +2068,165 @@ def _render_hot_aggregation_mode(api_ok: bool):
             "**热门品类参考：** portable blender, cat toys, yoga mat, "
             "kitchen organizer, phone case, LED strip lights"
         )
+
+
+
+def _render_hot_aggregation_mode(api_ok: bool):
+    """热销聚合模式 — 扫描常用平台/地区的热销榜单，发现爆款趋势。"""
+    st.markdown("### 🔥 热销聚合模式")
+    st.markdown("基于你常用的平台和地区，聚合热销榜单发现跨市场爆款。")
+
+    with st.container(border=True):
+        # 自动推荐常用平台/地区（基于上次选择或默认）
+        last_platforms = st.session_state.get("hot_agg_platforms", ["amazon", "ebay"])
+        platform_keys = get_platform_choices()
+        platform_names = {k: f"{PLATFORMS[k]['icon']} {PLATFORMS[k]['name']}" for k in platform_keys}
+
+        selected_platforms = st.multiselect(
+            "🛒 聚合平台（建议 2-4 个）",
+            options=platform_keys,
+            default=[p for p in last_platforms if p in platform_keys] or platform_keys[:2],
+            format_func=lambda k: platform_names[k],
+            key="hot_agg_platforms_select",
+        )
+        st.session_state.hot_agg_platforms = selected_platforms
+
+        # 地区选择（限制在常用地区）
+        all_regions = set()
+        for pf in selected_platforms:
+            pf_info = get_platform_info(pf)
+            for rk in pf_info.get("regions", {}).keys():
+                all_regions.add(rk)
+        region_options = sorted(all_regions)
+        region_labels = {}
+        for pf in selected_platforms:
+            for rk, rv in get_platform_info(pf).get("regions", {}).items():
+                label = f"{rv['name']} ({rk})"
+                if label not in region_labels:
+                    region_labels[rk] = label
+
+        last_regions = st.session_state.get("hot_agg_regions", region_options[:3])
+        selected_regions = st.multiselect(
+            "🌍 聚合地区（建议 2-5 个，过多会耗时）",
+            options=region_options,
+            default=[r for r in last_regions if r in region_options] or region_options[:3],
+            format_func=lambda k: region_labels.get(k, k.upper()),
+            key="hot_agg_regions_select",
+        )
+        st.session_state.hot_agg_regions = selected_regions
+
+        # 返回热门产品数
+        top_n = st.number_input(
+            "返回热门产品数",
+            min_value=10, max_value=50, value=20, step=10,
+            help="聚合后展示热度最高的前 N 个产品",
+        )
+
+        save_to_db = st.checkbox(
+            "扫描后保存到数据库",
+            value=False,
+            help="把抓取的产品存入 products 表（供历史记录查看）",
+        )
+
+        combo_count = len(selected_platforms) * len(selected_regions)
+        if combo_count > 0:
+            est_seconds = combo_count * 30
+            st.caption(f"⏱️ 预估耗时：{combo_count} 个市场 × ~30秒 ≈ {est_seconds // 60} 分钟")
+
+        scan_clicked = st.button(
+            "🚀 开始聚合扫描",
+            type="primary",
+            width="stretch",
+            key="hot_agg_scan_btn",
+        )
+
+    # ---- 扫描触发 ----
+    if scan_clicked and selected_platforms and selected_regions:
+        st.session_state.hot_agg_platforms = selected_platforms
+        st.session_state.hot_agg_regions = selected_regions
+        st.session_state.hot_agg_top_n = top_n
+        st.session_state.hot_agg_save_db = save_to_db
+        st.session_state.hot_agg_step = "scanning"
+        st.rerun()
+
+    # ---- 扫描执行 ----
+    if st.session_state.get("hot_agg_step") == "scanning":
+        platforms = st.session_state.hot_agg_platforms
+        regions = st.session_state.hot_agg_regions
+        top_n = st.session_state.hot_agg_top_n
+        save_to_db = st.session_state.hot_agg_save_db
+
+        from src.regional_scanner import scan_all_regions, aggregate_hot_products
+
+        with st.status("🌍 正在聚合扫描热销榜单...", expanded=True) as status:
+            progress_bar = st.progress(0, text="准备扫描...")
+
+            def _on_progress(done, total, label):
+                pct = min(done / total, 1.0) if total > 0 else 0
+                progress_bar.progress(pct, text=f"扫描进度：{done}/{total} — {label}")
+
+            # 扫描选定平台的全部地区热销榜，再按选定地区过滤
+            scan_result = scan_all_regions(platforms=platforms, progress_callback=_on_progress)
+            all_products = scan_result.get("products", [])
+            if regions:
+                all_products = [p for p in all_products if p.get("region") in regions]
+
+            ranked = aggregate_hot_products(all_products, top_n=top_n)
+
+            progress_bar.empty()
+            status.update(
+                label=f"✅ 聚合完成（{len(all_products)} 个产品 → {len(ranked)} 个热门）",
+                state="complete",
+            )
+
+        # 可选保存到数据库
+        if save_to_db and all_products:
+            try:
+                from collections import defaultdict
+                groups = defaultdict(list)
+                for p in all_products:
+                    key = (p.get("platform", "amazon"), p.get("region", "us"), p.get("currency", "USD"))
+                    groups[key].append(p)
+                saved_total = 0
+                for (pf, rg, cur), plist in groups.items():
+                    saved_total += save_products(
+                        plist, [{}] * len(plist),
+                        source=f"hot_agg_{pf}_{rg}", platform=pf, region=rg, currency=cur,
+                    )
+                st.success(f"💾 已保存 {saved_total} 条到数据库")
+            except Exception as e:
+                st.warning(f"保存数据库失败：{e}")
+
+        st.session_state.hot_agg_step = "done"
+        st.session_state.hot_agg_results = ranked
+        st.rerun()
+
+    # ---- 结果展示 ----
+    if st.session_state.get("hot_agg_step") == "done":
+        ranked = st.session_state.get("hot_agg_results", [])
+        if not ranked:
+            st.info("未找到热门产品。请尝试调整平台/地区选择。")
+            return
+
+        st.markdown(f"### 🏆 Top {len(ranked)} 热门产品")
+        st.caption("按热度评分排序 = 上榜地区数 × 10 + log10(累计评论数) × 5")
+
+        # 构建展示数据
+        display_data = []
+        for item in ranked:
+            sample = item.get("sample", {})
+            display_data.append({
+                "排名": len(display_data) + 1,
+                "产品": item.get("title", "")[:40],
+                "热度": item.get("hotness", 0),
+                "上榜地区数": item.get("region_count", 0),
+                "平台": ", ".join(item.get("platforms", [])),
+                "参考价": f"${sample.get('price', 0):.2f}" if sample.get("price") else "-",
+            })
+
+        import pandas as pd
+        df = pd.DataFrame(display_data)
+        st.dataframe(df, width="stretch", hide_index=True)
 
 # ============================================================
 # ==================== 历史记录页面 ============================
