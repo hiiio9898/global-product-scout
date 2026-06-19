@@ -419,7 +419,7 @@ def _scrape_ebay_best_sellers(region: str = "us") -> list[dict]:
 # ============================================================
 
 def _scrape_ebay_search(keyword: str, region: str = "us", max_results: int = 20) -> list[dict]:
-    """真实抓取 eBay 搜索结果（使用 Scrapling）。"""
+    """真实抓取 eBay 搜索结果（Fetcher 优先，SPA 零结果时降级浏览器渲染）。"""
     domain = _REGION_DOMAINS.get(region, "ebay.com")
     encoded_kw = keyword.replace(" ", "+")
     url = f"https://www.{domain}/sch/i.html?_nkw={encoded_kw}&_sop=12"
@@ -427,22 +427,35 @@ def _scrape_ebay_search(keyword: str, region: str = "us", max_results: int = 20)
     delay = random.uniform(1.5, 2.5)
     time.sleep(delay)
 
+    def _try_parse(resp):
+        if resp.status != 200 or is_blocked(str(resp.text)):
+            return None
+        cards = resp.css("ul.srp-results li.s-item") or resp.css("li.s-item") or []
+        products = []
+        for i, card in enumerate(cards[:max_results], 1):
+            product = _parse_product_card(card, i)
+            if product:
+                products.append(product)
+        return products
+
+    # 第一层：Fetcher（快）
     resp = fetch_page(url)
-    print(f"[scraper_ebay] HTTP {resp.status} | URL: {url}")
+    print(f"[scraper_ebay] Fetcher HTTP {resp.status} | URL: {url}")
+    products = _try_parse(resp)
 
-    if is_blocked(str(resp.text)):
-        raise RuntimeError("被 eBay 反爬拦截")
+    # 第二层：Fetcher 零结果/被拦 → 浏览器渲染（eBay 是 SPA，产品卡 JS 渲染）
+    if not products:
+        print(f"[scraper_ebay] Fetcher 无结果，降级 StealthyFetcher 渲染 JS…")
+        try:
+            resp = fetch_page(url, stealth=True, wait_seconds=6.0,
+                              wait_selector="li.s-item, ul.srp-results")
+            print(f"[scraper_ebay] StealthyFetcher HTTP {resp.status}")
+            products = _try_parse(resp) or []
+        except Exception as e:
+            print(f"[scraper_ebay] StealthyFetcher 失败: {e}")
+            products = []
 
-    cards = resp.css("ul.srp-results li.s-item") or resp.css("li.s-item") or []
-
-    print(f"[scraper_ebay] 找到 {len(cards)} 个搜索结果")
-
-    products = []
-    for i, card in enumerate(cards[:max_results], 1):
-        product = _parse_product_card(card, i)
-        if product:
-            products.append(product)
-
+    print(f"[scraper_ebay] 找到 {len(products)} 个搜索结果")
     return products
 
 

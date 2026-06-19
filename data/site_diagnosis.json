@@ -1,7 +1,7 @@
 {
   "keyword": "clothing",
-  "scan_time": "2026-06-19T12:59:00.910169+00:00",
-  "total_sites": 18,
+  "scan_time": "2026-06-19T13:48:30.781236+00:00",
+  "total_sites": 22,
   "rows": [
     {
       "platform": "amazon",
@@ -10,7 +10,7 @@
       "region_name": "美国站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 6.1,
+      "duration_sec": 7.1,
       "error": null,
       "source": "live"
     },
@@ -19,10 +19,10 @@
       "platform_name": "Amazon",
       "region": "uk",
       "region_name": "英国站",
-      "status": "blocked",
+      "status": "error",
       "product_count": 0,
-      "duration_sec": 19.3,
-      "error": "Amazon 反爬拦截：抓取失败：Fetcher 被 Amazon 拦截，且浏览器组件不可用无法降级。请稍后重试（浏览器可能正在后台安装）。",
+      "duration_sec": 10.2,
+      "error": "未搜索到相关产品，请尝试更换关键词",
       "source": "none"
     },
     {
@@ -30,11 +30,11 @@
       "platform_name": "Amazon",
       "region": "jp",
       "region_name": "日本站",
-      "status": "blocked",
-      "product_count": 0,
-      "duration_sec": 275.2,
-      "error": "Amazon 反爬拦截：抓取失败：Fetcher 被 Amazon 拦截，且浏览器组件不可用无法降级。请稍后重试（浏览器可能正在后台安装）。",
-      "source": "none"
+      "status": "ok",
+      "product_count": 3,
+      "duration_sec": 71.4,
+      "error": null,
+      "source": "live"
     },
     {
       "platform": "amazon",
@@ -43,7 +43,7 @@
       "region_name": "德国站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 4.5,
+      "duration_sec": 6.5,
       "error": null,
       "source": "live"
     },
@@ -54,7 +54,7 @@
       "region_name": "法国站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 5.0,
+      "duration_sec": 5.6,
       "error": null,
       "source": "live"
     },
@@ -65,7 +65,7 @@
       "region_name": "意大利站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 6.1,
+      "duration_sec": 5.7,
       "error": null,
       "source": "live"
     },
@@ -76,7 +76,7 @@
       "region_name": "西班牙站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 5.3,
+      "duration_sec": 4.4,
       "error": null,
       "source": "live"
     },
@@ -87,7 +87,7 @@
       "region_name": "加拿大站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 4.2,
+      "duration_sec": 3.9,
       "error": null,
       "source": "live"
     },
@@ -98,7 +98,7 @@
       "region_name": "澳洲站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 4.6,
+      "duration_sec": 5.9,
       "error": null,
       "source": "live"
     },
@@ -107,10 +107,10 @@
       "platform_name": "eBay",
       "region": "us",
       "region_name": "美国站",
-      "status": "blocked",
+      "status": "error",
       "product_count": 0,
-      "duration_sec": 19.3,
-      "error": "eBay 反爬拦截：抓取失败：Fetcher 被 Amazon 拦截，且浏览器组件不可用无法降级。请稍后重试（浏览器可能正在后台安装）。",
+      "duration_sec": 23.4,
+      "error": "未搜索到相关产品，请尝试更换关键词",
       "source": "none"
     },
     {
@@ -118,10 +118,10 @@
       "platform_name": "eBay",
       "region": "uk",
       "region_name": "英国站",
-      "status": "blocked",
+      "status": "error",
       "product_count": 0,
-      "duration_sec": 19.1,
-      "error": "eBay 反爬拦截：抓取失败：Fetcher 被 Amazon 拦截，且浏览器组件不可用无法降级。请稍后重试（浏览器可能正在后台安装）。",
+      "duration_sec": 6.4,
+      "error": "未搜索到相关产品，请尝试更换关键词",
       "source": "none"
     },
     {
@@ -129,10 +129,10 @@
       "platform_name": "eBay",
       "region": "de",
       "region_name": "德国站",
-      "status": "blocked",
+      "status": "error",
       "product_count": 0,
-      "duration_sec": 19.7,
-      "error": "eBay 反爬拦截：抓取失败：Fetcher 被 Amazon 拦截，且浏览器组件不可用无法降级。请稍后重试（浏览器可能正在后台安装）。",
+      "duration_sec": 7.9,
+      "error": "未搜索到相关产品，请尝试更换关键词",
       "source": "none"
     },
     {
@@ -140,10 +140,10 @@
       "platform_name": "eBay",
       "region": "au",
       "region_name": "澳洲站",
-      "status": "blocked",
+      "status": "error",
       "product_count": 0,
-      "duration_sec": 20.7,
-      "error": "eBay 反爬拦截：抓取失败：Fetcher 被 Amazon 拦截，且浏览器组件不可用无法降级。请稍后重试（浏览器可能正在后台安装）。",
+      "duration_sec": 10.2,
+      "error": "未搜索到相关产品，请尝试更换关键词",
       "source": "none"
     },
     {
@@ -151,22 +151,11 @@
       "platform_name": "eBay",
       "region": "ca",
       "region_name": "加拿大站",
-      "status": "blocked",
-      "product_count": 0,
-      "duration_sec": 22.9,
-      "error": "eBay 反爬拦截：抓取失败：Fetcher 被 Amazon 拦截，且浏览器组件不可用无法降级。请稍后重试（浏览器可能正在后台安装）。",
-      "source": "none"
-    },
-    {
-      "platform": "alibaba",
-      "platform_name": "Alibaba",
-      "region": "us",
-      "region_name": "国际站",
       "status": "error",
       "product_count": 0,
-      "duration_sec": 0.0,
-      "error": "ModuleNotFoundError: No module named 'src.scraper_alibaba'",
-      "source": null
+      "duration_sec": 11.0,
+      "error": "未搜索到相关产品，请尝试更换关键词",
+      "source": "none"
     },
     {
       "platform": "aliexpress",
@@ -175,8 +164,8 @@
       "region_name": "美国站",
       "status": "error",
       "product_count": 0,
-      "duration_sec": 3.1,
-      "error": "StealthyFetcher 浏览器未安装。请运行: patchright install 或 python -m playwright install chromium",
+      "duration_sec": 3.9,
+      "error": "未找到产品",
       "source": "unavailable"
     },
     {
@@ -186,8 +175,8 @@
       "region_name": "欧洲站",
       "status": "error",
       "product_count": 0,
-      "duration_sec": 3.1,
-      "error": "StealthyFetcher 浏览器未安装。请运行: patchright install 或 python -m playwright install chromium",
+      "duration_sec": 3.6,
+      "error": "未找到产品",
       "source": "unavailable"
     },
     {
@@ -197,9 +186,64 @@
       "region_name": "俄罗斯站",
       "status": "error",
       "product_count": 0,
-      "duration_sec": 3.3,
-      "error": "StealthyFetcher 浏览器未安装。请运行: patchright install 或 python -m playwright install chromium",
+      "duration_sec": 89.0,
+      "error": "未找到产品",
       "source": "unavailable"
+    },
+    {
+      "platform": "tiktok",
+      "platform_name": "TikTok Shop",
+      "region": "sg",
+      "region_name": "新加坡站",
+      "status": "blocked",
+      "product_count": 0,
+      "duration_sec": 33.4,
+      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=502)",
+      "source": "none"
+    },
+    {
+      "platform": "tiktok",
+      "platform_name": "TikTok Shop",
+      "region": "ph",
+      "region_name": "菲律宾站",
+      "status": "blocked",
+      "product_count": 0,
+      "duration_sec": 34.0,
+      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=502)",
+      "source": "none"
+    },
+    {
+      "platform": "tiktok",
+      "platform_name": "TikTok Shop",
+      "region": "th",
+      "region_name": "泰国站",
+      "status": "blocked",
+      "product_count": 0,
+      "duration_sec": 33.6,
+      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=502)",
+      "source": "none"
+    },
+    {
+      "platform": "tiktok",
+      "platform_name": "TikTok Shop",
+      "region": "vn",
+      "region_name": "越南站",
+      "status": "blocked",
+      "product_count": 0,
+      "duration_sec": 34.5,
+      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=502)",
+      "source": "none"
+    },
+    {
+      "platform": "tiktok",
+      "platform_name": "TikTok Shop",
+      "region": "id",
+      "region_name": "印尼站",
+      "status": "blocked",
+      "product_count": 0,
+      "duration_sec": 32.9,
+      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=502)",
+      "source": "none"
     }
   ]
 }
