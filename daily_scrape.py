@@ -110,7 +110,7 @@ def main():
     parser = argparse.ArgumentParser(description="Global Product Scout 每日自动抓取")
     parser.add_argument(
         "--platforms", nargs="+", default=None,
-        help="指定要抓取的平台（如 amazon ebay alibaba），默认抓取全部"
+        help="指定要抓取的平台（如 amazon ebay aliexpress），默认抓取全部"
     )
     parser.add_argument(
         "--list", action="store_true",

@@ -1025,7 +1025,7 @@ def _render_live_page(api_ok: bool):
                     commission_label = {
                         "amazon": "亚马逊佣金比例",
                         "ebay": "eBay 成交费比例",
-                        "alibaba": "阿里巴巴佣金比例",
+                        "tiktok": "TikTok 佣金比例",
                     }.get(active_pf, "平台佣金比例")
                     commission_pct = st.slider(
                         commission_label, min_value=0.0, max_value=0.50,

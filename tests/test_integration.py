@@ -21,7 +21,7 @@ from unittest.mock import patch, MagicMock
 class TestPlatformRegistry:
     """Spec 8: 平台注册表。"""
 
-    EXPECTED_PLATFORMS = ["amazon", "ebay", "alibaba", "aliexpress"]
+    EXPECTED_PLATFORMS = ["amazon", "ebay", "aliexpress"]
 
     def test_all_platforms_registered(self):
         """验证 4 个平台全部注册到 PLATFORMS。"""
@@ -61,7 +61,7 @@ class TestPlatformRegistry:
     def test_region_choices(self):
         """验证 get_region_choices 返回正确选项。"""
         from src.platforms import get_region_choices
-        for pf in ["amazon", "ebay", "alibaba"]:
+        for pf in ["amazon", "ebay"]:
             choices = get_region_choices(pf)
             assert len(choices) >= 1, f"{pf} 地区选项不足"
 
@@ -73,7 +73,7 @@ class TestPlatformRegistry:
 class TestProfitCalculators:
     """Spec 8-11: 各平台利润计算器。"""
 
-    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "alibaba", "aliexpress"])
+    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "aliexpress"])
     def test_calculator_exists(self, platform_key):
         """验证每个平台的利润计算器已注册。"""
         from src.calculator import get_calculator
@@ -94,19 +94,6 @@ class TestProfitCalculators:
         assert result["is_profitable"] is True
         assert result["has_procurement"] is True
         assert result["price_local"] == 20.0
-
-    def test_alibaba_profit_positive(self):
-        """Alibaba: $20 售价应盈利。"""
-        from src.calculator import get_calculator
-        from src.platforms import PLATFORMS
-
-        calc = get_calculator("alibaba")
-        defaults = PLATFORMS["alibaba"]["profit_defaults"].copy()
-        defaults["exchange_rate"] = 7.24
-
-        result = calc(price=20.0, defaults=defaults, procurement_cny=5.0)
-        assert result["margin_pct"] > 0
-        assert result["is_profitable"] is True
 
     def test_ebay_profit_with_fees(self):
         """eBay: 验证成交费+刊登费正确计算。"""
@@ -145,7 +132,7 @@ class TestProfitCalculators:
         from src.calculator import get_calculator
         from src.platforms import PLATFORMS
 
-        for pf in ["amazon", "ebay", "alibaba"]:
+        for pf in ["amazon", "ebay"]:
             calc = get_calculator(pf)
             defaults = PLATFORMS[pf]["profit_defaults"].copy()
             defaults["exchange_rate"] = 7.24
@@ -253,7 +240,6 @@ class TestScraperImports:
     @pytest.mark.parametrize("platform_key,expected_func", [
         ("amazon", "fetch_amazon_best_sellers"),
         ("ebay", "fetch_ebay_best_sellers"),
-        ("alibaba", "fetch_alibaba_best_sellers"),
         ("aliexpress", "fetch_aliexpress_best_sellers"),
     ])
     def test_scraper_module_importable(self, platform_key, expected_func):
@@ -269,7 +255,7 @@ class TestScraperImports:
         assert callable(func)
         assert func_name == expected_func
 
-    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "alibaba", "aliexpress"])
+    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "aliexpress"])
     def test_search_function_importable(self, platform_key):
         """验证每个平台的搜索函数可导入。"""
         from src.platforms import PLATFORMS
@@ -324,10 +310,6 @@ class TestPlatformUtils:
         amazon_defaults = get_profit_defaults("amazon")
         assert "commission_pct" in amazon_defaults
         assert "exchange_rate" in amazon_defaults
-
-        ali_defaults = get_profit_defaults("alibaba")
-        assert "commission_pct" in ali_defaults
-        assert "trade_assurance_pct" in ali_defaults
 
         ebay_defaults = get_profit_defaults("ebay")
         assert "final_value_fee_pct" in ebay_defaults

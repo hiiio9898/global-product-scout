@@ -77,27 +77,6 @@ PLATFORMS = {
             "payoneer_fee_pct": 0.01,
         },
     },
-    "alibaba": {
-        "name": "Alibaba",
-        "icon": "🟠",
-        "scraper_module": "src.scraper_alibaba",
-        "scraper_func": "fetch_alibaba_best_sellers",
-        "search_module": "src.scraper_alibaba",
-        "search_func": "search_alibaba",
-        "calculator": "calculate_alibaba_profit",
-        "scrape_mode": "stealth_only",
-        "currency": "USD",
-        "regions": {
-            "us": {"name": "国际站", "domain": "alibaba.com", "currency": "USD", "exchange_rate": 7.24},
-        },
-        "default_region": "us",
-        "profit_defaults": {
-            "commission_pct": 0.05,
-            "trade_assurance_pct": 0.02,
-            "shipping_cny": 25.0,
-            "packaging_cny": 3.0,
-        },
-    },
     "aliexpress": {
         "name": "AliExpress",
         "icon": "🔶",

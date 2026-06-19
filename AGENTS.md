@@ -5,7 +5,7 @@
 ## 1. 项目定位
 - 项目名称：Global Product Scout（全球产品侦察兵）
 - 目标用户：跨境电商卖家、外贸创业者
-- 核心功能：自动抓取多平台（Amazon、eBay、阿里巴巴国际站）热销产品数据，通过多模型 AI 分析产品潜力，提供选品建议。
+- 核心功能：自动抓取多平台（Amazon、eBay、AliExpress、TikTok Shop）热销产品数据，通过多模型 AI 分析产品潜力，提供选品建议。
 - 技术栈：Python 3.12、Streamlit（前端）、OpenAI SDK 兼容 API（多模型 AI 分析）、Scrapling（自适应抓取引擎）
 
 ## 2. 硬规则
@@ -40,7 +40,8 @@
 │   ├── scraper.py          # Amazon Best Sellers 抓取
 │   ├── scraper_search.py   # Amazon 关键词搜索
 │   ├── scraper_ebay.py     # eBay 抓取
-│   ├── scraper_alibaba.py  # 阿里巴巴国际站抓取
+│   ├── scraper_aliexpress.py  # 速卖通抓取
+│   ├── scraper_tiktok.py   # TikTok Shop 抓取（东南亚 5 站）
 │   ├── scraper_1688.py     # 1688 比价（AI 估算 + 真实抓取）
 │   ├── analyzer.py         # AI 分析模块（五维度评估 + 品类报告）
 │   ├── calculator.py       # 利润计算器（工厂模式，多平台）
@@ -105,7 +106,7 @@ git push
 - 如使用异步或协程，确保与 Streamlit 兼容（Streamlit 默认同步）。
 
 ## 7. 数据源与合规
-- 示例数据源：Amazon Best Sellers、eBay Trending、Alibaba 国际站
+- 示例数据源：Amazon Best Sellers、eBay Trending、AliExpress、TikTok Shop
 - 抓取引擎：Scrapling（Fetcher + StealthyFetcher 自动降级）
 - 抓取策略：每个平台每天最多一次，设置合理延迟避免被封。
 - 必须设置 User-Agent 和 Request 间延迟（1-2 秒）。
