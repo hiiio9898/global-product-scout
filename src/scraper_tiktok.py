@@ -199,8 +199,10 @@ def _scrape_tiktok_search(keyword: str, region: str = "id", max_results: int = 2
     """
     rc = _REGION_CONFIG.get(region, _REGION_CONFIG["id"])
     encoded_kw = keyword.replace(" ", "%20")
-    # TikTok Shop 搜索 URL（地区通过 URL 参数 + 浏览器 locale 区分）
-    url = f"https://shop.tiktok.com/view/search?keyword={encoded_kw}&region={region}&locale={rc['locale']}"
+    # TikTok Shop 搜索端点（www.tiktok.com/shop/search，shop.tiktok.com 子域已弃用返 404）
+    # 地区通过 locale 参数 + 浏览器 geo 区分
+    url = (f"https://www.tiktok.com/shop/search?q={encoded_kw}"
+           f"&region={region}&locale={rc['locale']}")
 
     time.sleep(random.uniform(2.0, 4.0))
 
