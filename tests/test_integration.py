@@ -332,3 +332,59 @@ class TestPlatformUtils:
 
         ebay_defaults = get_profit_defaults("ebay")
         assert "final_value_fee_pct" in ebay_defaults
+
+
+# ============================================================
+# TikTok 解析器单元测试（无需网络，验证 JSON 提取逻辑）
+# ============================================================
+
+class TestTikTokParser:
+    """TikTok 内嵌 JSON / DOM 解析逻辑测试（不依赖网络和浏览器）。"""
+
+    def test_harvest_products_from_nested_json(self):
+        """能从任意嵌套结构中提取产品（不同字段名）。"""
+        from src.scraper_tiktok import _harvest_products
+        sample = {
+            "search": {"items": [
+                {"title": "Earbuds", "price": {"price": 25.99}, "product_link": "/p/1", "rating": 4.5, "sold": 100},
+                {"product_name": "Case", "price_info": 5.5, "url": "/p/2", "sales": 50},
+                {"name": "Strip", "sale_price": "12.0", "link": "/p/3"},
+            ]},
+            "noise": {"title": "no price here"},  # 无价格/url 应跳过
+        }
+        out = []
+        _harvest_products(sample, out)
+        assert len(out) == 3
+        titles = [p["title"] for p in out]
+        assert "Earbuds" in titles and "Case" in titles and "Strip" in titles
+        # 价格归一化
+        prices = {p["title"]: p["price"] for p in out}
+        assert prices["Earbuds"] == 25.99
+        assert prices["Case"] == 5.5
+        assert prices["Strip"] == 12.0
+
+    def test_extract_embedded_json_from_html(self):
+        """从 HTML <script> 标签提取内嵌 JSON。"""
+        from src.scraper_tiktok import _extract_embedded_json
+        import json as _json
+        payload = {"data": {"items": [{"title": "Test", "price": 9.99, "product_link": "/p/1"}]}}
+        html = f'<html><script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">{_json.dumps(payload)}</script></html>'
+        products = _extract_embedded_json(html)
+        assert len(products) == 1
+        assert products[0]["title"] == "Test"
+        assert products[0]["price"] == 9.99
+
+    def test_tiktok_search_no_crash_on_empty(self):
+        """搜索失败时优雅返回，不崩溃。"""
+        from src.scraper_tiktok import search_tiktok
+        result = search_tiktok("", region="id")
+        assert result["success"] is False
+        assert "error" in result
+
+    def test_tiktok_best_sellers_returns_unavailable(self):
+        """TikTok 无公开热销榜 → 返回 unavailable + 提示。"""
+        from src.scraper_tiktok import fetch_tiktok_best_sellers
+        products, info = fetch_tiktok_best_sellers("id")
+        assert products == []
+        assert info["source"] == "unavailable"
+        assert "无公开热销榜" in info["error"]
