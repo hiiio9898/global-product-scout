@@ -21,7 +21,7 @@ from unittest.mock import patch, MagicMock
 class TestPlatformRegistry:
     """Spec 8: 平台注册表。"""
 
-    EXPECTED_PLATFORMS = ["amazon", "ebay", "aliexpress"]
+    EXPECTED_PLATFORMS = ["amazon", "ebay", "aliexpress", "tiktok"]
 
     def test_all_platforms_registered(self):
         """验证 4 个平台全部注册到 PLATFORMS。"""
@@ -73,7 +73,7 @@ class TestPlatformRegistry:
 class TestProfitCalculators:
     """Spec 8-11: 各平台利润计算器。"""
 
-    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "aliexpress"])
+    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "aliexpress", "tiktok"])
     def test_calculator_exists(self, platform_key):
         """验证每个平台的利润计算器已注册。"""
         from src.calculator import get_calculator
@@ -109,6 +109,24 @@ class TestProfitCalculators:
         assert "listing_cny" in result  # 刊登费
         assert "payoneer_cny" in result  # 提现费
         assert result["fvf_cny"] > 0
+
+    def test_tiktok_profit_high_denomination_currency(self):
+        """TikTok: 验证高面值货币（IDR）利润计算正确。"""
+        from src.calculator import get_calculator
+        from src.platforms import PLATFORMS
+
+        calc = get_calculator("tiktok")
+        defaults = PLATFORMS["tiktok"]["profit_defaults"].copy()
+        defaults["exchange_rate"] = 0.00045  # 1 IDR = 0.00045 CNY
+
+        # 印尼常见定价 100000 IDR ≈ 45 CNY
+        result = calc(price=100000.0, defaults=defaults, procurement_cny=5.0)
+        assert "commission_cny" in result
+        assert "payment_cny" in result
+        assert result["commission_cny"] > 0
+        # 售价 45 CNY，采购 5 + 运费 25 + 包装 3 + 佣金 ~2.25 + 支付 ~0.9 ≈ 36.15 成本 → 盈利
+        assert result["net_profit_cny"] > 0
+        assert result["is_profitable"] is True
 
     def test_unified_calculate_profit(self):
         """验证统一入口 calculate_profit 向后兼容。"""
@@ -241,6 +259,7 @@ class TestScraperImports:
         ("amazon", "fetch_amazon_best_sellers"),
         ("ebay", "fetch_ebay_best_sellers"),
         ("aliexpress", "fetch_aliexpress_best_sellers"),
+        ("tiktok", "fetch_tiktok_best_sellers"),
     ])
     def test_scraper_module_importable(self, platform_key, expected_func):
         """验证每个平台的抓取模块可导入。"""
@@ -255,7 +274,7 @@ class TestScraperImports:
         assert callable(func)
         assert func_name == expected_func
 
-    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "aliexpress"])
+    @pytest.mark.parametrize("platform_key", ["amazon", "ebay", "aliexpress", "tiktok"])
     def test_search_function_importable(self, platform_key):
         """验证每个平台的搜索函数可导入。"""
         from src.platforms import PLATFORMS

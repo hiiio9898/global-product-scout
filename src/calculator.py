@@ -240,6 +240,62 @@ def calculate_aliexpress_profit(
 
 
 # ============================================================
+# TikTok Shop 利润计算器（东南亚 5 站）
+# ============================================================
+
+@register_calculator("tiktok")
+def calculate_tiktok_profit(
+    price: float,
+    defaults: dict,
+    procurement_cny: float = 0.0,
+    **kwargs,
+) -> dict:
+    """
+    TikTok Shop 卖家利润计算。
+
+    公式：
+        售价(本地货币) × 汇率 = 售价(CNY)
+        佣金 = 售价(CNY) × commission_pct (5%)
+        支付手续费 = 售价(CNY) × payment_fee_pct (2%)
+        总成本 = 采购成本 + 国际运费 + 包装费 + 佣金 + 支付手续费
+        净利 = 售价(CNY) - 总成本
+        毛利率 = 净利 / 售价(CNY)
+
+    注意：东南亚货币面值差异大（SGD/THB 常规，VND/IDR 高面值零小数），
+    exchange_rate 已按"1 本地货币 = X CNY"配置，公式统一成立。
+    """
+    exchange_rate = defaults.get("exchange_rate", 0.00045)
+    commission_pct = defaults.get("commission_pct", 0.05)
+    payment_fee_pct = defaults.get("payment_fee_pct", 0.02)
+    shipping_cny = defaults.get("shipping_cny", 25.0)
+    packaging_cny = defaults.get("packaging_cny", 3.0)
+
+    price_cny = price * exchange_rate
+    commission_cny = price_cny * commission_pct
+    payment_cny = price_cny * payment_fee_pct
+    total_cost = procurement_cny + shipping_cny + packaging_cny + commission_cny + payment_cny
+    net_profit_cny = price_cny - total_cost
+    net_profit_usd = net_profit_cny / exchange_rate if exchange_rate > 0 else 0.0
+    margin_pct = (net_profit_cny / price_cny * 100) if price_cny > 0 else 0.0
+
+    return {
+        "price_local": round(price, 2),
+        "price_cny": round(price_cny, 2),
+        "commission_cny": round(commission_cny, 2),
+        "payment_cny": round(payment_cny, 2),
+        "shipping_cny": round(shipping_cny, 2),
+        "packaging_cny": round(packaging_cny, 2),
+        "procurement_cny": round(procurement_cny, 2),
+        "total_cost_cny": round(total_cost, 2),
+        "net_profit_cny": round(net_profit_cny, 2),
+        "net_profit_usd": round(net_profit_usd, 2),
+        "margin_pct": round(margin_pct, 1),
+        "is_profitable": net_profit_cny > 0,
+        "has_procurement": procurement_cny > 0,
+    }
+
+
+# ============================================================
 # 统一利润计算入口（向后兼容）
 # ============================================================
 

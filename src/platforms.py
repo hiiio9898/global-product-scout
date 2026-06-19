@@ -100,6 +100,31 @@ PLATFORMS = {
             "packaging_cny": 3.0,
         },
     },
+    "tiktok": {
+        "name": "TikTok Shop",
+        "icon": "🎵",
+        "scraper_module": "src.scraper_tiktok",
+        "scraper_func": "fetch_tiktok_best_sellers",
+        "search_module": "src.scraper_tiktok",
+        "search_func": "search_tiktok",
+        "calculator": "calculate_tiktok_profit",
+        "scrape_mode": "stealth_only",
+        "currency": "IDR",
+        "regions": {
+            "sg": {"name": "新加坡站", "domain": "shop.tiktok.com", "currency": "SGD", "exchange_rate": 5.40},
+            "ph": {"name": "菲律宾站", "domain": "shop.tiktok.com", "currency": "PHP", "exchange_rate": 0.125},
+            "th": {"name": "泰国站", "domain": "shop.tiktok.com", "currency": "THB", "exchange_rate": 0.205},
+            "vn": {"name": "越南站", "domain": "shop.tiktok.com", "currency": "VND", "exchange_rate": 0.00029},
+            "id": {"name": "印尼站", "domain": "shop.tiktok.com", "currency": "IDR", "exchange_rate": 0.00045},
+        },
+        "default_region": "id",
+        "profit_defaults": {
+            "commission_pct": 0.05,
+            "payment_fee_pct": 0.02,
+            "shipping_cny": 25.0,
+            "packaging_cny": 3.0,
+        },
+    },
 }
 
 

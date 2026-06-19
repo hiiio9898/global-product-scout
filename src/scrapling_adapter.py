@@ -36,6 +36,26 @@ _ADAPTIVE_DB = os.path.join(_PROJECT_ROOT, "data", "adaptive_elements.db")
 # 浏览器自动安装（Streamlit Cloud 首次启动引导）
 # ============================================================
 
+def _patchright_chromium_ready() -> bool:
+    """
+    精确检测 patchright 期望版本的 chromium 可执行文件是否真实存在。
+
+    patchright 与 playwright 版本号不同（如 patchright 要 chromium-1217，
+    playwright 可能装了 chromium-1223），只看缓存目录任意 chromium-* 会误判。
+    这里取 patchright 自己的 executable_path 并验证文件存在。
+    """
+    try:
+        from patchright.sync_api import sync_playwright
+        p = sync_playwright().start()
+        try:
+            exe = p.chromium.executable_path
+        finally:
+            p.stop()
+        return bool(exe) and os.path.exists(exe)
+    except Exception:
+        return False
+
+
 def ensure_browser_installed() -> bool:
     """
     确保 patchright chromium 已安装。
@@ -52,24 +72,10 @@ def ensure_browser_installed() -> bool:
     if os.path.exists(marker):
         return True
 
-    # 检查 patchright 浏览器缓存目录是否已有 chromium
-    cache_dir = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
-    if not cache_dir:
-        if os.name == "nt":
-            cache_dir = os.path.join(
-                os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
-                "ms-playwright",
-            )
-        else:
-            cache_dir = os.path.join(
-                os.path.expanduser("~"), ".cache", "ms-playwright"
-            )
-
-    has_chromium = (
-        os.path.isdir(cache_dir)
-        and any(name.startswith("chromium") for name in os.listdir(cache_dir))
-    )
-    if has_chromium:
+    # 精确检查：patchright 期望的 chromium 可执行文件是否真实存在
+    # （不能用"任意 chromium-* 目录"判断——playwright 和 patchright 版本号不同，
+    #   如 playwright 装了 chromium-1223 但 patchright 要 chromium-1217，会误判）
+    if _patchright_chromium_ready():
         try:
             os.makedirs(os.path.dirname(marker), exist_ok=True)
             with open(marker, "w", encoding="utf-8") as f:
@@ -78,8 +84,8 @@ def ensure_browser_installed() -> bool:
             pass
         return True
 
-    # 未安装 → best-effort 安装（下载 ~150MB，可能耗时 1-2 分钟）
-    print("[bootstrap] 首次启动，正在安装 patchright chromium …")
+    # 未安装或版本不匹配 → best-effort 安装（下载 ~150MB，可能耗时 1-2 分钟）
+    print("[bootstrap] patchright chromium 缺失或版本不匹配，正在安装 …")
     try:
         result = subprocess.run(
             [sys.executable, "-m", "patchright", "install", "chromium"],
