@@ -284,68 +284,108 @@ def _parse_product_card(card, rank: int) -> Optional[dict]:
 # 真实抓取引擎
 # ============================================================
 
-def _scrape_amazon_best_sellers(region: str = "us") -> list[dict]:
+def _discover_category_slugs(resp) -> list[str]:
+    """从 Best Sellers 首页链接里提取品类 slug（如 electronics/kitchen/beauty）。"""
+    slugs: list[str] = []
+    seen: set[str] = set()
+    for a in resp.css('a[href*="/gp/bestsellers/"]'):
+        href = a.attrib.get('href', '')
+        m = re.match(r'/gp/bestsellers/([a-z0-9-]+)/?', href)
+        if m:
+            slug = m.group(1)
+            if slug not in seen:
+                seen.add(slug)
+                slugs.append(slug)
+    return slugs
+
+
+def _scrape_amazon_best_sellers(region: str = "us", max_results: int = 60) -> list[dict]:
     """
-    真实抓取 Amazon Best Sellers 首页（使用 Scrapling）。
+    真实抓取 Amazon Best Sellers（首页 overall 精选 + 翻页各品类凑够 max_results）。
+
+    首页 /gp/bestsellers/ 是固定精选集（约 36 个，?pg=N 不翻页），数量有限。
+    要拿更多产品就遍历首页链接到的品类页（每个品类 pg1/pg2 各约 30、互不重叠），
+    按 ASIN 去重，直到达到 max_results。
 
     Args:
-        region: 地区代码（us/uk/jp/de），决定目标域名
+        region:      地区代码（us/uk/jp/de），决定目标域名
+        max_results: 期望产品数上限
 
     Raises:
         RuntimeError: 被反爬拦截
-        Exception: 网络错误或解析异常
     """
     cfg = get_config()
     delay = cfg["scrape_delay"]
 
     domain = _REGION_DOMAINS.get(region, "amazon.com")
-    url = f"https://www.{domain}/gp/bestsellers/"
+    base = f"https://www.{domain}/gp/bestsellers/"
+    price_wait = 'span[class*="p13n-sc-price"], span.a-color-price, .a-price'
 
-    # 请求前等待，遵守速率限制
-    time.sleep(delay)
+    def _fetch(url: str):
+        time.sleep(delay)  # 遵守速率限制
+        r = fetch_page(url, stealth=True, wait_selector=price_wait, wait_seconds=8)
+        if is_blocked(str(r.text)):
+            raise RuntimeError("被 Amazon 反爬拦截，收到验证码或登录页面")
+        return r
 
-    # Best Sellers 页的价格由客户端 JS 注入（Fetcher 静态 HTML 里完全没有价格元素），
-    # 必须用 StealthyFetcher 渲染 JS，并等待价格 span 出现，否则 _extract_price 全空 → 价格 0。
-    resp = fetch_page(
-        url,
-        stealth=True,
-        wait_selector='span[class*="p13n-sc-price"], span.a-color-price, .a-price',
-        wait_seconds=8,
-    )
-    print(f"HTTP 状态码: {resp.status}")
-
-    # 检测是否被拦截
-    if is_blocked(str(resp.text)):
-        raise RuntimeError("被 Amazon 反爬拦截，收到验证码或登录页面")
-
-    # 定位产品卡片 — 以 div[data-asin] 为主选择器
-    all_cards = resp.css('div[data-asin]')
-    cards = [c for c in all_cards if c.attrib.get('data-asin', '').strip()] if all_cards else []
-    print(f"\n📦 找到 {len(cards)} 个有效 div[data-asin] 卡片")
-
-    products = []
-    for i, card in enumerate(cards[:50], 1):
-        product = _parse_product_card(card, i)
-        if product and product.get("title"):
-            if _is_physical_product(product["title"]):
+    def _collect(resp, products: list[dict], seen: set[str]) -> tuple[int, int]:
+        """解析页面卡片，按 ASIN 去重 + 实体过滤后追加到 products。返回 (卡片数, 新增数)。"""
+        cards = [c for c in resp.css('div[data-asin]') if c.attrib.get('data-asin', '').strip()]
+        added = 0
+        for card in cards:
+            asin = card.attrib.get('data-asin', '').strip()
+            if asin in seen:
+                continue
+            product = _parse_product_card(card, len(products) + 1)
+            if product and product.get("title") and _is_physical_product(product["title"]):
+                seen.add(asin)
                 products.append(product)
-            else:
-                print(f"  ⏭️ 跳过非实体商品: {product['title'][:50]}")
+                added += 1
+        return len(cards), added
 
-    print(f"\n📊 解析完成：{len(products)} / {len(cards)} 个卡片成功提取产品")
-    return products
+    seen: set[str] = set()
+    products: list[dict] = []
+
+    # 1) 首页 overall 精选（约 36 个）
+    resp = _fetch(base)
+    n_cards, _ = _collect(resp, products, seen)
+    print(f"📦 Best Sellers 首页：{n_cards} 卡片 → {len(products)} 产品")
+
+    # 2) 翻页各品类凑够 max_results
+    if len(products) < max_results:
+        cat_slugs = _discover_category_slugs(resp)
+        print(f"📂 发现 {len(cat_slugs)} 个品类：{cat_slugs}")
+        for slug in cat_slugs:
+            if len(products) >= max_results:
+                break
+            for pg in (1, 2):
+                if len(products) >= max_results:
+                    break
+                try:
+                    cr = _fetch(f"{base}{slug}/?pg={pg}")
+                    nc, added = _collect(cr, products, seen)
+                    print(f"  · {slug} pg{pg}: +{added}（累计 {len(products)}）")
+                    if added == 0:
+                        break  # 该品类已无新增，不再翻页
+                except Exception as e:
+                    print(f"  · {slug} pg{pg} 抓取失败：{e}")
+                    break
+
+    print(f"📊 解析完成：共 {len(products)} 个产品（上限 {max_results}）")
+    return products[:max_results]
 
 
 # ============================================================
 # 公开接口 — 仅真实抓取（调试模式）
 # ============================================================
 
-def fetch_amazon_best_sellers(region: str = "us") -> tuple[list[dict], dict]:
+def fetch_amazon_best_sellers(region: str = "us", max_results: int = 60) -> tuple[list[dict], dict]:
     """
     获取 Amazon Best Sellers 产品列表（两层降级策略）。
 
     Args:
-        region: 地区代码（us/uk/jp/de），默认 "us"
+        region:      地区代码（us/uk/jp/de），默认 "us"
+        max_results: 期望产品数上限（首页约 36，不足则翻页品类页凑数）
 
     策略：
         1. 实时抓取 → 至少 3 个产品才算成功
@@ -358,7 +398,7 @@ def fetch_amazon_best_sellers(region: str = "us") -> tuple[list[dict], dict]:
     """
     # ---------- 第一层：实时抓取 ----------
     try:
-        products = _scrape_amazon_best_sellers(region=region)
+        products = _scrape_amazon_best_sellers(region=region, max_results=max_results)
         if len(products) >= 3:
             _save_cache(products, region=region)
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")

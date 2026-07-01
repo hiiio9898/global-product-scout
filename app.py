@@ -1106,6 +1106,12 @@ def _render_live_page(api_ok: bool):
                 # 会触发 StreamlitMixedNumericTypesError（新版 Streamlit 强校验）
                 default_procurement = float(saved_cost if saved_cost > 0 else ai_est_cost)
 
+                # 1688 验证回填：widget 绑了 key 后不能直接赋值 session_state，
+                # 必须在 number_input 渲染前注入（记忆：Streamlit Widget Key 坑）
+                _pending_key = f"_pending_procurement_{i}"
+                if _pending_key in st.session_state:
+                    st.session_state[f"procurement_{i}"] = st.session_state.pop(_pending_key)
+
                 col_input, col_result = st.columns([1, 2])
                 with col_input:
                     procurement = st.number_input(
@@ -1186,7 +1192,9 @@ def _render_live_page(api_ok: bool):
                             pr = result_1688["price_range"]
                             mid_price = (pr.get("min", 0) + pr.get("max", 0)) / 2
                             if mid_price > 0:
-                                st.session_state[f"procurement_{i}"] = mid_price
+                                # 不能直接写 procurement_{i}（widget 已渲染会抛 StreamlitAPIException），
+                                # 写入 pending key，rerun 后由 number_input 渲染前注入
+                                st.session_state[f"_pending_procurement_{i}"] = mid_price
                                 st.toast(f"✅ 已自动填入采购成本: ¥{mid_price:.2f}", icon="✅")
                                 st.rerun()
 
