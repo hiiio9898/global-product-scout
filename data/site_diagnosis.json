@@ -1,6 +1,6 @@
 {
   "keyword": "clothing",
-  "scan_time": "2026-06-19T13:48:30.781236+00:00",
+  "scan_time": "2026-06-19T14:07:17.826081+00:00",
   "total_sites": 22,
   "rows": [
     {
@@ -10,7 +10,7 @@
       "region_name": "美国站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 7.1,
+      "duration_sec": 5.7,
       "error": null,
       "source": "live"
     },
@@ -21,7 +21,7 @@
       "region_name": "英国站",
       "status": "error",
       "product_count": 0,
-      "duration_sec": 10.2,
+      "duration_sec": 3.8,
       "error": "未搜索到相关产品，请尝试更换关键词",
       "source": "none"
     },
@@ -30,11 +30,11 @@
       "platform_name": "Amazon",
       "region": "jp",
       "region_name": "日本站",
-      "status": "ok",
-      "product_count": 3,
-      "duration_sec": 71.4,
-      "error": null,
-      "source": "live"
+      "status": "error",
+      "product_count": 0,
+      "duration_sec": 70.8,
+      "error": "未搜索到相关产品，请尝试更换关键词",
+      "source": "none"
     },
     {
       "platform": "amazon",
@@ -43,7 +43,7 @@
       "region_name": "德国站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 6.5,
+      "duration_sec": 6.0,
       "error": null,
       "source": "live"
     },
@@ -54,7 +54,7 @@
       "region_name": "法国站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 5.6,
+      "duration_sec": 4.6,
       "error": null,
       "source": "live"
     },
@@ -65,7 +65,7 @@
       "region_name": "意大利站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 5.7,
+      "duration_sec": 6.6,
       "error": null,
       "source": "live"
     },
@@ -76,7 +76,7 @@
       "region_name": "西班牙站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 4.4,
+      "duration_sec": 8.2,
       "error": null,
       "source": "live"
     },
@@ -87,7 +87,7 @@
       "region_name": "加拿大站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 3.9,
+      "duration_sec": 5.0,
       "error": null,
       "source": "live"
     },
@@ -98,7 +98,7 @@
       "region_name": "澳洲站",
       "status": "ok",
       "product_count": 3,
-      "duration_sec": 5.9,
+      "duration_sec": 7.6,
       "error": null,
       "source": "live"
     },
@@ -109,7 +109,7 @@
       "region_name": "美国站",
       "status": "error",
       "product_count": 0,
-      "duration_sec": 23.4,
+      "duration_sec": 40.6,
       "error": "未搜索到相关产品，请尝试更换关键词",
       "source": "none"
     },
@@ -120,7 +120,7 @@
       "region_name": "英国站",
       "status": "error",
       "product_count": 0,
-      "duration_sec": 6.4,
+      "duration_sec": 40.2,
       "error": "未搜索到相关产品，请尝试更换关键词",
       "source": "none"
     },
@@ -131,7 +131,7 @@
       "region_name": "德国站",
       "status": "error",
       "product_count": 0,
-      "duration_sec": 7.9,
+      "duration_sec": 43.1,
       "error": "未搜索到相关产品，请尝试更换关键词",
       "source": "none"
     },
@@ -142,7 +142,7 @@
       "region_name": "澳洲站",
       "status": "error",
       "product_count": 0,
-      "duration_sec": 10.2,
+      "duration_sec": 53.2,
       "error": "未搜索到相关产品，请尝试更换关键词",
       "source": "none"
     },
@@ -153,7 +153,7 @@
       "region_name": "加拿大站",
       "status": "error",
       "product_count": 0,
-      "duration_sec": 11.0,
+      "duration_sec": 49.6,
       "error": "未搜索到相关产品，请尝试更换关键词",
       "source": "none"
     },
@@ -164,7 +164,7 @@
       "region_name": "美国站",
       "status": "error",
       "product_count": 0,
-      "duration_sec": 3.9,
+      "duration_sec": 4.4,
       "error": "未找到产品",
       "source": "unavailable"
     },
@@ -175,7 +175,7 @@
       "region_name": "欧洲站",
       "status": "error",
       "product_count": 0,
-      "duration_sec": 3.6,
+      "duration_sec": 15.6,
       "error": "未找到产品",
       "source": "unavailable"
     },
@@ -186,7 +186,7 @@
       "region_name": "俄罗斯站",
       "status": "error",
       "product_count": 0,
-      "duration_sec": 89.0,
+      "duration_sec": 59.8,
       "error": "未找到产品",
       "source": "unavailable"
     },
@@ -197,8 +197,8 @@
       "region_name": "新加坡站",
       "status": "blocked",
       "product_count": 0,
-      "duration_sec": 33.4,
-      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=502)",
+      "duration_sec": 34.4,
+      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=404)",
       "source": "none"
     },
     {
@@ -208,8 +208,8 @@
       "region_name": "菲律宾站",
       "status": "blocked",
       "product_count": 0,
-      "duration_sec": 34.0,
-      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=502)",
+      "duration_sec": 34.8,
+      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=404)",
       "source": "none"
     },
     {
@@ -219,8 +219,8 @@
       "region_name": "泰国站",
       "status": "blocked",
       "product_count": 0,
-      "duration_sec": 33.6,
-      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=502)",
+      "duration_sec": 35.0,
+      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=404)",
       "source": "none"
     },
     {
@@ -231,7 +231,7 @@
       "status": "blocked",
       "product_count": 0,
       "duration_sec": 34.5,
-      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=502)",
+      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=404)",
       "source": "none"
     },
     {
@@ -241,8 +241,8 @@
       "region_name": "印尼站",
       "status": "blocked",
       "product_count": 0,
-      "duration_sec": 32.9,
-      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=502)",
+      "duration_sec": 33.9,
+      "error": "TikTok 反爬拦截：TikTok 反爬拦截或请求失败 (status=404)",
       "source": "none"
     }
   ]
