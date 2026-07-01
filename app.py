@@ -47,6 +47,7 @@ from src.platforms import (
     get_platform_info,
     get_region_info,
     get_platform_choices,
+    get_available_platform_choices,
     get_region_choices,
     get_active_platform,
     get_active_region,
@@ -131,7 +132,7 @@ def render_sidebar(source_info: dict | None = None):
         st.sidebar.subheader("平台选择")
 
         # 平台选择
-        platform_keys = get_platform_choices()
+        platform_keys = get_available_platform_choices()
         platform_names = {
             k: get_platform_info(k)['name']
             for k in platform_keys
@@ -149,6 +150,17 @@ def render_sidebar(source_info: dict | None = None):
             index=platform_keys.index(last_platform),
             key="selected_platform",
         )
+
+        # 标注不可用平台（让用户知道为何只剩 Amazon，自维护）
+        _unavailable = [
+            PLATFORMS[k]["name"]
+            for k in get_available_platform_choices(available_only=False)
+            if not PLATFORMS[k].get("available", True)
+        ]
+        if _unavailable:
+            st.sidebar.caption(
+                f"ℹ️ {' / '.join(_unavailable)} 暂不可用（机房IP被封，免费代理访问不了）"
+            )
 
         # 检测平台是否变化 → 重置地区到新平台默认值
         if selected_platform != last_platform:
@@ -1764,7 +1776,7 @@ def _render_keyword_scan_mode(api_ok: bool):
             )
 
         # 平台选择
-        platform_keys = get_platform_choices()
+        platform_keys = get_available_platform_choices()
         platform_names = {k: f"{PLATFORMS[k]['icon']} {PLATFORMS[k]['name']}" for k in platform_keys}
         selected_platforms = st.multiselect(
             "🛒 扫描平台",
@@ -2154,11 +2166,12 @@ def _render_hot_aggregation_mode(api_ok: bool):
     with st.container(border=True):
         # 自动推荐常用平台/地区（基于上次选择或默认）
         last_platforms = st.session_state.get("hot_agg_platforms", ["amazon", "ebay"])
-        platform_keys = get_platform_choices()
+        platform_keys = get_available_platform_choices()
         platform_names = {k: f"{PLATFORMS[k]['icon']} {PLATFORMS[k]['name']}" for k in platform_keys}
 
+        _agg_label = "🛒 聚合平台（目前仅 Amazon 可用）" if len(platform_keys) < 2 else "🛒 聚合平台（建议 2-4 个）"
         selected_platforms = st.multiselect(
-            "🛒 聚合平台（建议 2-4 个）",
+            _agg_label,
             options=platform_keys,
             default=[p for p in last_platforms if p in platform_keys] or platform_keys[:2],
             format_func=lambda k: platform_names[k],
