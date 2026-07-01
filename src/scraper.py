@@ -162,7 +162,9 @@ def _extract_price(card) -> Optional[float]:
         '.a-price span[aria-hidden="true"]',
         '.p13n-sc-price',
         'span.a-color-price',
-        'span._cDEzb_p13n-sc-price_3mJ9Z',
+        # Best Sellers 页价格由 JS 注入到 class 含 "p13n-sc-price" 的 span
+        # 用子串匹配，避免依赖 _cDEzb_ / _3mJ9Z 这类每次部署会变的 CSS-modules 哈希
+        'span[class*="p13n-sc-price"]',
     ]
     for sel in selectors:
         elem = card.css(sel).first if card.css(sel) else None
@@ -302,7 +304,14 @@ def _scrape_amazon_best_sellers(region: str = "us") -> list[dict]:
     # 请求前等待，遵守速率限制
     time.sleep(delay)
 
-    resp = fetch_page(url)
+    # Best Sellers 页的价格由客户端 JS 注入（Fetcher 静态 HTML 里完全没有价格元素），
+    # 必须用 StealthyFetcher 渲染 JS，并等待价格 span 出现，否则 _extract_price 全空 → 价格 0。
+    resp = fetch_page(
+        url,
+        stealth=True,
+        wait_selector='span[class*="p13n-sc-price"], span.a-color-price, .a-price',
+        wait_seconds=8,
+    )
     print(f"HTTP 状态码: {resp.status}")
 
     # 检测是否被拦截
