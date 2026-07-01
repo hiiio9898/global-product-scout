@@ -58,6 +58,21 @@ class TestPlatformRegistry:
         for pf in self.EXPECTED_PLATFORMS:
             assert pf in choices
 
+    def test_available_platform_choices_only_amazon(self):
+        """默认只返回 available=True 的平台（机房IP封死后仅 Amazon）。"""
+        from src.platforms import get_available_platform_choices
+        assert get_available_platform_choices() == ["amazon"]
+        # available_only=False 应回到全部平台
+        assert set(get_available_platform_choices(available_only=False)) == set(self.EXPECTED_PLATFORMS)
+
+    def test_unavailable_platforms_have_reason(self):
+        """每个 available=False 的平台必须带非空 unavailable_reason（自文档化）。"""
+        from src.platforms import PLATFORMS
+        for pf, cfg in PLATFORMS.items():
+            if not cfg.get("available", True):
+                reason = cfg.get("unavailable_reason", "")
+                assert reason, f"平台 {pf} 标记为不可用但缺少 unavailable_reason"
+
     def test_region_choices(self):
         """验证 get_region_choices 返回正确选项。"""
         from src.platforms import get_region_choices
