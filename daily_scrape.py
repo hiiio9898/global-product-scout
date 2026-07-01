@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 # 将项目根目录加入 Python 路径，使 from src.xxx 能正常导入
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from src.platforms import PLATFORMS, get_platform_info, get_region_info
+from src.platforms import PLATFORMS, get_platform_info, get_region_info, get_available_platform_choices
 from src.config import get_llm_config
 from src.analyzer import analyze_products
 from src.database import save_products, get_product_count, get_latest_products
@@ -160,7 +160,15 @@ def main():
             print("❌ 没有有效的目标平台，终止执行。")
             sys.exit(1)
     else:
-        target_platforms = list(PLATFORMS.keys())
+        # 默认只抓 available=True 的平台；被机房IP封死的平台跳过（可用 --platforms 强测）
+        target_platforms = get_available_platform_choices()
+        _skipped = [
+            f"{PLATFORMS[k]['name']}（{PLATFORMS[k].get('unavailable_reason', '不可用')}）"
+            for k in PLATFORMS
+            if k not in target_platforms
+        ]
+        if _skipped:
+            print(f"⏭️  跳过不可用平台：{', '.join(_skipped)}")
 
     print(f"\n📋 目标平台：{', '.join(target_platforms)}")
 
