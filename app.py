@@ -1101,8 +1101,10 @@ def _render_live_page(api_ok: bool):
                         pass  # 数据库不可用时忽略
 
                 # 如果没有保存的成本，使用 AI 估算价作为默认值
-                ai_est_cost = r.get("estimated_cost_cny", 0)
-                default_procurement = saved_cost if saved_cost > 0 else ai_est_cost
+                ai_est_cost = r.get("estimated_cost_cny", 0) or 0
+                # 统一转 float：min_value/step 都是 float，value 若为 int 0（AI 未给估算价）
+                # 会触发 StreamlitMixedNumericTypesError（新版 Streamlit 强校验）
+                default_procurement = float(saved_cost if saved_cost > 0 else ai_est_cost)
 
                 col_input, col_result = st.columns([1, 2])
                 with col_input:
