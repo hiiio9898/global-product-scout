@@ -50,6 +50,7 @@ PLATFORMS = {
             "ad_pct": 0.10,
             "shipping_cny": 15.0,
         },
+        "available": True,
     },
     "ebay": {
         "name": "eBay",
@@ -76,6 +77,8 @@ PLATFORMS = {
             "packaging_cny": 5.0,
             "payoneer_fee_pct": 0.01,
         },
+        "available": False,
+        "unavailable_reason": "机房IP被封，免费代理无法访问（详见 data/site_diagnosis.json）",
     },
     "aliexpress": {
         "name": "AliExpress",
@@ -99,6 +102,8 @@ PLATFORMS = {
             "shipping_cny": 15.0,
             "packaging_cny": 3.0,
         },
+        "available": False,
+        "unavailable_reason": "机房IP被封，免费代理无法访问（详见 data/site_diagnosis.json）",
     },
     "tiktok": {
         "name": "TikTok Shop",
@@ -124,6 +129,8 @@ PLATFORMS = {
             "shipping_cny": 25.0,
             "packaging_cny": 3.0,
         },
+        "available": False,
+        "unavailable_reason": "浏览器指纹反爬拦截，免费代理无法访问（详见 data/site_diagnosis.json）",
     },
 }
 
@@ -195,6 +202,24 @@ def get_platform_choices() -> list[str]:
         ["amazon", "aliexpress", ...]
     """
     return list(PLATFORMS.keys())
+
+
+def get_available_platform_choices(available_only: bool = True) -> list[str]:
+    """
+    返回平台 key 列表，供 UI 选择器使用。
+
+    Args:
+        available_only: True 时只返回 ``available=True`` 的平台（默认）；
+                        False 时返回全部平台（等价于 get_platform_choices）。
+
+    Returns:
+        available_only=True  → 默认仅 ["amazon"]（其余平台被机房IP封死，见 site_diagnosis.json）
+        available_only=False → 全部平台 key
+    """
+    return [
+        k for k, v in PLATFORMS.items()
+        if not available_only or v.get("available", True)
+    ]
 
 
 def get_region_choices(platform_key: str) -> list[tuple[str, str]]:
