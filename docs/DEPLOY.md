@@ -41,7 +41,7 @@
 python daily_scrape.py
 
 # 输出：
-# - 抓取 Amazon Best Sellers 首页榜单（约 36 个产品）
+# - 抓取 Amazon Best Sellers（首页 ~36 + 翻页品类页凑数，最多 60 个产品）
 # - 保存到 SQLite 数据库（data/products.db，不提交）
 # - 导出 products.json（data/products.json，**可提交到 Git**）
 

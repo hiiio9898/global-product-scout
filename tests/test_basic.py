@@ -163,16 +163,16 @@ class TestScraper:
 
 
 class TestAnalyzer:
-    """分析模块测试 — 五维度评分结构 + 降级 + JSON 解析容错。"""
+    """分析模块测试 — 六维度评分结构 + 降级 + JSON 解析容错。"""
 
     # ---- 结构校验（通过 _parse_ai_response 测试） ----
 
-    def test_parse_ai_response_returns_five_dimensions(self):
-        """AI 响应解析后应包含 market_capacity 等 5 个维度。"""
+    def test_parse_ai_response_returns_six_dimensions(self):
+        """AI 响应解析后应包含 market_capacity 等 6 个维度（含 longevity）。"""
         result = _parse_ai_response(SAMPLE_AI_RESPONSE, "Test Bluetooth Speaker")
         dims = [
             "market_capacity", "competition", "profit_potential",
-            "beginner_friendly", "seasonality_risk",
+            "beginner_friendly", "seasonality_risk", "longevity",
         ]
         for dim in dims:
             assert dim in result, f"缺少维度: {dim}"

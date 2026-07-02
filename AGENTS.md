@@ -43,7 +43,7 @@
 │   ├── scraper_aliexpress.py  # 速卖通抓取
 │   ├── scraper_tiktok.py   # TikTok Shop 抓取（东南亚 5 站）
 │   ├── scraper_1688.py     # 1688 比价（AI 估算 + 真实抓取）
-│   ├── analyzer.py         # AI 分析模块（五维度评估 + 品类报告）
+│   ├── analyzer.py         # AI 分析模块（六维度评估 + 品类报告）
 │   ├── calculator.py       # 利润计算器（工厂模式，多平台）
 │   ├── trends.py           # Google Trends 趋势查询
 │   ├── database.py         # SQLite 数据库模块
@@ -74,7 +74,7 @@
 python daily_scrape.py
 
 # 输出：
-# 1. 抓取 Amazon Best Sellers 首页榜单（约 36 个产品）
+# 1. 抓取 Amazon Best Sellers（首页 ~36 + 翻页品类页凑数，最多 60 个产品）
 # 2. 保存到 SQLite 数据库（data/products.db）
 # 3. 导出 products.json（data/products.json，可提交到 Git）
 # 4. 导出 cache.json（data/cache.json，本地缓存）
