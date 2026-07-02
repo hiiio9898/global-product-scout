@@ -868,7 +868,7 @@ def _render_live_page(api_ok: bool):
             with col_bulk:
                 bulk_cost = st.number_input(
                     "统一采购成本 (¥/件)",
-                    min_value=0.0, max_value=1000.0, value=0.0, step=1.0,
+                    min_value=0.0, max_value=5000.0, value=0.0, step=1.0,
                     key="bulk_procurement",
                     help="输入后点击「应用」，将覆盖所有产品的采购成本",
                 )
@@ -1119,6 +1119,9 @@ def _render_live_page(api_ok: bool):
                 # 统一转 float：min_value/step 都是 float，value 若为 int 0（AI 未给估算价）
                 # 会触发 StreamlitMixedNumericTypesError（新版 Streamlit 强校验）
                 default_procurement = float(saved_cost if saved_cost > 0 else ai_est_cost)
+                # 夹到 number_input 的 [0, 5000] 区间，防止 AI 给出/DB 存了 >max 的值
+                # 触发 StreamlitValueAboveMaxError（贵价品如 AirPods Pro 采购价可能 >1000）
+                default_procurement = min(max(default_procurement, 0.0), 5000.0)
 
                 # 1688 验证回填：widget 绑了 key 后不能直接赋值 session_state，
                 # 必须在 number_input 渲染前注入（记忆：Streamlit Widget Key 坑）
@@ -1130,7 +1133,7 @@ def _render_live_page(api_ok: bool):
                 with col_input:
                     procurement = st.number_input(
                         "预估采购成本 (¥/件)",
-                        min_value=0.0, max_value=1000.0,
+                        min_value=0.0, max_value=5000.0,
                         value=default_procurement, step=1.0,
                         key=f"procurement_{i}",
                         help="从 1688 等平台采购的单件成本，输入后自动保存",
@@ -1584,7 +1587,7 @@ def _render_targeted_page(api_ok: bool):
                             defaults = st.session_state.get("profit_defaults", get_profit_defaults())
                             procurement = st.number_input(
                                 "预估采购成本 (¥/件)",
-                                min_value=0.0, max_value=1000.0, value=0.0, step=1.0,
+                                min_value=0.0, max_value=5000.0, value=0.0, step=1.0,
                                 key=f"targeted_procurement_{i}",
                             )
                             if procurement > 0:
