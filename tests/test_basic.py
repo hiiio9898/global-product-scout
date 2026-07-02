@@ -102,6 +102,7 @@ SAMPLE_AI_RESPONSE = json.dumps({
     "profit_potential": {"score": 7, "reason": "利润空间可观，FBA 费用可控"},
     "beginner_friendly": {"score": 9, "reason": "入手门槛低，供应链成熟"},
     "seasonality_risk": {"score": 2, "reason": "无明显季节波动"},
+    "longevity": {"score": 9, "label": "evergreen", "key_signal": "通用刚需", "reason": "日用刚需，常年稳定需求"},
     "final_verdict": "recommended",
     "verdict_reason": "综合评分高，市场前景好，适合新手入场",
 })
@@ -214,10 +215,13 @@ class TestAnalyzer:
         assert result["title"] == "Test Product"
         assert result["final_verdict"] == "recommended"
         assert result["market_capacity"]["score"] == 8
+        # longevity 维度：含 label/key_signal
+        assert result["longevity"]["label"] == "evergreen"
+        assert result["longevity"]["score"] == 9
 
     def test_parse_markdown_wrapped_json(self):
         """被 ```json 包裹的 JSON 应正确清洗后解析。"""
-        wrapped = '```json\n{"market_capacity":{"score":7,"reason":"t"},"competition":{"score":4,"reason":"t"},"profit_potential":{"score":6,"reason":"t"},"beginner_friendly":{"score":8,"reason":"t"},"seasonality_risk":{"score":3,"reason":"t"},"final_verdict":"cautious","verdict_reason":"t"}\n```'
+        wrapped = '```json\n{"market_capacity":{"score":7,"reason":"t"},"competition":{"score":4,"reason":"t"},"profit_potential":{"score":6,"reason":"t"},"beginner_friendly":{"score":8,"reason":"t"},"seasonality_risk":{"score":3,"reason":"t"},"longevity":{"score":8,"label":"evergreen","key_signal":"刚需","reason":"t"},"final_verdict":"cautious","verdict_reason":"t"}\n```'
         result = _parse_ai_response(wrapped, "Wrapped Product")
         assert result["title"] == "Wrapped Product"
         assert result["final_verdict"] == "cautious"
@@ -244,10 +248,23 @@ class TestAnalyzer:
             "profit_potential": {"score": 5, "reason": "ok"},
             "beginner_friendly": {"score": 5, "reason": "ok"},
             "seasonality_risk": {"score": 5, "reason": "ok"},
+            "longevity": {"score": 5, "label": "evergreen", "key_signal": "x", "reason": "ok"},
             "final_verdict": "cautious",
             "verdict_reason": "test",
         }
         assert _validate_result(good_data)
+
+    def test_validate_missing_longevity_fails(self):
+        """缺少 longevity 维度应校验失败。"""
+        bad_data = {
+            "market_capacity": {"score": 5, "reason": "ok"},
+            "competition": {"score": 5, "reason": "ok"},
+            "profit_potential": {"score": 5, "reason": "ok"},
+            "beginner_friendly": {"score": 5, "reason": "ok"},
+            "seasonality_risk": {"score": 5, "reason": "ok"},
+            "final_verdict": "cautious",
+        }
+        assert not _validate_result(bad_data)
 
 
 class TestUtils:

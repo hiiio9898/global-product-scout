@@ -105,7 +105,16 @@ ANALYSIS_DIMS = [
     ("💰 利润潜力", "profit_potential"),
     ("🎓 新手友好", "beginner_friendly"),
     ("🌡️ 季节风险", "seasonality_risk"),
+    ("🌱 长期持久力", "longevity"),
 ]
+
+# 长青度四档徽章（longevity.label → 展示文案）。unknown/缺失不显示。
+LONGEVITY_LABEL_MAP = {
+    "evergreen": "🟢 长青",
+    "trending_up": "🟡 趋势",
+    "fad": "🔴 爆品",
+    "declining": "📉 夕阳",
+}
 
 
 
@@ -371,7 +380,7 @@ def _render_1688_result(result_1688: dict):
 
 
 def _render_radar_chart(dim_data: dict, title: str = ""):
-    """渲染五维度雷达图（Plotly）。"""
+    """渲染六维度雷达图（Plotly）。"""
     import plotly.graph_objects as go
 
     labels = [label for label, _ in ANALYSIS_DIMS]
@@ -446,7 +455,7 @@ def _render_comparison_view(products: list, indices: list[int]):
     rows.append(["评分"] + [f"{p.get('rating', 'N/A')}" for p in selected])
     rows.append(["评论数"] + [f"{p.get('num_reviews', '0')}" for p in selected])
 
-    # 五维度
+    # 六维度
     for label, key in ANALYSIS_DIMS:
         scores = []
         for p in selected:
@@ -851,7 +860,7 @@ def _render_live_page(api_ok: bool):
             st.divider()
 
         st.subheader("🤖 AI 选品分析结果")
-        st.caption("五维度量化评估：市场容量 · 竞争程度 · 利润潜力 · 新手友好度 · 季节性风险")
+        st.caption("六维度量化评估：市场容量 · 竞争程度 · 利润潜力 · 新手友好度 · 季节性风险 · 长期持久力")
 
         # 批量采购成本（Spec 16 P1）
         with st.expander("批量设置采购成本（可选）", expanded=False):
@@ -875,6 +884,10 @@ def _render_live_page(api_ok: bool):
         for i, r in enumerate(st.session_state.results):
             verdict = r.get("final_verdict", "cautious")
             verdict_label = VERDICT_LABEL_MAP.get(verdict, "⚪ 未知")
+            # 长青度徽章：与 verdict 并排，让用户一眼区分"长青可长期做" vs "阶段性爆品"
+            longevity_label = LONGEVITY_LABEL_MAP.get(
+                (r.get("longevity") or {}).get("label", ""), ""
+            )
 
             is_raw = r.get("parse_error", False)
             # Spec 33：优先显示中文标题 title_zh
@@ -882,9 +895,10 @@ def _render_live_page(api_ok: bool):
             title_zh = product_data_t.get("title_zh")
             title_en = r.get("title", f"产品 #{i+1}")
             title_text = title_zh or title_en
+            badge = verdict_label + (f"  {longevity_label}" if longevity_label else "")
             expander_label = (
                 f"⚠️ 解析异常 #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}"
-                if is_raw else f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}"
+                if is_raw else f"{badge} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}"
             )
 
             with st.expander(expander_label, expanded=(i == 0)):
@@ -922,7 +936,7 @@ def _render_live_page(api_ok: bool):
                     st.error(f"❌ **不推荐** — {verdict_reason}")
 
                 dims = ANALYSIS_DIMS
-                cols = st.columns(5)
+                cols = st.columns(len(ANALYSIS_DIMS))
                 for col, (label, key) in zip(cols, dims):
                     dim_data = r.get(key, {})
                     score_val = dim_data.get("score", 0) if isinstance(dim_data, dict) else 0
@@ -1211,7 +1225,7 @@ def _render_live_page(api_ok: bool):
             "2. 📡 **实时抓取** — 尝试从 Amazon 抓取最新数据\n\n"
             "系统将为你：\n"
             "1. 📄 或 📡 获取产品数据\n"
-            "2. 🤖 从市场容量、竞争程度、利润潜力、新手友好度、季节性风险五个维度量化评分\n"
+            "2. 🤖 从市场容量、竞争程度、利润潜力、新手友好度、季节性风险、长期持久力六个维度量化评分\n"
             "3. 📊 给出 🟢推荐 / 🟡谨慎 / 🔴不推荐 的明确 verdict\n"
             "4. 💾 自动保存分析结果到历史数据库，方便后续回顾"
         )
@@ -1252,7 +1266,7 @@ def _render_targeted_page(api_ok: bool):
         1. 用户输入关键词 + 可选筛选
         2. 点击「🔍 搜索分析」按钮
         3. 展示品类综合报告
-        4. 展示搜索结果列表 + 每个产品的五维度分析
+        4. 展示搜索结果列表 + 每个产品的六维度分析
         5. Top 3 产品提供 1688 比价 + 利润试算
     """
     st.title("🎯 指定选品 — 关键词深度分析")
@@ -1391,7 +1405,7 @@ def _render_targeted_page(api_ok: bool):
         region = st.session_state.get("active_region", "us")
         pf_info = get_platform_info(platform)
 
-        # 并行：五维度分析 + 品类报告
+        # 并行：六维度分析 + 品类报告
         with st.status("AI 正在深度分析...", expanded=False) as status:
             progress_bar = st.progress(0, text="准备分析...")
 
@@ -1399,7 +1413,7 @@ def _render_targeted_page(api_ok: bool):
                 pct = min(done / total_count, 1.0)
                 progress_bar.progress(pct, text=f"产品分析进度：{done}/{total_count}")
 
-            # 五维度分析（复用现有批量分析）
+            # 六维度分析（复用现有批量分析）
             analysis_results = analyze_products(
                 products,
                 progress_callback=_on_progress,
@@ -1669,10 +1683,10 @@ def _render_targeted_page(api_ok: bool):
             },
         )
 
-        # ---- 每个产品的五维度分析 ----
+        # ---- 每个产品的六维度分析 ----
         if analysis:
             st.divider()
-            st.subheader("🤖 AI 五维度详细分析")
+            st.subheader("🤖 AI 六维度详细分析")
 
             # 速览表（Spec 16 P0）
             with st.expander("分析结果速览表（点击展开）", expanded=True):
@@ -1681,13 +1695,18 @@ def _render_targeted_page(api_ok: bool):
             for i, r in enumerate(analysis):
                 verdict = r.get("final_verdict", "cautious")
                 verdict_label = VERDICT_LABEL_MAP.get(verdict, "⚪ 未知")
+                # 长青度徽章
+                longevity_label = LONGEVITY_LABEL_MAP.get(
+                    (r.get("longevity") or {}).get("label", ""), ""
+                )
                 # Spec 33：优先显示中文标题（产品上的 title_zh）
                 prod_i = products[i] if i < len(products) else {}
                 title_zh = prod_i.get("title_zh")
                 title_en = r.get("title", f"产品 #{i+1}")
                 title_text = title_zh or title_en
+                badge = verdict_label + (f"  {longevity_label}" if longevity_label else "")
 
-                with st.expander(f"{verdict_label} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}", expanded=False):
+                with st.expander(f"{badge} #{i+1} {title_text[:40]}{'…' if len(title_text) > 40 else ''}", expanded=False):
                     st.caption(f"📦 **完整标题：** {title_text}")
                     if title_zh and title_en != title_zh:
                         st.caption(f"🔤 *English:* {title_en}")
@@ -1700,7 +1719,7 @@ def _render_targeted_page(api_ok: bool):
                         st.error(f"❌ **不推荐** — {verdict_reason}")
 
                     dims = ANALYSIS_DIMS
-                    cols = st.columns(5)
+                    cols = st.columns(len(ANALYSIS_DIMS))
                     for col, (label, key) in zip(cols, dims):
                         dim_data = r.get(key, {})
                         score_val = dim_data.get("score", 0) if isinstance(dim_data, dict) else 0
@@ -2592,8 +2611,8 @@ def _render_history_list(total_count: int):
             verdict_label = {"recommended": "🟢 推荐", "cautious": "🟡 谨慎", "not_recommended": "🔴 不推荐"}.get(verdict, verdict)
             st.markdown(f"**{verdict_label}** — {a.get('verdict_reason', '无判定理由')}")
 
-            # 五维度评分
-            dim_cols = st.columns(5)
+            # 六维度评分
+            dim_cols = st.columns(len(ANALYSIS_DIMS))
             for col, (label, key) in zip(dim_cols, ANALYSIS_DIMS):
                 dim = a.get(key, {})
                 score = dim.get("score", "-") if isinstance(dim, dict) else "-"
@@ -2713,7 +2732,7 @@ def _render_favorites_tab():
                     if verdict_reason:
                         st.caption(f"💡 {verdict_reason}")
 
-                    cols = st.columns(5)
+                    cols = st.columns(len(ANALYSIS_DIMS))
                     for col, (label, key) in zip(cols, ANALYSIS_DIMS):
                         dim = analysis.get(key, {})
                         score = dim.get("score", "-") if isinstance(dim, dict) else "-"

@@ -94,13 +94,14 @@ def _call_llm(
 
 SYSTEM_PROMPT = """你是一位拥有 10 年经验的资深跨境电商选品顾问，专精于 Amazon 平台。
 
-请从以下五个维度对给定产品进行量化评估，每个维度给出 1-10 分（10 分为最优）并附 1-2 句解释：
+请从以下六个维度对给定产品进行量化评估，每个维度给出 1-10 分（10 分为最优）并附 1-2 句解释：
 
 1. 市场容量（market_capacity）：该产品的市场需求规模。注意：你无法获取真实搜索量，请基于评论数和排名用范围表述，不要给出精确数字。在reason中使用"估计"、"推测"等词汇
 2. 竞争程度（competition）：注意：分数越高表示竞争越激烈（对卖家越不利）
 3. 利润潜力（profit_potential）：扣除采购、物流、平台佣金后的净利润空间
 4. 新手友好度（beginner_friendly）：启动资金要求、认证门槛、运营复杂度
 5. 季节性风险（seasonality_risk）：注意：分数越高表示季节性波动越大（对卖家越不利）
+6. 长期持久力（longevity）：值不值得长期（以年为单位）做，分数越高越长效。同时给 label：evergreen(长青)/trending_up(趋势上升)/fad(阶段性爆品)/declining(夕阳)，以及 key_signal（≤8字主导信号）。判据：复购消耗/痛点vs玩具/品类生命周期/设备绑定细分（绑某代不兼容=trending_up，跨代兼容=evergreen；declining 仅限被新技术替代的品类）
 
 最后给出：
 - final_verdict：取值为 "recommended"（推荐）、"cautious"（谨慎）或 "not_recommended"（不推荐）
@@ -113,6 +114,7 @@ SYSTEM_PROMPT = """你是一位拥有 10 年经验的资深跨境电商选品顾
   "profit_potential": {"score": 6, "reason": "采购成本$8，FBA费用$5，净利率约25%"},
   "beginner_friendly": {"score": 9, "reason": "轻小件物流简单，无需特殊认证，启动资金<$2000"},
   "seasonality_risk": {"score": 2, "reason": "全年稳定需求，无明显淡旺季波动"},
+  "longevity": {"score": 9, "label": "evergreen", "key_signal": "高频消耗补货", "reason": "日用刚需，常年稳定需求"},
   "final_verdict": "recommended",
   "verdict_reason": "高需求低门槛低风险，适合新手入门选品，建议差异化包装提升竞争力"
 }
@@ -241,14 +243,15 @@ def _parse_ai_response(content: str, product_title: str) -> dict:
         "parse_error": True,
         "final_verdict": "cautious",
         "verdict_reason": "AI 返回格式异常，请查看原始文本",
+        "longevity": {"score": 0, "label": "unknown", "key_signal": "", "reason": ""},
     }
 
 
 def _validate_result(data: dict) -> bool:
-    """验证解析结果包含必要的五维度字段。"""
+    """验证解析结果包含必要的六维度字段。"""
     required_keys = [
         "market_capacity", "competition", "profit_potential",
-        "beginner_friendly", "seasonality_risk",
+        "beginner_friendly", "seasonality_risk", "longevity",
     ]
     for key in required_keys:
         if key not in data:
@@ -272,18 +275,25 @@ BATCH_SYSTEM_PROMPT = """你是一位拥有 10 年经验的资深跨境电商选
 
 我会给你一批产品，请逐个进行量化评估。评估视角是中国跨境卖家（非品牌方），重点关注能否从中国供应链采购并在海外平台转售。
 
-每个产品从以下五个维度给出 1-10 分并附 1-2 句解释：
+每个产品从以下六个维度给出 1-10 分并附 1-2 句解释：
 
 1. 市场容量（market_capacity）：该产品的市场需求规模。注意：你无法获取真实搜索量，请基于评论数和排名用范围表述（如"推测月搜索量在10万-50万级别"），不要给出精确数字。在reason中使用"估计"、"推测"等词汇
 2. 竞争程度（competition）：分数越高表示竞争越激烈（对卖家越不利）。注意：大品牌垄断的类目竞争分数应很高
 3. 利润潜力（profit_potential）：从 1688 采购成本出发，扣除物流、平台佣金后的净利润空间。大品牌产品因授权成本高、利润薄，应给低分
 4. 新手友好度（beginner_friendly）：启动资金要求、认证门槛（如 FDA/FCC/CE）、品牌授权风险、运营复杂度。已知大品牌（Apple/Samsung/Nike 等）因授权门槛极高，应给 1-3 分
 5. 季节性风险（seasonality_risk）：分数越高表示季节性波动越大（对卖家越不利）
+6. 长期持久力（longevity）：值不值得**长期（以年为单位）做**——分数越高越长效、越值得长期投入（10=最长效，与 competition/seasonality 方向相反）。同时给出四档 label：
+   - evergreen（长青）：常年稳定需求，消耗品/补货型/解决持续性功能痛点的刚需品（如厨房剪、剃须刀片、咖啡滤纸、宠毛刷）
+   - trending_up（趋势上升）：需求上升但波动大，有机会但要快；含"绑定当红机型且不跨代兼容"的配件（随机型换代周期衰退，如某代专用手机壳）
+   - fad（阶段性爆品）：短期热度驱动的新奇/玩具/社交爆款，大概率数月后衰退（如指尖陀螺、史莱姆）
+   - declining（夕阳）：已被新技术整体替代、长期下行（如 DVD、有线耳机被无线替代）。当前在售数码配件不算夕阳
+   长青度判据（按权重）：① 复购/消耗属性（消耗品偏长青）② 痛点 vs 玩具（持续功能痛点=长青，新奇好玩=易过时）③ 品类生命周期 ④ 设备绑定细分（绑某代不兼容=trending_up；跨代标准兼容如表带/USB-C 线=偏 evergreen）。key_signal 用 ≤8 字中文短语点出主导信号。
 
 裁决规则（final_verdict）：
 - "recommended"（推荐）：综合条件适合跨境新手入手，通常需满足 — competition ≤ 7 且 beginner_friendly ≥ 5 且 profit_potential ≥ 5
 - "cautious"（谨慎）：有一定机会但存在明显风险或门槛，如 competition ≥ 8 或 beginner_friendly ≤ 4
 - "not_recommended"（不推荐）：不适合跨境卖家，如 — 知名大品牌（需授权）、竞争极端激烈（competition ≥ 9）、新手友好度极低（beginner_friendly ≤ 3）、利润空间极小（profit_potential ≤ 3）
+- 长青性纳入考量（verdict 仍为上述三选一）：longevity=evergreen 可让 borderline 案例倾向 recommended；longevity=fad/declining 应让案例倾向 cautious 或 not_recommended（阶段性爆品不宜长期投入）
 
 特别注意：
 - 知名大品牌产品（Apple、Samsung、Nike、STANLEY、Ninja 等）通常需要品牌授权才能合法销售，未授权转售面临 IP 侵权风险，应倾向于 "not_recommended"
@@ -306,6 +316,7 @@ BATCH_SYSTEM_PROMPT = """你是一位拥有 10 年经验的资深跨境电商选
     "profit_potential": {"score": 6, "reason": "1688采购成本$8，FBA费用$5，净利率约25%"},
     "beginner_friendly": {"score": 9, "reason": "轻小件物流简单，无需特殊认证，启动资金<$2000"},
     "seasonality_risk": {"score": 2, "reason": "全年稳定需求，无明显淡旺季波动"},
+    "longevity": {"score": 9, "label": "evergreen", "key_signal": "高频消耗补货", "reason": "日用刚需，常年稳定需求"},
     "final_verdict": "recommended",
     "verdict_reason": "高需求低门槛低风险，适合新手入门选品",
     "trend_direction": "rising",
@@ -367,6 +378,7 @@ def _parse_batch_response(content: str, batch_products: list[dict]) -> list[dict
                 "parse_error": True,
                 "final_verdict": "cautious",
                 "verdict_reason": "AI 返回结果中未匹配到该产品",
+                "longevity": {"score": 0, "label": "unknown", "key_signal": "", "reason": ""},
             })
 
     return results
@@ -400,7 +412,7 @@ def _analyze_batch(batch: list[dict], llm_cfg: dict) -> list[dict]:
                 time.sleep(delay)
 
     # 全部失败 → 返回错误信息
-    return [{"title": p["title"], "raw_text": "AI 分析失败，请检查 API 配置或稍后重试", "parse_error": True, "final_verdict": "cautious", "verdict_reason": "AI 批量分析调用失败"} for p in batch]
+    return [{"title": p["title"], "raw_text": "AI 分析失败，请检查 API 配置或稍后重试", "parse_error": True, "final_verdict": "cautious", "verdict_reason": "AI 批量分析调用失败", "longevity": {"score": 0, "label": "unknown", "key_signal": "", "reason": ""}} for p in batch]
 
 
 def analyze_products(
@@ -440,6 +452,7 @@ def analyze_products(
                 "parse_error": True,
                 "final_verdict": "cautious",
                 "verdict_reason": "API Key 未配置",
+                "longevity": {"score": 0, "label": "unknown", "key_signal": "", "reason": ""},
             })
             if progress_callback:
                 progress_callback(i + 1, total)
