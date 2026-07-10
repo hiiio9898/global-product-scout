@@ -38,6 +38,13 @@ LLM_PROVIDERS = {
         "models": ["mimo-v2.5", "mimo-v2.5-pro"],
         "default_model": "mimo-v2.5",
     },
+    "glm": {
+        "name": "智谱 GLM",
+        "base_url_key": "GLM_BASE_URL",
+        "api_key_key": "GLM_API_KEY",
+        "models": ["glm-5.2", "glm-4-plus", "glm-4-flash"],
+        "default_model": "glm-5.2",
+    },
 }
 
 
@@ -93,9 +100,9 @@ def get_llm_config() -> dict:
         }
     """
     # 1. 读取供应商
-    provider = _get_secret("ACTIVATE_PROVIDER", "mimo")
+    provider = _get_secret("ACTIVATE_PROVIDER", "glm")
     if provider not in LLM_PROVIDERS:
-        provider = "deepseek"
+        provider = "glm"
 
     provider_info = LLM_PROVIDERS[provider]
 
