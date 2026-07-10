@@ -67,3 +67,6 @@ skills-lock.json
 
 # Local data-sync config (machine-specific path to USB/Syncthing)
 .sync-config
+# Local IDE/agent config (machine-specific)
+.codex/
+.claude/settings.local.json
