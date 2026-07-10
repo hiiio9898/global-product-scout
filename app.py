@@ -127,12 +127,15 @@ def render_sidebar(source_info: dict | None = None):
     st.sidebar.title("🌍 Global Product Scout")
 
     # ---- 页面导航 ----
+    # 新手引导：标注主功能 vs 进阶（不改 radio 选项值，保持与 _navigate_to 跳转兼容）
+    st.sidebar.markdown("📍 **常用**：今日推荐 / 抓取选品 / 我的选品")
     page = st.sidebar.radio(
         "导航",
         options=["Dashboard", "实时选品", "指定选品", "市场扫描", "历史记录"],
         key="nav_page",
-        help="Dashboard：数据概览\n实时选品：抓取并分析当前平台热销产品\n指定选品：输入关键词深度分析特定品类\n市场扫描：按关键词批量扫描多平台多地区找蓝海\n历史记录：查看过去保存的分析结果",
+        help="新手从「Dashboard」开始\n实时选品：抓取热销榜做分析\n指定选品/市场扫描：进阶功能\n历史记录：看历史和收藏",
     )
+    st.sidebar.caption("💡 进阶：「指定选品」「市场扫描」")
 
     st.sidebar.divider()
 
@@ -497,87 +500,190 @@ def _navigate_to(page: str, product: str = None):
         st.session_state["goto_product"] = product
 
 
-def _render_dashboard_page():
-    """渲染 Dashboard 首页 — 纯行动引导页。"""
+def _load_all_products() -> list:
+    """加载全量产品数据 — 首页统一数据源。
 
-    st.title("🎯 今日选品")
-    st.markdown("告诉你要卖什么，AI 帮你做决定。")
-    st.divider()
+    优先级：data/products.json（GitHub Actions 每日提交，Cloud 唯一完整来源）
+            > 本地 SQLite（累积历史，本地开发补充）。
+    """
+    products = []
+    json_path = os.path.join(os.path.dirname(__file__), "data", "products.json")
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                products = json.load(f) or []
+        except (json.JSONDecodeError, OSError):
+            products = []
 
-    # 获取数据
-    all_products = get_all_products()
-    if not all_products:
-        st.markdown("### 开始你的第一次选品分析")
-        st.markdown("选择下方任意入口，3 分钟内获得 AI 选品建议。")
+    try:
+        db_products = get_all_products()
+    except Exception:
+        db_products = []
 
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            with st.container(border=True):
-                st.markdown("#### 🔍 热销选品")
-                st.markdown("一键抓取平台热销榜，AI 评估选品潜力")
-                st.button("开始选品", key="goto_live", type="primary", width="stretch",
-                          on_click=_navigate_to, args=("实时选品",))
-        with c2:
-            with st.container(border=True):
-                st.markdown("#### 🎯 关键词选品")
-                st.markdown("输入关键词，深度分析特定品类")
-                st.button("搜索品类", key="goto_targeted", width="stretch",
-                          on_click=_navigate_to, args=("指定选品",))
-        with c3:
-            with st.container(border=True):
-                st.markdown("#### 🌐 市场扫描")
-                st.markdown("对比多个市场和地区的蓝海机会")
-                st.button("扫描市场", key="goto_scan", width="stretch",
-                          on_click=_navigate_to, args=("市场扫描",))
+    if db_products:
+        seen = {(p.get("platform", ""), p.get("region", ""), p.get("title", "")) for p in products}
+        for p in db_products:
+            key = (p.get("platform", ""), p.get("region", ""), p.get("title", ""))
+            if key not in seen:
+                products.append(p)
+                seen.add(key)
+
+    return products
+
+
+
+def _dim_score_of(p: dict, key: str) -> float:
+    """从产品 analysis 取某个维度分数（0-10），缺失返回 5。"""
+    dim = (p.get("analysis") or {}).get(key, {})
+    if isinstance(dim, dict):
+        try:
+            return float(dim.get("score", 5) or 5)
+        except (ValueError, TypeError):
+            return 5.0
+    return 5.0
+
+
+def _safe_float(v, default=0.0) -> float:
+    try:
+        return float(v or default)
+    except (ValueError, TypeError):
+        return default
+
+
+def _render_beginner_picks(products: list):
+    """渲染新手精选卡：产品名、一句话理由、利润卡、白话解读。
+
+    筛选：final_verdict=recommended，按「新手友好度」降序（新手最该做的排最前）。
+    """
+    recommended = [
+        p for p in products
+        if (p.get("analysis") or {}).get("final_verdict") == "recommended"
+    ]
+    recommended.sort(
+        key=lambda p: (_dim_score_of(p, "beginner_friendly"), _dim_score_of(p, "profit_potential")),
+        reverse=True,
+    )
+    picks = recommended[:5]
+    if not picks:
+        st.info("📊 数据已就绪，但暂无推荐产品。运行新一轮分析获取建议。")
+        st.button("🔍 开始新一轮分析", type="primary", key="goto_live_new", width="stretch",
+                  on_click=_navigate_to, args=("实时选品",))
         return
 
-    # ---- 有数据场景：TOP3 推荐 + 数据摘要 ----
-    recommended = [p for p in all_products if p.get("analysis", {}).get("final_verdict") == "recommended"]
-    rec_count = len(recommended)
+    st.markdown(f"### 🏆 AI 帮你挑了 {len(picks)} 个最适合新手做的产品")
+    st.caption("已按「新手友好度」排序 — 越靠前越适合零基础起步。")
+    st.divider()
 
-    if recommended:
-        st.markdown(f"### 🏆 系统推荐了 {rec_count} 个值得关注的产品")
-        st.markdown("以下是 AI 综合评估后最值得入手的产品：")
+    for i, p in enumerate(picks, 1):
+        analysis = p.get("analysis") or {}
+        title = p.get("title_zh") or p.get("title") or f"产品 #{i}"
+        try:
+            price = _safe_float(p.get("price"))
+        except Exception:
+            price = 0.0
+        currency = p.get("currency", "USD")
+        region = (p.get("region") or "us").upper()
+        verdict_reason = analysis.get("verdict_reason", "")
 
-        for i, p in enumerate(recommended[:3], 1):
-            analysis = p.get("analysis", {})
-            title = p.get("title", f"产品 #{i}")
-            try:
-                price = float(p.get("price", 0) or 0)
-            except (ValueError, TypeError):
-                price = 0.0
-            try:
-                rating = float(p.get("rating", 0) or 0)
-            except (ValueError, TypeError):
-                rating = 0.0
-            capacity = analysis.get("market_capacity", {})
-            cap_score = capacity.get("score", 0) if isinstance(capacity, dict) else 0
-            verdict_reason = analysis.get("verdict_reason", "")
+        platform = p.get("platform", "amazon")
+        profit_defaults = get_profit_defaults(platform)
+        region_info = get_region_info(platform, p.get("region", "us"))
+        profit_defaults = {**profit_defaults, "exchange_rate": region_info.get("exchange_rate", profit_defaults.get("exchange_rate", 7.24))}
+        ai_cost = min(max(_safe_float(analysis.get("estimated_cost_cny")), 0.0), 5000.0)
+        try:
+            profit = calculate_profit(price, profit_defaults, procurement_cny=ai_cost, platform=platform)
+        except Exception:
+            profit = {"net_profit_cny": 0.0, "margin_pct": 0.0}
 
-            with st.container(border=True):
-                col_title, col_action = st.columns([4, 1])
-                with col_title:
-                    st.markdown(f"**🟢 推荐 #{i}** {title}")
-                    st.caption(f"💰 ${price:.2f} | ⭐ {rating} | 市场容量 {cap_score}/10")
-                    if verdict_reason:
-                        st.caption(f"💡 {verdict_reason}")
-                with col_action:
-                    st.button("查看详情 →", key=f"detail_{i}", use_container_width=True,
-                              on_click=_navigate_to, args=("历史记录", title))
+        bf = _dim_score_of(p, "beginner_friendly")
+        comp = _dim_score_of(p, "competition")
+        longev = _dim_score_of(p, "longevity")
+        bf_reason = ((analysis.get("beginner_friendly") or {}).get("reason") or "").strip()
+        comp_reason = ((analysis.get("competition") or {}).get("reason") or "").strip()
+        longev_reason = ((analysis.get("longevity") or {}).get("reason") or "").strip()
 
-        if rec_count > 3:
+        with st.container(border=True):
+            col_t, col_p = st.columns([5, 2])
+            with col_t:
+                st.markdown(f"**🟢 推荐 #{i}** {title}")
+                if verdict_reason:
+                    st.caption(f"💡 {verdict_reason}")
+            with col_p:
+                if price > 0:
+                    st.markdown(f"💰 售价 **{price:.2f} {currency}** ({region})")
+
+            if ai_cost > 0:
+                np_ = profit.get("net_profit_cny", 0)
+                margin = profit.get("margin_pct", 0)
+                emoji = "🟢" if np_ > 0 else "🔴"
+                st.markdown(
+                    f"{emoji} **净利润 ¥{np_:.0f}/件** ｜ 利润率 **{margin:.0f}%**"
+                    f" 〈采购 ¥{ai_cost:.0f} + 运费/佣金/广告〉"
+                )
+            else:
+                st.caption("💰 点「查看完整分析」可手动填采购成本算利润")
+
+            st.markdown("")
+            if bf >= 7:
+                st.markdown(f"✅ **适合新手**：{bf_reason}" if bf_reason else "✅ **适合新手**：门槛低、好上手")
+            if comp >= 7:
+                st.markdown(f"⚠️ **竞争激烈**：{comp_reason}" if comp_reason else "⚠️ **竞争激烈**：头部玩家多")
+            elif comp <= 3:
+                st.markdown(f"🟢 **竞争小**：{comp_reason}" if comp_reason else "🟢 **竞争小**：有蓝海空间")
+            if longev >= 7:
+                st.markdown(f"📈 **能长期做**：{longev_reason}" if longev_reason else "📈 **能长期做**：需求稳定")
+
             st.button(
-                f"查看全部 {rec_count} 个推荐 →",
+                "查看完整分析 →",
+                key=f"pick_detail_{i}",
+                on_click=_navigate_to, args=("历史记录", title),
+                help="查看六维度评分、判定理由、原始分析数据",
+            )
+
+    st.divider()
+    col_more, col_market = st.columns(2)
+    with col_more:
+        if len(recommended) > len(picks):
+            st.button(
+                f"查看全部 {len(recommended)} 个推荐 →",
                 key="goto_history_all",
                 width="stretch",
                 on_click=_navigate_to, args=("历史记录",),
             )
-    else:
-        st.info("📊 已有数据但暂无推荐产品。运行新一轮分析获取建议。")
-        st.button("🔍 开始新一轮分析", type="primary", key="goto_live_new", width="stretch",
+    with col_market:
+        st.button("🔍 换个市场看看", key="goto_live_market", width="stretch",
                   on_click=_navigate_to, args=("实时选品",))
 
 
+def _render_dashboard_page():
+    """新手首页 — 一打开就看到「该卖什么 + 能赚多少 + 适不适合你」。"""
+    st.title("🎯 今日选品")
+    st.markdown("AI 已从每日热销数据里帮你挑出最适合新手起步的产品。")
+
+    all_products = _load_all_products()
+
+    if not all_products:
+        st.warning("📊 还没有选品数据。先抓一次数据，AI 才能帮你挑产品。")
+        with st.container(border=True):
+            st.markdown("#### 🚀 3 步开始你的第一次选品")
+            st.markdown("1. 点下方按钮，抓取 Amazon 最新热销品（约 1 分钟）  \n"
+                        "2. AI 自动分析每个产品（约 1-2 分钟）  \n"
+                        "3. 回到本页，看 AI 帮你挑的好产品")
+            st.button("🔍 立即抓取数据", type="primary", key="goto_live_first", width="stretch",
+                      on_click=_navigate_to, args=("实时选品",))
+        st.divider()
+        with st.expander("🧭 想搜特定品类？", expanded=False):
+            st.markdown("如果你心里已经有想做的东西（比如「猫玩具」），可以直接搜：")
+            st.button("🎯 关键词选品", key="goto_targeted_empty", width="stretch",
+                      on_click=_navigate_to, args=("指定选品",))
+        return
+
+    latest_time = all_products[0].get("scrape_time", "") if all_products else ""
+    if latest_time:
+        st.caption(f"📅 数据更新于 {latest_time} ｜ 共 {len(all_products)} 个产品 ｜ 来源：每日自动抓取")
+
+    st.divider()
+    _render_beginner_picks(all_products)
 # ============================================================
 # ==================== 实时选品页面 ============================
 # ============================================================
@@ -2625,6 +2731,18 @@ def _render_history_list(total_count: int):
                     if reason:
                         st.caption(reason)
 
+            # 新手起步清单（仅推荐产品显示 — 回答新手"看完数据然后呢"）
+            if verdict == "recommended":
+                st.markdown("")
+                st.markdown("##### 🚀 新手起步清单")
+                st.caption("决定做这个产品？按这个顺序走，少踩坑：")
+                st.markdown(
+                    "1. **找货源**：去 1688 搜同类产品，对比 AI 估算的采购价（¥"
+                    f"{a.get('estimated_cost_cny') or '?'}）和真实报价\n"
+                    "2. **算清首单成本**：采购价 × 起订量 + 头程运费 + 平台开店费\n"
+                    "3. **小批量试单**：先拿 20-50 件试水，验证市场反应再加大\n"
+                    "4. **准备 Listing**：拍产品图、写标题和五点描述（参考这个品的卖点）"
+                )
             # 原始 JSON（折叠查看）
             with st.expander("查看原始 JSON", expanded=False):
                 st.json(a)
