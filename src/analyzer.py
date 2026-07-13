@@ -284,7 +284,8 @@ def _analyze_batch(batch: list[dict], llm_cfg: dict) -> list[dict]:
                 {"role": "user", "content": prompt},
             ],
             temperature=0.7,
-            max_tokens=8000,
+            max_tokens=12000,
+            timeout=300,
         )
         content = content.strip()
         batch_results = _parse_batch_response(content, batch)
@@ -451,8 +452,8 @@ def analyze_category_report(keyword: str, products: list[dict]) -> dict:
                 {"role": "user", "content": prompt},
             ],
             temperature=0.7,
-            max_tokens=8000,
-            timeout=60,
+            max_tokens=12000,
+            timeout=300,
         )
         return _parse_category_report_response(content, keyword, products)
     except Exception as e:
@@ -613,7 +614,8 @@ def analyze_market_comparison(keyword: str, markets: list[dict]) -> dict:
                 {"role": "user", "content": prompt},
             ],
             temperature=0.7,
-            max_tokens=4000,
+            max_tokens=8000,
+            timeout=300,
         )
         return _parse_cross_market_response(content)
     except Exception as e:

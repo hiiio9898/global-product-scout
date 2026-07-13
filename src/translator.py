@@ -66,7 +66,7 @@ def _call_llm_once(
             ],
             temperature=temperature,
             max_tokens=max_tokens,
-            timeout=60,
+            timeout=180,
         )
         return content.strip()
     except Exception:
