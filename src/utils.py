@@ -9,6 +9,7 @@
 """
 
 import json
+import logging
 import os
 import re
 from datetime import datetime, timezone
@@ -18,6 +19,28 @@ from typing import Optional
 # ============================================================
 # 真实浏览器 User-Agent 池（模拟 Chrome / Firefox / Edge）
 # ============================================================
+
+
+# ============================================================
+# 日志配置 — 统一 logger，各模块通过 get_logger() 获取
+# ============================================================
+
+def get_logger(name: str = "scout") -> logging.Logger:
+    """
+    获取统一配置的 logger。
+
+    首次调用时配置 root logger（控制台输出，INFO 级别），
+    后续调用返回带模块前缀的子 logger。
+    """
+    root = logging.getLogger()
+    if not root.handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    return logging.getLogger(name)
+
 
 USER_AGENTS = [
     # Chrome 125 on Windows 10
@@ -62,6 +85,31 @@ def is_blocked(html: str) -> bool:
     """检测返回页面是否为验证码/拦截页。"""
     html_lower = html.lower()
     return any(pat.lower() in html_lower for pat in BLOCK_PATTERNS)
+
+# ============================================================
+# 类型安全转换
+# ============================================================
+
+def safe_float(value, default: float = 0.0) -> float:
+    """
+    安全转换为 float，失败时返回默认值。
+
+    统一替代各模块中重复的 _safe_float 实现。
+    None / 空字符串 / 非数字均返回 default。
+    """
+    try:
+        return float(value) if value is not None else default
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_int(value, default: int = 0) -> int:
+    """安全转换为 int，失败时返回默认值。"""
+    try:
+        return int(value) if value is not None else default
+    except (ValueError, TypeError):
+        return default
+
 
 
 # ============================================================

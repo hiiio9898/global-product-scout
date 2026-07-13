@@ -29,7 +29,11 @@ from .scrapling_adapter import fetch_page
 from .utils import (
     is_blocked, parse_price, parse_rating, parse_review_count,
     load_json_cache, save_json_cache, get_cache_timestamp,
+    get_logger,
 )
+
+_logger = get_logger(__name__)
+
 
 # ============================================================
 # 缓存路径常量
@@ -107,7 +111,7 @@ def _load_cache(region: str = "us") -> Optional[list[dict]]:
         cache_file = _CACHE_FILE
     data = load_json_cache(cache_file)
     if data and not _is_valid_cache(data):
-        print(f"⚠️ 缓存文件包含占位数据，已忽略: {cache_file}")
+        _logger.warning(f"⚠️ 缓存文件包含占位数据，已忽略: {cache_file}")
         return None
     return data
 
@@ -349,12 +353,12 @@ def _scrape_amazon_best_sellers(region: str = "us", max_results: int = 60) -> li
     # 1) 首页 overall 精选（约 36 个）
     resp = _fetch(base)
     n_cards, _ = _collect(resp, products, seen)
-    print(f"📦 Best Sellers 首页：{n_cards} 卡片 → {len(products)} 产品")
+    _logger.info(f"📦 Best Sellers 首页：{n_cards} 卡片 → {len(products)} 产品")
 
     # 2) 翻页各品类凑够 max_results
     if len(products) < max_results:
         cat_slugs = _discover_category_slugs(resp)
-        print(f"📂 发现 {len(cat_slugs)} 个品类：{cat_slugs}")
+        _logger.info(f"📂 发现 {len(cat_slugs)} 个品类：{cat_slugs}")
         for slug in cat_slugs:
             if len(products) >= max_results:
                 break
@@ -364,14 +368,14 @@ def _scrape_amazon_best_sellers(region: str = "us", max_results: int = 60) -> li
                 try:
                     cr = _fetch(f"{base}{slug}/?pg={pg}")
                     nc, added = _collect(cr, products, seen)
-                    print(f"  · {slug} pg{pg}: +{added}（累计 {len(products)}）")
+                    _logger.info(f"  · {slug} pg{pg}: +{added}（累计 {len(products)}）")
                     if added == 0:
                         break  # 该品类已无新增，不再翻页
                 except Exception as e:
-                    print(f"  · {slug} pg{pg} 抓取失败：{e}")
+                    _logger.warning(f"  · {slug} pg{pg} 抓取失败：{e}")
                     break
 
-    print(f"📊 解析完成：共 {len(products)} 个产品（上限 {max_results}）")
+    _logger.info(f"📊 解析完成：共 {len(products)} 个产品（上限 {max_results}）")
     return products[:max_results]
 
 
@@ -404,17 +408,17 @@ def fetch_amazon_best_sellers(region: str = "us", max_results: int = 60) -> tupl
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             return products, {"source": "live", "timestamp": timestamp}
         else:
-            print(f"⚠️ 实时抓取仅获得 {len(products)} 个产品（不足 3 个），降级到缓存")
+            _logger.warning(f"⚠️ 实时抓取仅获得 {len(products)} 个产品（不足 3 个），降级到缓存")
     except Exception as e:
-        print(f"⚠️ 实时抓取失败：{e}")
+        _logger.warning(f"⚠️ 实时抓取失败：{e}")
 
     # ---------- 第二层：本地缓存 ----------
     cached = _load_cache(region=region)
     if cached and len(cached) >= 3:
         cache_ts = _get_cache_timestamp(region=region)
-        print(f"📦 使用本地缓存（{len(cached)} 个产品，缓存时间：{cache_ts}）")
+        _logger.info(f"📦 使用本地缓存（{len(cached)} 个产品，缓存时间：{cache_ts}）")
         return cached, {"source": "cache", "timestamp": cache_ts or "unknown"}
 
     # ---------- 均不可用 ----------
-    print("❌ 实时抓取和本地缓存均不可用")
+    _logger.error("实时抓取和本地缓存均不可用")
     return [], {"source": "unavailable", "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"), "error": "实时抓取和本地缓存均不可用"}

@@ -188,7 +188,7 @@ def get_region_info(platform_key: str, region_key: str) -> dict:
             foreign_to_usd = get_rate("USD", currency)
             if foreign_to_usd and foreign_to_usd > 0:
                 info["exchange_rate"] = round(usd_to_cny / foreign_to_usd, 4)
-    except Exception:
+    except Exception as e:
         pass  # 降级使用硬编码值
 
     return info

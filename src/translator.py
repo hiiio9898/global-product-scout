@@ -55,46 +55,22 @@ def _call_llm_once(
     """
     单次 LLM 调用，返回纯文本内容；重试 3 次后失败返回空串。
 
-    复用 analyzer._analyze_batch 的容错策略：
-        - 指数退避：2s → 4s → 8s
-        - 限流（429）时退避更长
-        - 思考模型（MiMo 等）content 为空时回退 reasoning_content
+    重试/退避/reasoning_content 回退统一由 llm_client.call_llm 处理。
     """
-    base_url = (llm_cfg.get("base_url") or "").rstrip("/")
-    for attempt in range(3):
-        try:
-            resp = httpx.post(
-                f"{base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {llm_cfg['api_key']}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": llm_cfg["model"],
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                },
-                timeout=60,
-            )
-            if resp.status_code != 200:
-                raise RuntimeError(f"API {resp.status_code}")
-            message = resp.json()["choices"][0]["message"]
-            content = message.get("content") or ""
-            # 思考模型：content 可能为空，回退 reasoning_content
-            if not content.strip() and message.get("reasoning_content"):
-                content = message["reasoning_content"] or ""
-            return content.strip()
-        except Exception as e:
-            if attempt < 2:
-                delay = (2 ** (attempt + 1)) + random.uniform(0, 1)
-                if "429" in str(e):
-                    delay = 10 * (2 ** attempt)
-                time.sleep(delay)
-    return ""
+    try:
+        content = call_llm(
+            llm_cfg,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=60,
+        )
+        return content.strip()
+    except Exception:
+        return ""
 
 
 # ============================================================

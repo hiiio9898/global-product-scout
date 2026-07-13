@@ -22,7 +22,10 @@ import sys
 import subprocess
 from typing import Optional
 
-from .utils import is_blocked
+from .utils import is_blocked, get_logger
+
+_logger = get_logger(__name__)
+
 
 # ============================================================
 # 配置
@@ -52,7 +55,7 @@ def _patchright_chromium_ready() -> bool:
         finally:
             p.stop()
         return bool(exe) and os.path.exists(exe)
-    except Exception:
+    except Exception as e:
         return False
 
 
@@ -80,12 +83,12 @@ def ensure_browser_installed() -> bool:
             os.makedirs(os.path.dirname(marker), exist_ok=True)
             with open(marker, "w", encoding="utf-8") as f:
                 f.write("ok")
-        except Exception:
+        except Exception as e:
             pass
         return True
 
     # 未安装或版本不匹配 → best-effort 安装（下载 ~150MB，可能耗时 1-2 分钟）
-    print("[bootstrap] patchright chromium 缺失或版本不匹配，正在安装 …")
+    _logger.info("[bootstrap] patchright chromium 缺失或版本不匹配，正在安装 …")
     try:
         result = subprocess.run(
             [sys.executable, "-m", "patchright", "install", "chromium"],
@@ -96,14 +99,14 @@ def ensure_browser_installed() -> bool:
                 os.makedirs(os.path.dirname(marker), exist_ok=True)
                 with open(marker, "w", encoding="utf-8") as f:
                     f.write("ok")
-            except Exception:
+            except Exception as e:
                 pass
-            print("[bootstrap] chromium 安装完成")
+            _logger.info("[bootstrap] chromium 安装完成")
             return True
-        print(f"[bootstrap] chromium 安装失败 rc={result.returncode}: {result.stderr[:200]}")
+        _logger.error(f"[bootstrap] chromium 安装失败 rc={result.returncode}: {result.stderr[:200]}")
         return False
     except Exception as e:
-        print(f"[bootstrap] chromium 安装异常: {e}")
+        _logger.info(f"[bootstrap] chromium 安装异常: {e}")
         return False
 
 
@@ -199,9 +202,9 @@ def _fetch_with_fallback(
         resp = _try_fetcher()
         if resp is not None:
             return resp
-        print("[scrapling] Fetcher 被拦截，降级到 StealthyFetcher")
+        _logger.warning("[scrapling] Fetcher 被拦截，降级到 StealthyFetcher")
     except Exception as e:
-        print(f"[scrapling] Fetcher 失败: {e}，降级到 StealthyFetcher")
+        _logger.warning(f"[scrapling] Fetcher 失败: {e}，降级到 StealthyFetcher")
 
     # 第二层：StealthyFetcher（Patchright 反检测浏览器）
     # 触发前确保浏览器已安装（首次会自动下载，标记文件避免重复）
@@ -212,7 +215,7 @@ def _fetch_with_fallback(
     except RuntimeError as e:
         # 浏览器仍未安装（自动安装失败）→ 回退重试 Fetcher 几次（Amazon 拦截常是临时的）
         if "浏览器未安装" in str(e) or "Executable doesn't exist" in str(e):
-            print("[scrapling] 浏览器仍不可用，回退重试 Fetcher（间隔退避）…")
+            _logger.error("[scrapling] 浏览器仍不可用，回退重试 Fetcher（间隔退避）…")
             last_err = e
             for attempt in range(3):
                 time.sleep(random.uniform(3.0, 6.0))
@@ -220,10 +223,10 @@ def _fetch_with_fallback(
                     resp = _try_fetcher()
                     if resp is not None:
                         return resp
-                    print(f"[scrapling] Fetcher 重试 {attempt+1}/3 仍被拦截")
+                    _logger.warning(f"[scrapling] Fetcher 重试 {attempt+1}/3 仍被拦截")
                 except Exception as retry_err:
                     last_err = retry_err
-                    print(f"[scrapling] Fetcher 重试 {attempt+1}/3 异常: {retry_err}")
+                    _logger.info(f"[scrapling] Fetcher 重试 {attempt+1}/3 异常: {retry_err}")
             raise RuntimeError(
                 "抓取失败：Fetcher 被 Amazon 拦截，且浏览器组件不可用无法降级。"
                 "请稍后重试（浏览器可能正在后台安装）。"

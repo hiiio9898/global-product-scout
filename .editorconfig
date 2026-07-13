@@ -1,0 +1,25 @@
+﻿# EditorConfig — https://editorconfig.org
+# 统一编辑器和工具的编码与格式规范，避免乱码和 CRLF/LF 混乱
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{py,sh}]
+indent_style = space
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{yml,yaml,toml,json}]
+indent_style = space
+indent_size = 2
+
+[*.{css,html}]
+indent_style = space
+indent_size = 2

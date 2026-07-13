@@ -6,87 +6,17 @@
 每个维度 1-10 分 + 解释，最终给出推荐/谨慎/不推荐 verdict。
 
 支持多模型供应商（DeepSeek、MiMo 等），
-通过 OpenAI 兼容 API 调用（使用 httpx 直接请求）。
+通过 OpenAI 兼容 API 调用（重试/退避统一由 llm_client 处理）。
 API Key 未配置时返回错误提示。JSON 解析失败时回退为纯文本展示。
 """
 
 from __future__ import annotations
 
 import json
-import time
-import httpx
 
 from .config import get_llm_config
+from .llm_client import call_llm, extract_json_from_reasoning
 
-
-# ============================================================
-# LLM API 调用（httpx 直连，OpenAI 兼容接口）
-# ============================================================
-
-def _call_llm(
-    llm_cfg: dict,
-    messages: list[dict],
-    temperature: float = 0.7,
-    max_tokens: int = 8000,
-    timeout: int = 120,
-) -> str:
-    """
-    调用 OpenAI 兼容的 chat completions API，返回文本内容。
-
-    自动处理思考模型（MiMo 等）的 reasoning_content：当 content 为空时，
-    从 reasoning_content 中提取 JSON 或直接使用推理文本。
-
-    Args:
-        llm_cfg:     get_llm_config() 返回的配置（含 api_key/base_url/model）
-        messages:    消息列表 [{"role": ..., "content": ...}, ...]
-        temperature: 采样温度
-        max_tokens:  最大输出 token
-        timeout:     超时秒数
-
-    Returns:
-        AI 返回的文本内容
-
-    Raises:
-        Exception: API 调用失败（含 429 限流）
-    """
-    base_url = llm_cfg["base_url"].rstrip("/")
-    url = f"{base_url}/chat/completions"
-
-    payload = {
-        "model": llm_cfg["model"],
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
-
-    resp = httpx.post(
-        url,
-        headers={
-            "Authorization": f"Bearer {llm_cfg['api_key']}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=timeout,
-    )
-
-    # 非 2xx → 抛异常（上层做指数退避重试）
-    if resp.status_code != 200:
-        raise RuntimeError(f"API 返回 {resp.status_code}: {resp.text[:200]}")
-
-    data = resp.json()
-    message = data["choices"][0]["message"]
-    content = message.get("content") or ""
-
-    # 思考模型（MiMo 等）：content 可能为空，推理结果在 reasoning_content 中
-    if not content.strip() and message.get("reasoning_content"):
-        reasoning = message["reasoning_content"] or ""
-        extracted = _extract_json_from_reasoning(reasoning)
-        if extracted:
-            content = extracted
-        else:
-            content = reasoning
-
-    return content
 
 # ============================================================
 # 系统 Prompt — 资深跨境电商选品顾问
@@ -119,47 +49,6 @@ SYSTEM_PROMPT = """你是一位拥有 10 年经验的资深跨境电商选品顾
   "verdict_reason": "高需求低门槛低风险，适合新手入门选品，建议差异化包装提升竞争力"
 }
 只返回 JSON。"""
-
-
-def _extract_json_from_reasoning(reasoning: str) -> str:
-    """
-    从思考模型的推理内容中提取 JSON 响应。
-
-    MiMo 等思考模型的 reasoning_content 中可能包含完整的 JSON，
-    尤其是当 max_tokens 不足导致 content 为空时。
-    """
-    if not reasoning:
-        return ""
-
-    # 尝试找到 JSON 块（最后一个完整的 JSON 对象）
-    # 思考模型通常在最后会写出最终的 JSON
-    last_brace = reasoning.rfind("}")
-    if last_brace == -1:
-        return ""
-
-    # 向前找到匹配的 {
-    depth = 0
-    start = last_brace
-    for i in range(last_brace, -1, -1):
-        if reasoning[i] == "}":
-            depth += 1
-        elif reasoning[i] == "{":
-            depth -= 1
-        if depth == 0:
-            start = i
-            break
-
-    if depth != 0:
-        return ""
-
-    candidate = reasoning[start:last_brace + 1]
-    # 验证是否是合法 JSON
-    try:
-        json.loads(candidate)
-        return candidate
-    except json.JSONDecodeError:
-        return ""
-
 
 # ============================================================
 # JSON 解析与容错
@@ -387,29 +276,22 @@ def _parse_batch_response(content: str, batch_products: list[dict]) -> list[dict
 def _analyze_batch(batch: list[dict], llm_cfg: dict) -> list[dict]:
     """调用 LLM API 分析一批产品。"""
     prompt = _build_batch_prompt(batch)
-    for attempt in range(3):
-        try:
-            content = _call_llm(
-                llm_cfg,
-                messages=[
-                    {"role": "system", "content": BATCH_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.7,
-                max_tokens=8000,
-            )
-            content = content.strip()
-            batch_results = _parse_batch_response(content, batch)
-            if batch_results:
-                return batch_results
-        except Exception as e:
-            if attempt < 2:
-                # 指数退避：2s → 4s → 8s，限流时更长
-                import random
-                delay = (2 ** (attempt + 1)) + random.uniform(0, 1)
-                if "429" in str(e):
-                    delay = 10 * (2 ** attempt)
-                time.sleep(delay)
+    try:
+        content = call_llm(
+            llm_cfg,
+            messages=[
+                {"role": "system", "content": BATCH_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+            max_tokens=8000,
+        )
+        content = content.strip()
+        batch_results = _parse_batch_response(content, batch)
+        if batch_results:
+            return batch_results
+    except Exception as e:
+        pass
 
     # 全部失败 → 返回错误信息
     return [{"title": p["title"], "raw_text": "AI 分析失败，请检查 API 配置或稍后重试", "parse_error": True, "final_verdict": "cautious", "verdict_reason": "AI 批量分析调用失败", "longevity": {"score": 0, "label": "unknown", "key_signal": "", "reason": ""}} for p in batch]
@@ -462,7 +344,7 @@ def analyze_products(
     try:
         from .config import get_config
         BATCH_SIZE = int(get_config().get("analysis_batch_size", 6))
-    except Exception:
+    except Exception as e:
         BATCH_SIZE = 6
     results = []
 
@@ -561,31 +443,21 @@ def analyze_category_report(keyword: str, products: list[dict]) -> dict:
         products_json=json.dumps(summary, ensure_ascii=False, indent=1),
     )
 
-    last_error = None
-    for attempt in range(3):
-        try:
-            content = _call_llm(
-                llm_cfg,
-                messages=[
-                    {"role": "system", "content": "你是资深跨境电商选品顾问。只返回 JSON。"},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.7,
-                max_tokens=8000,
-                timeout=60,
-            )
-            return _parse_category_report_response(content, keyword, products)
-        except Exception as e:
-            last_error = e
-            if attempt < 2:
-                import random
-                delay = (2 ** (attempt + 1)) + random.uniform(0, 1)
-                if "429" in str(e):
-                    delay = 10 * (2 ** attempt)
-                time.sleep(delay)
-
-    # API 调用失败 → 返回错误（包含具体原因）
-    return {
+    try:
+        content = call_llm(
+            llm_cfg,
+            messages=[
+                {"role": "system", "content": "你是资深跨境电商选品顾问。只返回 JSON。"},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+            max_tokens=8000,
+            timeout=60,
+        )
+        return _parse_category_report_response(content, keyword, products)
+    except Exception as e:
+        # API 调用失败 → 返回错误（包含具体原因）
+        return {
         "success": False,
         "category_overview": "",
         "market_size": "",
@@ -598,7 +470,7 @@ def analyze_category_report(keyword: str, products: list[dict]) -> dict:
         "risk_factors": [],
         "parse_error": False,
         "raw_text": None,
-        "error": f"AI API 调用失败：{last_error}",
+        "error": f"AI API 调用失败：{e}",
     }
 
 
@@ -733,29 +605,19 @@ def analyze_market_comparison(keyword: str, markets: list[dict]) -> dict:
         market_data=market_data_str,
     )
 
-    import random
-    last_error = None
-    for attempt in range(3):
-        try:
-            content = _call_llm(
-                llm_cfg,
-                messages=[
-                    {"role": "system", "content": "你是资深跨境电商选品顾问。只返回 JSON。"},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.7,
-                max_tokens=4000,
-            )
-            return _parse_cross_market_response(content)
-        except Exception as e:
-            last_error = e
-            if attempt < 2:
-                delay = (2 ** (attempt + 1)) + random.uniform(0, 1)
-                if "429" in str(e):
-                    delay = 10 * (2 ** attempt)
-                time.sleep(delay)
-
-    return {"success": False, "error": f"AI API 调用失败：{last_error}"}
+    try:
+        content = call_llm(
+            llm_cfg,
+            messages=[
+                {"role": "system", "content": "你是资深跨境电商选品顾问。只返回 JSON。"},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+            max_tokens=4000,
+        )
+        return _parse_cross_market_response(content)
+    except Exception as e:
+        return {"success": False, "error": f"AI API 调用失败：{e}"}
 
 
 def _parse_cross_market_response(content: str) -> dict:

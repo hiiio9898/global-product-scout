@@ -73,7 +73,7 @@ def _fetch_from_api() -> dict | None:
             data = json.loads(resp.read().decode("utf-8"))
         if data.get("result") == "success":
             return data.get("rates", {})
-    except Exception:
+    except Exception as e:
         pass
     return None
 

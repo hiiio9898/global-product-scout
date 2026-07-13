@@ -24,6 +24,10 @@ from contextlib import contextmanager
 from typing import Optional
 
 from .config import get_config
+from .utils import safe_float, get_logger
+
+_logger = get_logger(__name__)
+
 
 
 # ============================================================
@@ -85,8 +89,9 @@ def _get_connection(db_path: Optional[str] = None):
     try:
         yield conn
         conn.commit()
-    except Exception:
+    except Exception as e:
         conn.rollback()
+        _logger.warning("数据库操作失败，已回滚: %s", e)
         raise
     finally:
         conn.close()
@@ -340,12 +345,6 @@ def _match_filters(product: dict, filters: dict) -> bool:
     return True
 
 
-def _safe_float(value) -> float:
-    """安全转换为 float，失败返回 0.0。"""
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return 0.0
 
 
 # ============================================================
@@ -723,8 +722,8 @@ def get_latest_products(db_path: Optional[str] = None) -> list[dict]:
         for p in rows:
             item = {
                 "title": p["title"],
-                "price": _safe_float(p["price"]),
-                "rating": _safe_float(p["rating"]),
+                "price": safe_float(p["price"]),
+                "rating": safe_float(p["rating"]),
                 "num_reviews": int(p["num_reviews"] or "0"),
                 "rank": int(p["rank"] or 0),
                 "category": p["category"] or "",
@@ -1122,7 +1121,7 @@ def get_price_history(
         ).fetchall()
         return [
             {
-                "price": _safe_float(r["price"]),
+                "price": safe_float(r["price"]),
                 "scrape_time": r["scrape_time"],
                 "region": r["region"],
             }
@@ -1169,8 +1168,8 @@ def get_price_alerts(
         alerts = []
         for r in rows:
             try:
-                new_price = _safe_float(r["price"])
-                old_price = _safe_float(r["prev_price"])
+                new_price = safe_float(r["price"])
+                old_price = safe_float(r["prev_price"])
                 if old_price > 0 and new_price > 0:
                     change_pct = ((new_price - old_price) / old_price) * 100
                     if abs(change_pct) >= threshold_pct:

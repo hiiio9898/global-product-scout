@@ -95,7 +95,7 @@ def scan_all_regions(
         if progress_callback:
             try:
                 progress_callback(i, total, label)
-            except Exception:
+            except Exception as e:
                 pass  # 进度回调异常不影响扫描
 
         try:
@@ -110,7 +110,7 @@ def scan_all_regions(
                         p["platform"] = pk
                         p["region"] = rk
                         p["currency"] = currency
-                    except Exception:
+                    except Exception as e:
                         pass
                 all_products.extend(products)
                 success_sites += 1
@@ -120,7 +120,7 @@ def scan_all_regions(
     if progress_callback:
         try:
             progress_callback(total, total, "扫描完成")
-        except Exception:
+        except Exception as e:
             pass
 
     return {

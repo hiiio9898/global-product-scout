@@ -47,7 +47,7 @@ app.py (_render_live_page)
 - 六维度 prompt 内嵌在 `SYSTEM_PROMPT`（单品）/ `BATCH_SYSTEM_PROMPT`（批量，主力）。`_validate_result` 强制校验六维全在；**所有 parse_error 兜底 dict（无 key、解析失败、批量失败等 4 处）必须带六维默认值**。新增维度用 `add-analysis-type` skill，务必同步所有兜底。
 - `final_verdict` 枚举（recommended/cautious/not_recommended）被 app.py 十几处过滤/统计引用——**不要轻易改枚举值**，新维度走"独立字段 + UI 徽章"而非新 verdict。
 
-**前端**（[app.py](app.py)，~2750 行单文件）：`ANALYSIS_DIMS` 列表同时驱动雷达图和维度展示——加维度只要往这里 append；`VERDICT_LABEL_MAP` / `LONGEVITY_LABEL_MAP` 驱动徽章。页面渲染函数 `_render_live_page` / `_render_targeted_page` / `_render_market_scanner_page` / `_render_history_page`。
+**前端**（[app.py](app.py) 为薄入口（~90 行），页面渲染拆分到 [src/ui/](src/ui/)）：`ANALYSIS_DIMS` 列表同时驱动雷达图和维度展示——加维度只要往这里 append；`VERDICT_LABEL_MAP` / `LONGEVITY_LABEL_MAP` 驱动徽章。页面渲染函数在 `src/ui/pages.py`，共享组件在 `src/ui/components.py`，路由分发在 `app.py` 底部。
 
 ## 必须知道的硬约束 & 坑
 

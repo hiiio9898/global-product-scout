@@ -29,7 +29,11 @@ from .scrapling_adapter import fetch_page
 from .utils import (
     is_blocked, parse_price, parse_rating,
     load_json_cache, save_json_cache, get_cache_timestamp,
+    get_logger,
 )
+
+_logger = get_logger(__name__)
+
 
 # ============================================================
 # 缓存配置
@@ -340,10 +344,10 @@ def _scrape_ebay_best_sellers(region: str = "us") -> list[dict]:
             time.sleep(delay)
 
             resp = fetch_page(url)
-            print(f"[scraper_ebay] HTTP {resp.status} | URL: {url}")
+            _logger.info(f"[scraper_ebay] HTTP {resp.status} | URL: {url}")
 
             if is_blocked(str(resp.text)):
-                print("[scraper_ebay] 被拦截，尝试下一个 URL")
+                _logger.warning("[scraper_ebay] 被拦截，尝试下一个 URL")
                 continue
 
             card_selectors = [
@@ -362,7 +366,7 @@ def _scrape_ebay_best_sellers(region: str = "us") -> list[dict]:
                     break
 
             if cards:
-                print(f"[scraper_ebay] 找到 {len(cards)} 个产品卡片")
+                _logger.info(f"[scraper_ebay] 找到 {len(cards)} 个产品卡片")
                 # trending页面价格可能JS加载，不强制要求价格
                 products = []
                 for i, card in enumerate(cards[:50], 1):
@@ -372,7 +376,7 @@ def _scrape_ebay_best_sellers(region: str = "us") -> list[dict]:
                 if len(products) >= 3:
                     return products
                 # 产品数不足，尝试用链接过滤非产品 article 元素
-                print(f"[scraper_ebay] 仅解析出 {len(products)} 个，尝试链接过滤...")
+                _logger.info(f"[scraper_ebay] 仅解析出 {len(products)} 个，尝试链接过滤...")
                 filtered_cards = [
                     c for c in cards
                     if c.css("a[href*='/itm/']") or c.css("a[href*='itm']")
@@ -387,7 +391,7 @@ def _scrape_ebay_best_sellers(region: str = "us") -> list[dict]:
                     return products
 
         except Exception as e:
-            print(f"[scraper_ebay] URL {url} 失败: {e}")
+            _logger.warning(f"[scraper_ebay] URL {url} 失败: {e}")
             continue
 
     # 降级：搜索排序
@@ -409,7 +413,7 @@ def _scrape_ebay_best_sellers(region: str = "us") -> list[dict]:
                 if products:
                     return products
     except Exception as e:
-        print(f"[scraper_ebay] 搜索排序也失败: {e}")
+        _logger.warning(f"[scraper_ebay] 搜索排序也失败: {e}")
 
     return []
 
@@ -440,22 +444,22 @@ def _scrape_ebay_search(keyword: str, region: str = "us", max_results: int = 20)
 
     # 第一层：Fetcher（快）
     resp = fetch_page(url)
-    print(f"[scraper_ebay] Fetcher HTTP {resp.status} | URL: {url}")
+    _logger.info(f"[scraper_ebay] Fetcher HTTP {resp.status} | URL: {url}")
     products = _try_parse(resp)
 
     # 第二层：Fetcher 零结果/被拦 → 浏览器渲染（eBay 是 SPA，产品卡 JS 渲染）
     if not products:
-        print(f"[scraper_ebay] Fetcher 无结果，降级 StealthyFetcher 渲染 JS…")
+        _logger.warning(f"[scraper_ebay] Fetcher 无结果，降级 StealthyFetcher 渲染 JS…")
         try:
             resp = fetch_page(url, stealth=True, wait_seconds=6.0,
                               wait_selector="li.s-item, ul.srp-results")
-            print(f"[scraper_ebay] StealthyFetcher HTTP {resp.status}")
+            _logger.info(f"[scraper_ebay] StealthyFetcher HTTP {resp.status}")
             products = _try_parse(resp) or []
         except Exception as e:
-            print(f"[scraper_ebay] StealthyFetcher 失败: {e}")
+            _logger.warning(f"[scraper_ebay] StealthyFetcher 失败: {e}")
             products = []
 
-    print(f"[scraper_ebay] 找到 {len(products)} 个搜索结果")
+    _logger.info(f"[scraper_ebay] 找到 {len(products)} 个搜索结果")
     return products
 
 
@@ -481,19 +485,19 @@ def fetch_ebay_best_sellers(region: str = "us") -> tuple[list[dict], dict]:
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             return products, {"source": "live", "timestamp": timestamp}
         else:
-            print(f"[!] eBay 实时抓取仅获得 {len(products)} 个产品，降级到缓存")
+            _logger.warning(f"[!] eBay 实时抓取仅获得 {len(products)} 个产品，降级到缓存")
     except Exception as e:
-        print(f"[!] eBay 实时抓取失败: {e}")
+        _logger.warning(f"[!] eBay 实时抓取失败: {e}")
 
     # ---------- 第二层：本地缓存 ----------
     cached = _load_cache("best_sellers", region)
     if cached and len(cached) >= 3:
         cache_ts = _get_cache_timestamp("best_sellers", region)
-        print(f"[*] 使用 eBay 本地缓存 ({len(cached)} 个产品)")
+        _logger.info(f"[*] 使用 eBay 本地缓存 ({len(cached)} 个产品)")
         return cached, {"source": "cache", "timestamp": cache_ts or "unknown"}
 
     # ---------- 均不可用 ----------
-    print("[X] eBay 实时抓取和本地缓存均不可用")
+    _logger.error("eBay 实时抓取和本地缓存均不可用")
     return [], {
         "source": "unavailable",
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),

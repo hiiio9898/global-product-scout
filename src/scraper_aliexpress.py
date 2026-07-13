@@ -28,7 +28,11 @@ from .scrapling_adapter import fetch_page
 from .utils import (
     is_blocked, parse_price, parse_rating,
     load_json_cache, save_json_cache, get_cache_timestamp,
+    get_logger,
 )
+
+_logger = get_logger(__name__)
+
 
 # ============================================================
 # 缓存配置
@@ -150,7 +154,7 @@ def _parse_product_card(card, rank: int) -> Optional[dict]:
             "url": url,
             "image": image,
         }
-    except Exception:
+    except Exception as e:
         return None
 
 
@@ -166,7 +170,7 @@ def _scrape_aliexpress_best_sellers(region: str = "us", max_products: int = 30) 
     time.sleep(random.uniform(2.0, 3.0))
 
     resp = fetch_page(url, stealth=True, wait_seconds=8)
-    print(f"[scraper_aliexpress] HTTP {resp.status} | URL: {url}")
+    _logger.info(f"[scraper_aliexpress] HTTP {resp.status} | URL: {url}")
 
     if resp.status != 200 or is_blocked(str(resp.text)):
         raise RuntimeError(f"被拦截或请求失败 (status={resp.status})")
@@ -176,7 +180,7 @@ def _scrape_aliexpress_best_sellers(region: str = "us", max_products: int = 30) 
     if not cards:
         cards = resp.css('a[href*="/item/"]')
 
-    print(f"[scraper_aliexpress] 找到 {len(cards)} 个产品卡片")
+    _logger.info(f"[scraper_aliexpress] 找到 {len(cards)} 个产品卡片")
 
     products = []
     for i, card in enumerate(cards[:max_products], 1):
@@ -210,19 +214,19 @@ def fetch_aliexpress_best_sellers(region: str = "us", max_products: int = 30) ->
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             return products, {"source": "live", "timestamp": timestamp}
         else:
-            print(f"⚠️ 实时抓取仅获得 {len(products)} 个产品，降级到缓存")
+            _logger.warning(f"⚠️ 实时抓取仅获得 {len(products)} 个产品，降级到缓存")
     except Exception as e:
-        print(f"⚠️ 实时抓取失败：{e}")
+        _logger.warning(f"⚠️ 实时抓取失败：{e}")
 
     # 第二层：本地缓存
     cached = load_json_cache(_get_cache_file(region))
     if cached and len(cached) >= 3:
         cache_ts = get_cache_timestamp(_get_cache_file(region))
-        print(f"📦 使用本地缓存（{len(cached)} 个产品）")
+        _logger.info(f"📦 使用本地缓存（{len(cached)} 个产品）")
         return cached, {"source": "cache", "timestamp": cache_ts or "unknown"}
 
     # 均不可用
-    print("❌ 实时抓取和本地缓存均不可用")
+    _logger.error("实时抓取和本地缓存均不可用")
     return [], {"source": "unavailable", "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"), "error": "实时抓取和本地缓存均不可用"}
 
 

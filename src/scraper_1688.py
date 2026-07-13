@@ -23,6 +23,11 @@ from typing import Optional
 
 import httpx
 
+from .utils import get_logger
+
+_logger = get_logger(__name__)
+
+
 
 # ============================================================
 # 真实抓取 — 使用 Scrapling StealthyFetcher
@@ -69,10 +74,10 @@ def _scrape_1688_search(keyword: str, max_results: int = 10) -> list[dict]:
                 break
 
         if not cards:
-            print(f"[scraper_1688] 未找到产品卡片")
+            _logger.info(f"[scraper_1688] 未找到产品卡片")
             return []
 
-        print(f"[scraper_1688] 找到 {len(cards)} 个产品卡片")
+        _logger.info(f"[scraper_1688] 找到 {len(cards)} 个产品卡片")
 
         products = []
         for i, card in enumerate(cards[:max_results], 1):
@@ -83,7 +88,7 @@ def _scrape_1688_search(keyword: str, max_results: int = 10) -> list[dict]:
         return products
 
     except Exception as e:
-        print(f"[scraper_1688] 真实抓取失败: {e}")
+        _logger.warning(f"[scraper_1688] 真实抓取失败: {e}")
         return []
 
 
@@ -288,7 +293,7 @@ def estimate_1688_price(title: str, price_usd: float = 0.0) -> dict:
             "error": None,
         }
 
-    except Exception:
+    except Exception as e:
         # AI 估算失败，使用本地规则
         return _local_estimate(title, price_usd)
 
@@ -404,7 +409,7 @@ def search_1688_hybrid(title: str, price_usd: float = 0.0) -> dict:
                 "error": None,
             }
     except Exception as e:
-        print(f"[scraper_1688] 真实抓取降级: {e}")
+        _logger.warning(f"[scraper_1688] 真实抓取降级: {e}")
 
     # 第二层：AI 估算
     ai_result = estimate_1688_price(title, price_usd)

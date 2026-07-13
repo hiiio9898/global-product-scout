@@ -30,7 +30,11 @@ from .scrapling_adapter import fetch_page
 from .utils import (
     is_blocked, parse_price, parse_rating, parse_review_count,
     load_json_cache, save_json_cache, get_cache_timestamp,
+    get_logger,
 )
+
+_logger = get_logger(__name__)
+
 
 
 # ============================================================
@@ -81,7 +85,7 @@ def _extract_embedded_json(html: str) -> list:
         for m in re.finditer(pattern, html, re.DOTALL):
             try:
                 data = json.loads(m.group(1).strip())
-            except Exception:
+            except Exception as e:
                 continue
             _harvest_products(data, products)
     return products
@@ -209,7 +213,7 @@ def _scrape_tiktok_search(keyword: str, region: str = "id", max_results: int = 2
     # stealth=True 直接走浏览器
     resp = fetch_page(url, stealth=True, wait_seconds=8.0,
                       wait_selector='[data-e2e], a[href*="/product"]')
-    print(f"[scraper_tiktok] HTTP {resp.status} | region={region} | URL: {url}")
+    _logger.info(f"[scraper_tiktok] HTTP {resp.status} | region={region} | URL: {url}")
 
     if resp.status != 200 or is_blocked(str(resp.text)):
         raise RuntimeError(f"TikTok 反爬拦截或请求失败 (status={resp.status})")
@@ -224,7 +228,7 @@ def _scrape_tiktok_search(keyword: str, region: str = "id", max_results: int = 2
             p["rank"] = len(products) + 1
             p.setdefault("category", "")
             products.append(p)
-    print(f"[scraper_tiktok] 内嵌 JSON 提取到 {len(products)} 个产品")
+    _logger.info(f"[scraper_tiktok] 内嵌 JSON 提取到 {len(products)} 个产品")
 
     # 策略2：DOM 回退（data-e2e）
     if len(products) < 3:
@@ -237,7 +241,7 @@ def _scrape_tiktok_search(keyword: str, region: str = "id", max_results: int = 2
             if parsed and parsed.get("title"):
                 products.append(parsed)
                 rank += 1
-        print(f"[scraper_tiktok] DOM 回退后共 {len(products)} 个产品")
+        _logger.info(f"[scraper_tiktok] DOM 回退后共 {len(products)} 个产品")
 
     # 清洗：去重 + 标注货币
     seen = set()

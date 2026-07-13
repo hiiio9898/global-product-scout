@@ -1,9 +1,8 @@
-# sync-data.sh 的本机配置 —— 复制本文件为 .sync-config 后填写
-# .sync-config 已加入 .gitignore，不会被提交（含本机路径，两台机器各自一份）
+# sync-data.sh 的本机配置 — 复制本文件为 .sync-config 后填写
+# .sync-config 已加入 .gitignore，不会提交（含本机路径）
 
 # 同步目录：
 #   方式1（推荐）SYNC_DIR=auto 自动探测：扫描所有盘符找 SYNC_FOLDER_NAME
-#         解决U盘盘符不一致问题（家里E盘/公司H盘），两台机器用同一份配置
 #   方式2：写死绝对路径（Git Bash 风格）
 #         - U盘：       /e/GPS-Sync  （对应 E:\GPS-Sync）
 #         - Syncthing： /c/Users/pingc/Sync

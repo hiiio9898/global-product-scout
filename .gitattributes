@@ -1,4 +1,4 @@
-# 统一行尾为 LF，避免 Windows 上 bash 脚本因 CRLF 报错（双机 Git 同步场景关键）
-# autocrlf=true 会把 checkout 出来的文件转成 CRLF；这里对可执行/源码强制 LF。
+# 统一行尾为 LF，避免 Windows 下 bash 脚本因 CRLF 报错（复制机 Git 同步场景关键）
+# autocrlf=true 会把 checkout 出来的文件转为 CRLF；这里对可执行源码强制 LF
 *.sh text eol=lf
 *.py text eol=lf

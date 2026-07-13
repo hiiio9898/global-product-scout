@@ -22,7 +22,10 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from .scrapling_adapter import fetch_page
-from .utils import is_blocked, parse_price, parse_rating, parse_review_count
+from .utils import is_blocked, parse_price, parse_rating, parse_review_count, get_logger
+
+_logger = get_logger(__name__)
+
 
 
 # 地区域名映射
@@ -230,7 +233,7 @@ def _scrape_amazon_search(keyword: str, max_results: int = 20, region: str = "us
     time.sleep(delay)
 
     resp = fetch_page(url)
-    print(f"[scraper_search] HTTP {resp.status} | URL: {url}")
+    _logger.info(f"[scraper_search] HTTP {resp.status} | URL: {url}")
 
     # 检测拦截
     if is_blocked(str(resp.text)):
@@ -250,7 +253,7 @@ def _scrape_amazon_search(keyword: str, max_results: int = 20, region: str = "us
             break
 
     if not cards:
-        print(f"[scraper_search] 未找到产品卡片，尝试的选择器: {card_selectors}")
+        _logger.info(f"[scraper_search] 未找到产品卡片，尝试的选择器: {card_selectors}")
         return []
 
     # 解析每个卡片
