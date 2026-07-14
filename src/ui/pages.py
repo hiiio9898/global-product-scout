@@ -1940,7 +1940,7 @@ def _render_history_list(total_count: int):
         # 第一行：平台 + 地区
         col_plat, col_region = st.columns(2)
         with col_plat:
-            platform_keys = get_platform_choices()
+            platform_keys = get_available_platform_choices()
             platform_options = list(platform_keys)
             selected_platforms = st.multiselect(
                 "🛒 平台",
