@@ -42,7 +42,7 @@ LLM_PROVIDERS = {
         "name": "智谱 GLM",
         "base_url_key": "GLM_BASE_URL",
         "api_key_key": "GLM_API_KEY",
-        "models": ["glm-5.2", "glm-4-plus", "glm-4-flash"],
+        "models": ["glm-5.2", "glm-5.1", "glm-5-turbo"],
         "default_model": "glm-5.2",
     },
 }
