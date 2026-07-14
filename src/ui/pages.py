@@ -140,7 +140,9 @@ def _render_live_page(api_ok: bool):
             help="优先实时抓取最新数据，失败时降级到每日自动更新数据",
         )
     with col_hint:
-        json_path = os.path.join(os.path.dirname(__file__), "data", "products.json")
+        # project root: src/ui/pages.py -> up 2 levels
+        _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        json_path = os.path.join(_PROJECT_ROOT, "data", "products.json")
         json_exists = os.path.exists(json_path)
         if json_exists:
             st.caption("📡 优先实时抓取（失败时用每日更新数据兜底）")
@@ -747,7 +749,8 @@ def _render_live_page(api_ok: bool):
 
     # ---- 空闲状态 ----
     elif st.session_state.step == "idle":
-        json_exists = os.path.exists(os.path.join(os.path.dirname(__file__), "data", "products.json"))
+        _root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        json_exists = os.path.exists(os.path.join(_root, "data", "products.json"))
         st.info(
             "👈 选择上方按钮开始分析：\n\n"
             f"1. 📄 **分析 JSON 数据** {'（可用 ✅）' if json_exists else '（❌ 文件不存在）'}\n"
@@ -2265,4 +2268,3 @@ def _render_favorites_tab():
 # ============================================================
 # 原有辅助函数
 # ============================================================
-
